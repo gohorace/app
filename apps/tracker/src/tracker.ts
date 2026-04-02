@@ -12,6 +12,7 @@ interface RIQConfig {
   propertyPattern?: string
   captureEmail?: boolean
   apiUrl?: string
+  debug?: boolean
 }
 
 interface EventPayload {
@@ -45,13 +46,24 @@ declare global {
 
 ;(function () {
   const config: RIQConfig = window.RIQ || ({} as RIQConfig)
-  if (!config.key) return
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function log(...args: any[]): void {
+    if (config.debug) console.log('[RIQ]', ...args)
+  }
+
+  if (!config.key) {
+    console.warn('[RIQ] No key set — tracking disabled. Set window.RIQ.key to your org slug.')
+    return
+  }
 
   const API_URL = config.apiUrl || '/api'
   const COOKIE_AID = '_riq_aid'
   const COOKIE_SID = '_riq_sid'
   const STORAGE_CTOKEN = '_riq_ctoken'
   const SESSION_MS = 30 * 60 * 1000 // 30 minutes
+
+  log('Initialised', { key: config.key, apiUrl: API_URL, propertyPattern: config.propertyPattern })
 
   // ─── Cookie helpers ──────────────────────────────────────────────────────────
 
@@ -85,6 +97,9 @@ declare global {
   if (!existingAid) {
     existingAid = generateId()
     setCookie(COOKIE_AID, existingAid, 365 * 24 * 3600)
+    log('New visitor — anonymous ID created:', existingAid)
+  } else {
+    log('Returning visitor — anonymous ID:', existingAid)
   }
   const anonymousId = existingAid
 
@@ -161,15 +176,20 @@ declare global {
     const body = JSON.stringify(payload)
     const url = `${API_URL}/t`
 
+    log(`Flushing ${events.length} event(s) to ${url}`, events.map((e) => e.t))
+
     if (beacon && typeof navigator.sendBeacon === 'function') {
       navigator.sendBeacon(url, new Blob([body], { type: 'application/json' }))
+      log('Sent via sendBeacon')
     } else {
       fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body,
         keepalive: true,
-      }).catch(() => {})
+      })
+        .then((r) => log(`/api/t response: ${r.status} ${r.statusText}`))
+        .catch((err) => log('Fetch error:', err))
     }
   }
 
@@ -179,6 +199,7 @@ declare global {
   }
 
   function track(eventType: string, props: Record<string, unknown> = {}): void {
+    log(`Queued event: ${eventType}`, props)
     queue.push({ t: eventType, p: props, ts: Date.now() })
     if (queue.length >= 10) {
       if (flushTimer) clearTimeout(flushTimer)
@@ -263,6 +284,7 @@ declare global {
       })
 
       // Send identity resolution request separately
+      log('Form email captured — sending to /api/identity:', email)
       fetch(`${API_URL}/identity`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -273,7 +295,9 @@ declare global {
           email,
         }),
         keepalive: true,
-      }).catch(() => {})
+      })
+        .then((r) => log(`/api/identity response: ${r.status} ${r.statusText}`))
+        .catch((err) => log('Identity fetch error:', err))
     })
   }
 })()
