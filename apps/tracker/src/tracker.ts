@@ -45,17 +45,23 @@ declare global {
 }
 
 ;(function () {
-  const config: RIQConfig = window.RIQ || ({} as RIQConfig)
+  function init() {
+    const config: RIQConfig = window.RIQ || ({} as RIQConfig)
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  function log(...args: any[]): void {
-    if (config.debug) console.log('[RIQ]', ...args)
-  }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    function log(...args: any[]): void {
+      if (config.debug) console.log('[RIQ]', ...args)
+    }
 
-  if (!config.key) {
-    console.warn('[RIQ] No key set — tracking disabled. Set window.RIQ.key to your org slug.')
-    return
-  }
+    if (!config.key) {
+      // Config not ready yet — retry once after DOM is parsed
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init, { once: true })
+      } else {
+        console.warn('[RIQ] No key set — tracking disabled. Set window.RIQ.key to your org slug.')
+      }
+      return
+    }
 
   const API_URL = config.apiUrl || '/api'
   const COOKIE_AID = '_riq_aid'
@@ -300,4 +306,7 @@ declare global {
         .catch((err) => log('Identity fetch error:', err))
     })
   }
+  } // end init
+
+  init()
 })()

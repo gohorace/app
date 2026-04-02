@@ -28,7 +28,7 @@ export default async function SnippetPage() {
     propertyPattern: '/property/' // adjust to match your property URLs
   };
 </script>
-<script src="${cdnUrl}" async></script>`
+<script src="${cdnUrl}" defer></script>`
 
   return (
     <div className="p-8 space-y-6 max-w-3xl">
