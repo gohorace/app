@@ -1,7 +1,41 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database.types'
+import { scoreEventsForContact, getOrgScoringOverrides } from '@/lib/scoring/engine'
+import type { IncomingEvent } from '@/lib/scoring/types'
+import type { Json } from '@/types/database.types'
 
 type AdminClient = SupabaseClient<Database>
+
+/**
+ * Fetches all historical events for a contact and scores them.
+ * Called after identity resolution to catch pre-identification browsing.
+ */
+async function scoreBackfilledEvents(
+  supabase: AdminClient,
+  orgId: string,
+  contactId: string,
+): Promise<void> {
+  const { data: events } = await supabase
+    .from('events')
+    .select('id, session_id, event_type, properties, occurred_at, score_delta')
+    .eq('contact_id', contactId)
+    .eq('org_id', orgId)
+    .eq('score_delta', 0) // only unscored events
+    .order('occurred_at', { ascending: true })
+
+  if (!events || events.length === 0) return
+
+  const incomingEvents: IncomingEvent[] = events.map((e) => ({
+    id: e.id,
+    session_id: e.session_id,
+    event_type: e.event_type as IncomingEvent['event_type'],
+    properties: e.properties as Json,
+    occurred_at: e.occurred_at,
+  }))
+
+  const overrides = await getOrgScoringOverrides(supabase, orgId)
+  await scoreEventsForContact(supabase, orgId, contactId, incomingEvents, overrides)
+}
 
 /**
  * Links a session to a contact and back-fills events via DB trigger.
@@ -50,7 +84,12 @@ export async function resolveCampaignToken(
 
   if (!contactId) return null
 
-  await linkSessionToContact(supabase, sessionId, contactId)
+  const linked = await linkSessionToContact(supabase, sessionId, contactId)
+  if (linked) {
+    scoreBackfilledEvents(supabase, orgId, contactId).catch((err) =>
+      console.error('Backfill scoring error:', err),
+    )
+  }
   return contactId
 }
 
@@ -96,6 +135,11 @@ export async function resolveEmail(
     contactId = created.id
   }
 
-  await linkSessionToContact(supabase, sessionId, contactId)
+  const linked = await linkSessionToContact(supabase, sessionId, contactId)
+  if (linked) {
+    scoreBackfilledEvents(supabase, orgId, contactId).catch((err) =>
+      console.error('Backfill scoring error:', err),
+    )
+  }
   return contactId
 }
