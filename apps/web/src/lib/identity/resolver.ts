@@ -86,9 +86,13 @@ export async function resolveCampaignToken(
 
   const linked = await linkSessionToContact(supabase, sessionId, contactId)
   if (linked) {
-    scoreBackfilledEvents(supabase, orgId, contactId).catch((err) =>
-      console.error('Backfill scoring error:', err),
-    )
+    // Delay backfill so identity route can await form_submit scoring first —
+    // backfill then sees the updated scoreBefore for correct threshold detection
+    setTimeout(() => {
+      scoreBackfilledEvents(supabase, orgId, contactId).catch((err) =>
+        console.error('Backfill scoring error:', err),
+      )
+    }, 500)
   }
   return contactId
 }
@@ -137,9 +141,13 @@ export async function resolveEmail(
 
   const linked = await linkSessionToContact(supabase, sessionId, contactId)
   if (linked) {
-    scoreBackfilledEvents(supabase, orgId, contactId).catch((err) =>
-      console.error('Backfill scoring error:', err),
-    )
+    // Delay backfill so identity route can await form_submit scoring first —
+    // backfill then sees the updated scoreBefore for correct threshold detection
+    setTimeout(() => {
+      scoreBackfilledEvents(supabase, orgId, contactId).catch((err) =>
+        console.error('Backfill scoring error:', err),
+      )
+    }, 500)
   }
   return contactId
 }

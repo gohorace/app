@@ -87,18 +87,19 @@ export async function POST(request: NextRequest) {
 
   const formName = (recentFormEvent?.properties as Record<string, unknown> | null)?.form_id as string | null
 
-  // Score the form_submit event
+  // Score the form_submit event — await so backfill (triggered inside resolveEmail)
+  // runs after and sees the updated scoreBefore, ensuring threshold crossing is detected
   const incomingEvents: IncomingEvent[] = [{
     session_id: session.id,
     event_type: 'form_submit',
     properties: { form_id: formName },
   }]
   const overrides = await getOrgScoringOverrides(supabase, orgId)
-  scoreEventsForContact(supabase, orgId, contactId, incomingEvents, overrides).catch(
+  await scoreEventsForContact(supabase, orgId, contactId, incomingEvents, overrides).catch(
     (err) => console.error('Identity scoring error:', err),
   )
 
-  // SMS notification (non-blocking)
+  // SMS for form submit (non-blocking)
   sendFormSubmitSms(supabase, orgId, contactId, formName).catch(
     (err) => console.error('Form submit SMS error:', err),
   )
