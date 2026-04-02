@@ -17,14 +17,14 @@ export default async function SnippetPage() {
 
   const orgSlug = (membership?.orgs as { slug: string } | null)?.slug ?? 'your-org-key'
 
-  const cdnUrl = process.env.NEXT_PUBLIC_APP_URL
-    ? `${process.env.NEXT_PUBLIC_APP_URL}/tracker.min.js`
-    : 'https://your-domain.com/tracker.min.js'
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://your-domain.com'
+  const cdnUrl = `${appUrl}/tracker.min.js`
 
   const snippetCode = `<!-- Real Estate Insights Tracker -->
 <script>
   window.RIQ = {
     key: '${orgSlug}',
+    apiUrl: '${appUrl}/api',
     propertyPattern: '/property/' // adjust to match your property URLs
   };
 </script>
