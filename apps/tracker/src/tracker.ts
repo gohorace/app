@@ -13,6 +13,7 @@ interface RIQConfig {
   captureEmail?: boolean
   apiUrl?: string
   debug?: boolean
+  identify?: (email: string, source?: string, formId?: string | null) => void
 }
 
 interface EventPayload {
@@ -266,44 +267,101 @@ declare global {
     }
   }, { passive: true })
 
+  // ─── Identity resolution core ─────────────────────────────────────────────────
+
+  let lastIdentifiedEmail = ''
+
+  function identify(email: string, source: string, formId?: string | null): void {
+    const e = email.trim().toLowerCase()
+    if (!e || !e.includes('@')) return
+    if (e === lastIdentifiedEmail) return // deduplicate within page
+    lastIdentifiedEmail = e
+
+    log(`Identity captured via ${source}:`, e)
+    track('form_submit', { url, form_id: formId ?? null, source })
+
+    fetch(`${API_URL}/identity`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ k: config.key, aid: anonymousId, sid: sessionId, email: e }),
+      keepalive: true,
+    })
+      .then((r) => log(`/api/identity response: ${r.status} ${r.statusText}`))
+      .catch((err) => log('Identity fetch error:', err))
+  }
+
+  // ─── Manual API: window.RIQ.identify(email) ──────────────────────────────────
+  // Agents can call this from any form callback:
+  //   window.addEventListener('form-success', e => window.RIQ.identify(e.detail.email))
+  if (window.RIQ) window.RIQ.identify = identify.bind(null, 'manual', null)
+
   // ─── Form email capture ───────────────────────────────────────────────────────
 
   if (config.captureEmail !== false) {
+
+    // 1. Native HTML form submit
     document.addEventListener('submit', (e: Event) => {
       const form = e.target as HTMLFormElement
       if (!form || form.tagName !== 'FORM') return
-
       const emailInput =
         (form.querySelector('input[type="email"]') as HTMLInputElement) ||
         (form.querySelector('input[name*="email"]') as HTMLInputElement) ||
         (form.querySelector('input[name*="Email"]') as HTMLInputElement)
+      if (!emailInput?.value) return
+      identify(emailInput.value, 'form-submit', form.id || form.getAttribute('name'))
+    })
 
-      if (!emailInput || !emailInput.value) return
+    // 2. PostMessage — catches HighLevel, Typeform, and other iframe forms
+    window.addEventListener('message', (e: MessageEvent) => {
+      try {
+        const d = typeof e.data === 'string' ? JSON.parse(e.data) : e.data
+        if (!d || typeof d !== 'object') return
 
-      const email = emailInput.value.trim()
-      if (!email.includes('@')) return
+        // HighLevel: { type: 'form-submitted', data: { email } }
+        //            { type: 'FORM_SUBMITTED', formData: { email } }
+        // Typeform:  { type: 'form-submit', response_id, ... }
+        const email =
+          d?.data?.email ||
+          d?.formData?.email ||
+          d?.payload?.email ||
+          d?.email ||
+          null
 
-      // Fire a form_submit tracking event (no email in tracking payload)
-      track('form_submit', {
-        url,
-        form_id: form.id || form.getAttribute('name') || null,
-      })
+        if (email) identify(email, 'postmessage-' + (d.type ?? 'unknown'))
+      } catch (_) {}
+    })
 
-      // Send identity resolution request separately
-      log('Form email captured — sending to /api/identity:', email)
-      fetch(`${API_URL}/identity`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          k: config.key,
-          aid: anonymousId,
-          sid: sessionId,
-          email,
-        }),
-        keepalive: true,
-      })
-        .then((r) => log(`/api/identity response: ${r.status} ${r.statusText}`))
-        .catch((err) => log('Identity fetch error:', err))
+    // 3. WordPress / common plugin events
+    // Contact Form 7
+    document.addEventListener('wpcf7mailsent', (e: Event) => {
+      const detail = (e as CustomEvent).detail
+      const email = detail?.inputs?.find((i: {name: string; value: string}) =>
+        i.name.toLowerCase().includes('email'))?.value
+      if (email) identify(email, 'cf7', detail?.unitId)
+    })
+
+    // Gravity Forms
+    document.addEventListener('gform_confirmation_loaded', (e: Event) => {
+      const formId = (e as CustomEvent).detail?.formId
+      // GF doesn't expose email in the event — fall back to reading the last filled input
+      const emailInput = document.querySelector('input[type="email"]') as HTMLInputElement
+      if (emailInput?.value) identify(emailInput.value, 'gravityforms', formId)
+    })
+
+    // Elementor forms
+    document.addEventListener('elementorFormSubmitSuccess', (e: Event) => {
+      const detail = (e as CustomEvent).detail
+      const email = detail?.data?.fields?.find((f: {id: string; value: string}) =>
+        f.id.toLowerCase().includes('email'))?.value
+      if (email) identify(email, 'elementor')
+    })
+
+    // Ninja Forms
+    document.addEventListener('nfFormSubmitResponse', (e: Event) => {
+      const fields: Record<string, {value: string; type: string}> =
+        (e as CustomEvent).detail?.response?.data?.fields ?? {}
+      const emailField = Object.values(fields).find((f) => f.type === 'email')
+      if (emailField?.value) identify(emailField.value, 'ninjaforms')
     })
   }
   } // end init
