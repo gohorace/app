@@ -99,8 +99,8 @@ export async function POST(request: NextRequest) {
     (err) => console.error('Identity scoring error:', err),
   )
 
-  // SMS for form submit (non-blocking)
-  sendFormSubmitSms(supabase, orgId, contactId, formName).catch(
+  // Await SMS — fire-and-forget is killed by Vercel before Twilio fetch completes
+  await sendFormSubmitSms(supabase, orgId, contactId, formName).catch(
     (err) => console.error('Form submit SMS error:', err),
   )
 

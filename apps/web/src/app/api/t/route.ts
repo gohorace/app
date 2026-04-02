@@ -134,8 +134,10 @@ export async function POST(request: NextRequest) {
     }))
 
     const overrides = await getOrgScoringOverrides(supabase, orgId)
-    scoreEventsForContact(supabase, orgId, contactId, incomingEvents, overrides).catch((err) =>
-      console.error('Scoring error:', err),
+    // Await scoring — fire-and-forget causes "fetch failed" in Vercel as the
+    // function is killed before the in-flight Supabase request completes
+    await scoreEventsForContact(supabase, orgId, contactId, incomingEvents, overrides).catch(
+      (err) => console.error('Scoring error:', err),
     )
   }
 
