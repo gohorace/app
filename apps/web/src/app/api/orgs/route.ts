@@ -76,7 +76,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to create workspace' }, { status: 500 })
   }
 
-  const { workspace_id: workspaceId, agent_id: agentId } = result as { workspace_id: string; agent_id: string }
+  const { workspace_id: workspaceId, agent_id: agentId } = (result as { workspace_id: string; agent_id: string }[])[0]
 
   return NextResponse.json({ workspaceId, agentId })
 }
