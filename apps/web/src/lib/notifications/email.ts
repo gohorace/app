@@ -1,40 +1,54 @@
-export interface BriefingLead {
-  contact_id: string
-  first_name: string | null
-  last_name: string | null
-  email: string | null
-  score: number
-  score_change: number
-  event_count: number
-  last_seen_at: string | null
-}
+import type { LeadWithInsight } from '@/lib/ai/briefing'
+
+export type { LeadWithInsight }
 
 export function buildWeeklyBriefingEmail(
   agentName: string,
-  leads: BriefingLead[],
+  leads: LeadWithInsight[],
   appUrl: string,
 ): { subject: string; html: string } {
-  const subject = `Your weekly leads briefing — ${agentName}`
-  const topScore = leads[0]?.score_change ?? 0
+  const subject = `Your weekly brief — ${leads.length} lead${leads.length === 1 ? '' : 's'} to act on`
 
   const leadsHtml = leads.length === 0
     ? `<p style="color:#6b7280;font-size:14px;">No lead activity in the last 7 days.</p>`
-    : leads.map((lead) => {
+    : leads.map((lead, i) => {
         const name = [lead.first_name, lead.last_name].filter(Boolean).join(' ') || lead.email || 'Unknown'
         const profileUrl = `${appUrl}/leads/${lead.contact_id}`
         const scoreColor = lead.score >= 50 ? '#16a34a' : lead.score >= 20 ? '#2563eb' : '#6b7280'
-        const changeText = lead.score_change > 0 ? `+${lead.score_change} this week` : 'No change'
+        const changeText = lead.score_change > 0 ? `+${lead.score_change} pts this week` : 'No change'
+        const isTop = i === 0
+
         return `
           <tr>
-            <td style="padding:12px 0;border-bottom:1px solid #f3f4f6;">
-              <a href="${profileUrl}" style="font-weight:600;color:#111827;text-decoration:none;font-size:14px;">${name}</a>
-              ${lead.email ? `<br><span style="color:#6b7280;font-size:12px;">${lead.email}</span>` : ''}
-            </td>
-            <td style="padding:12px 16px;border-bottom:1px solid #f3f4f6;text-align:center;">
-              <span style="font-weight:700;font-size:18px;color:${scoreColor};">${lead.score}</span>
-            </td>
-            <td style="padding:12px 0;border-bottom:1px solid #f3f4f6;text-align:right;color:#6b7280;font-size:13px;">
-              ${changeText}<br>${lead.event_count} event${lead.event_count === 1 ? '' : 's'}
+            <td style="padding:20px 0;border-bottom:1px solid #f3f4f6;">
+              <table width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="vertical-align:top;">
+                    ${isTop ? `<span style="display:inline-block;background:#fef9c3;color:#854d0e;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;padding:2px 8px;border-radius:4px;margin-bottom:6px;">Top priority</span><br>` : ''}
+                    <a href="${profileUrl}" style="font-weight:700;color:#111827;text-decoration:none;font-size:15px;">${name}</a>
+                    ${lead.email ? `<span style="color:#6b7280;font-size:13px;"> · ${lead.email}</span>` : ''}
+                  </td>
+                  <td style="text-align:right;vertical-align:top;white-space:nowrap;padding-left:16px;">
+                    <span style="font-weight:700;font-size:20px;color:${scoreColor};">${lead.score}</span>
+                    <br><span style="color:#6b7280;font-size:12px;">${changeText}</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td colspan="2" style="padding-top:10px;">
+                    <p style="margin:0 0 6px;color:#374151;font-size:14px;line-height:1.5;">
+                      ${lead.insight.why_now}
+                    </p>
+                    <div style="background:#f0fdf4;border-left:3px solid #16a34a;padding:8px 12px;border-radius:0 4px 4px 0;">
+                      <p style="margin:0;color:#15803d;font-size:13px;font-weight:600;">→ ${lead.insight.action}</p>
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td colspan="2" style="padding-top:10px;">
+                    <a href="${profileUrl}" style="color:#6b7280;font-size:12px;text-decoration:underline;">View full profile</a>
+                  </td>
+                </tr>
+              </table>
             </td>
           </tr>`
       }).join('')
@@ -51,33 +65,27 @@ export function buildWeeklyBriefingEmail(
         <tr>
           <td style="background:#111827;padding:24px 32px;">
             <p style="margin:0;color:#f9fafb;font-size:18px;font-weight:700;">RE Insights</p>
-            <p style="margin:4px 0 0;color:#9ca3af;font-size:13px;">Weekly briefing for ${agentName}</p>
+            <p style="margin:4px 0 0;color:#9ca3af;font-size:13px;">Weekly brief for ${agentName}</p>
           </td>
         </tr>
 
         <!-- Body -->
         <tr>
           <td style="padding:32px;">
-            <p style="margin:0 0 8px;color:#111827;font-size:22px;font-weight:700;">
-              ${leads.length > 0 ? `${leads.length} active lead${leads.length === 1 ? '' : 's'} this week` : 'Your weekly summary'}
+            <p style="margin:0 0 6px;color:#111827;font-size:22px;font-weight:700;">
+              ${leads.length > 0 ? `${leads.length} contact${leads.length === 1 ? '' : 's'} worth your attention` : 'Your weekly summary'}
             </p>
-            ${leads.length > 0 && topScore > 0
-              ? `<p style="margin:0 0 24px;color:#6b7280;font-size:14px;">Top mover gained <strong style="color:#111827;">+${topScore} points</strong> in the last 7 days.</p>`
-              : `<p style="margin:0 0 24px;color:#6b7280;font-size:14px;">Here's a summary of your lead activity.</p>`
-            }
+            <p style="margin:0 0 28px;color:#6b7280;font-size:14px;">
+              ${leads.length > 0
+                ? `Here's who to focus on this week and why — with a suggested action for each.`
+                : `No lead activity in the last 7 days.`}
+            </p>
 
             <table width="100%" cellpadding="0" cellspacing="0">
-              <thead>
-                <tr>
-                  <th style="text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;color:#6b7280;padding-bottom:8px;border-bottom:1px solid #e5e7eb;">Contact</th>
-                  <th style="text-align:center;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;color:#6b7280;padding-bottom:8px;border-bottom:1px solid #e5e7eb;padding-left:16px;">Score</th>
-                  <th style="text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;color:#6b7280;padding-bottom:8px;border-bottom:1px solid #e5e7eb;">Activity</th>
-                </tr>
-              </thead>
               <tbody>${leadsHtml}</tbody>
             </table>
 
-            <div style="margin-top:24px;text-align:center;">
+            <div style="margin-top:28px;text-align:center;">
               <a href="${appUrl}/leads" style="display:inline-block;background:#111827;color:#f9fafb;text-decoration:none;font-size:14px;font-weight:600;padding:10px 24px;border-radius:6px;">
                 View all leads
               </a>
@@ -89,8 +97,7 @@ export function buildWeeklyBriefingEmail(
         <tr>
           <td style="padding:16px 32px;border-top:1px solid #f3f4f6;background:#f9fafb;">
             <p style="margin:0;color:#9ca3af;font-size:12px;text-align:center;">
-              You're receiving this because you set up weekly briefings in RE Insights.
-              <a href="${appUrl}/settings/notifications" style="color:#6b7280;">Manage preferences</a>
+              Seize the moment · <a href="${appUrl}/settings/notifications" style="color:#6b7280;">Manage preferences</a>
             </p>
           </td>
         </tr>
