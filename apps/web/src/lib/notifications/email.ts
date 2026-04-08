@@ -10,11 +10,11 @@ export interface BriefingLead {
 }
 
 export function buildWeeklyBriefingEmail(
-  orgName: string,
+  agentName: string,
   leads: BriefingLead[],
   appUrl: string,
 ): { subject: string; html: string } {
-  const subject = `Your weekly leads briefing — ${orgName}`
+  const subject = `Your weekly leads briefing — ${agentName}`
   const topScore = leads[0]?.score_change ?? 0
 
   const leadsHtml = leads.length === 0
@@ -51,7 +51,7 @@ export function buildWeeklyBriefingEmail(
         <tr>
           <td style="background:#111827;padding:24px 32px;">
             <p style="margin:0;color:#f9fafb;font-size:18px;font-weight:700;">RE Insights</p>
-            <p style="margin:4px 0 0;color:#9ca3af;font-size:13px;">Weekly briefing for ${orgName}</p>
+            <p style="margin:4px 0 0;color:#9ca3af;font-size:13px;">Weekly briefing for ${agentName}</p>
           </td>
         </tr>
 

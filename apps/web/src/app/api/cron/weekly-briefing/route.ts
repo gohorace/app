@@ -19,14 +19,14 @@ export async function GET(request: NextRequest) {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? ''
   const today = new Date().getDay() // 0=Sun, 1=Mon, ...
 
-  // Find all orgs whose briefing day matches today and have an agent_email
-  const { data: orgs } = await admin
-    .from('org_settings')
-    .select('org_id, agent_email, weekly_briefing_day, orgs(name)')
+  // Find all agents whose briefing day matches today and have an agent_email
+  const { data: agentSettings } = await admin
+    .from('agent_settings')
+    .select('agent_id, agent_email, weekly_briefing_day, agents(first_name, last_name, email)')
     .eq('weekly_briefing_day', today)
     .not('agent_email', 'is', null)
 
-  if (!orgs || orgs.length === 0) {
+  if (!agentSettings || agentSettings.length === 0) {
     return NextResponse.json({ ok: true, sent: 0 })
   }
 
@@ -36,39 +36,43 @@ export async function GET(request: NextRequest) {
   let sent = 0
   const errors: string[] = []
 
-  for (const org of orgs) {
+  for (const settings of agentSettings) {
     try {
-      const orgName = (org.orgs as { name: string } | null)?.name ?? 'Your Agency'
+      const agent = settings.agents as { first_name: string | null; last_name: string | null; email: string | null } | null
+      const agentName =
+        [agent?.first_name, agent?.last_name].filter(Boolean).join(' ') ||
+        agent?.email ||
+        'Your Agent'
 
-      // Fetch top leads for this org (last 7 days activity)
+      // Fetch top leads for this agent (last 7 days activity)
       const { data: leads } = await admin.rpc('get_weekly_briefing_data', {
-        p_org_id: org.org_id,
+        p_agent_id: settings.agent_id,
       })
 
       const { subject, html } = buildWeeklyBriefingEmail(
-        orgName,
+        agentName,
         leads ?? [],
         appUrl,
       )
 
       await resend.emails.send({
         from: process.env.RESEND_FROM_EMAIL ?? 'briefing@realestate-insights.app',
-        to: org.agent_email!,
+        to: settings.agent_email!,
         subject,
         html,
       })
 
       // Log it
       await admin.from('notification_log').insert({
-        org_id: org.org_id,
+        agent_id: settings.agent_id,
         contact_id: null,
         type: 'email_briefing',
       })
 
       sent++
     } catch (err) {
-      console.error(`Briefing failed for org ${org.org_id}:`, err)
-      errors.push(org.org_id)
+      console.error(`Briefing failed for agent ${settings.agent_id}:`, err)
+      errors.push(settings.agent_id)
     }
   }
 

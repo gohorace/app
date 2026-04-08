@@ -1,26 +1,51 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database.types'
-import { scoreEventsForContact, getOrgScoringOverrides } from '@/lib/scoring/engine'
+import { scoreEventsForContact, getAgentScoringOverrides } from '@/lib/scoring/engine'
 import type { IncomingEvent } from '@/lib/scoring/types'
 import type { Json } from '@/types/database.types'
 
 type AdminClient = SupabaseClient<Database>
 
 /**
- * Fetches all historical events for a contact and scores them.
- * Called after identity resolution to catch pre-identification browsing.
+ * Fetches all historical unscored events for a contact (across all identity_map entries)
+ * and scores them. Called after identity resolution to catch pre-identification browsing.
  */
 async function scoreBackfilledEvents(
   supabase: AdminClient,
-  orgId: string,
+  agentId: string,
   contactId: string,
 ): Promise<void> {
+  // Get all identity_map entries for this contact + agent
+  const { data: identityEntries } = await supabase
+    .from('identity_map')
+    .select('workspace_id, anonymous_id')
+    .eq('contact_id', contactId)
+    .eq('agent_id', agentId)
+
+  if (!identityEntries || identityEntries.length === 0) return
+
+  // Collect all session IDs across all anonymous_id/workspace combinations
+  const allSessionIds: string[] = []
+  for (const im of identityEntries) {
+    const { data: sessions } = await supabase
+      .from('sessions')
+      .select('id')
+      .eq('workspace_id', im.workspace_id)
+      .eq('anonymous_id', im.anonymous_id)
+
+    if (sessions) {
+      allSessionIds.push(...sessions.map((s) => s.id))
+    }
+  }
+
+  if (allSessionIds.length === 0) return
+
+  // Get unscored events for these sessions
   const { data: events } = await supabase
     .from('events')
     .select('id, session_id, event_type, properties, occurred_at, score_delta')
-    .eq('contact_id', contactId)
-    .eq('org_id', orgId)
-    .eq('score_delta', 0) // only unscored events
+    .in('session_id', allSessionIds)
+    .eq('score_delta', 0)
     .order('occurred_at', { ascending: true })
 
   if (!events || events.length === 0) return
@@ -33,100 +58,60 @@ async function scoreBackfilledEvents(
     occurred_at: e.occurred_at,
   }))
 
-  const overrides = await getOrgScoringOverrides(supabase, orgId)
-  await scoreEventsForContact(supabase, orgId, contactId, incomingEvents, overrides)
+  const overrides = await getAgentScoringOverrides(supabase, agentId)
+  await scoreEventsForContact(supabase, agentId, contactId, incomingEvents, overrides)
 }
 
 /**
- * Links a session to a contact and back-fills events via DB trigger.
- * Returns the contactId if linking succeeded, null otherwise.
- */
-export async function linkSessionToContact(
-  supabase: AdminClient,
-  sessionId: string,
-  contactId: string,
-): Promise<boolean> {
-  const { error } = await supabase
-    .from('sessions')
-    .update({ contact_id: contactId })
-    .eq('id', sessionId)
-    .is('contact_id', null) // only link if not already linked
-
-  if (error) {
-    console.error('linkSessionToContact error:', error)
-    return false
-  }
-
-  // Mark contact as identified (set identified_at if not already set)
-  await supabase
-    .from('contacts')
-    .update({ identified_at: new Date().toISOString() })
-    .eq('id', contactId)
-    .is('identified_at', null)
-
-  return true
-}
-
-/**
- * Resolves a campaign token to a contact and links the session.
- * Returns the contactId if resolved, null otherwise.
- */
-export async function resolveCampaignToken(
-  supabase: AdminClient,
-  orgId: string,
-  token: string,
-  sessionId: string,
-): Promise<string | null> {
-  const { data: contactId } = await supabase.rpc('resolve_campaign_token', {
-    p_org_id: orgId,
-    p_token: token,
-  })
-
-  if (!contactId) return null
-
-  const linked = await linkSessionToContact(supabase, sessionId, contactId)
-  if (linked) {
-    // Delay backfill so identity route can await form_submit scoring first —
-    // backfill then sees the updated scoreBefore for correct threshold detection
-    setTimeout(() => {
-      scoreBackfilledEvents(supabase, orgId, contactId).catch((err) =>
-        console.error('Backfill scoring error:', err),
-      )
-    }, 500)
-  }
-  return contactId
-}
-
-/**
- * Resolves an email address to a contact (or creates one) and links the session.
- * Returns the contactId.
+ * Resolves an email address to one or more contacts across all agents in the workspace.
+ * Creates a contact under the workspace's default_agent_id if no match found.
+ * Upserts identity_map entries for each match and updates contact timestamps.
+ * Returns an array of { agentId, contactId } matches.
  */
 export async function resolveEmail(
   supabase: AdminClient,
-  orgId: string,
+  workspaceId: string,
   email: string,
-  sessionId: string,
-): Promise<string> {
+  anonymousId: string,
+): Promise<Array<{ agentId: string; contactId: string }>> {
   const normalizedEmail = email.toLowerCase().trim()
 
-  // Try to find existing contact
-  const { data: existing } = await supabase
-    .from('contacts')
+  // Get workspace for default_agent_id
+  const { data: workspace } = await supabase
+    .from('workspaces')
+    .select('default_agent_id')
+    .eq('id', workspaceId)
+    .single()
+
+  // Find all agents in the workspace
+  const { data: agents } = await supabase
+    .from('agents')
     .select('id')
-    .eq('org_id', orgId)
-    .eq('email', normalizedEmail)
-    .maybeSingle()
+    .eq('workspace_id', workspaceId)
 
-  let contactId: string
+  const matches: Array<{ agentId: string; contactId: string }> = []
 
-  if (existing) {
-    contactId = existing.id
-  } else {
-    // Create new contact from form submission
+  if (agents) {
+    for (const agent of agents) {
+      const { data: contact } = await supabase
+        .from('contacts')
+        .select('id')
+        .eq('agent_id', agent.id)
+        .eq('email', normalizedEmail)
+        .maybeSingle()
+
+      if (contact) {
+        matches.push({ agentId: agent.id, contactId: contact.id })
+      }
+    }
+  }
+
+  // If no matches found, create a contact under the default agent
+  if (matches.length === 0 && workspace?.default_agent_id) {
     const { data: created, error } = await supabase
       .from('contacts')
       .insert({
-        org_id: orgId,
+        agent_id: workspace.default_agent_id,
         email: normalizedEmail,
         crm_source: 'manual',
       })
@@ -136,18 +121,71 @@ export async function resolveEmail(
     if (error || !created) {
       throw new Error(`Failed to create contact: ${error?.message}`)
     }
-    contactId = created.id
+    matches.push({ agentId: workspace.default_agent_id, contactId: created.id })
   }
 
-  const linked = await linkSessionToContact(supabase, sessionId, contactId)
-  if (linked) {
-    // Delay backfill so identity route can await form_submit scoring first —
-    // backfill then sees the updated scoreBefore for correct threshold detection
-    setTimeout(() => {
-      scoreBackfilledEvents(supabase, orgId, contactId).catch((err) =>
-        console.error('Backfill scoring error:', err),
+  const now = new Date().toISOString()
+
+  // For each match, upsert identity_map and update contact timestamps
+  for (const { agentId, contactId } of matches) {
+    await supabase
+      .from('identity_map')
+      .upsert(
+        {
+          workspace_id: workspaceId,
+          agent_id: agentId,
+          anonymous_id: anonymousId,
+          contact_id: contactId,
+          stitch_method: 'form',
+          confidence: 'high',
+        },
+        { onConflict: 'workspace_id,agent_id,anonymous_id,contact_id', ignoreDuplicates: true },
       )
-    }, 500)
+
+    // Set identified_at if not already set
+    await supabase
+      .from('contacts')
+      .update({ identified_at: now })
+      .eq('id', contactId)
+      .is('identified_at', null)
+
+    // Always update last_seen_at
+    await supabase
+      .from('contacts')
+      .update({ last_seen_at: now })
+      .eq('id', contactId)
   }
+
+  return matches
+}
+
+/**
+ * Resolves a campaign token to a contact and upserts the identity_map entry.
+ * Returns the contactId if resolved, null otherwise.
+ */
+export async function resolveCampaignToken(
+  supabase: AdminClient,
+  workspaceId: string,
+  agentId: string,
+  token: string,
+  anonymousId: string,
+): Promise<string | null> {
+  const { data: contactId } = await supabase.rpc('resolve_campaign_token', {
+    p_workspace_id: workspaceId,
+    p_agent_id: agentId,
+    p_token: token,
+    p_anonymous_id: anonymousId,
+  })
+
+  if (!contactId) return null
+
+  // Delay backfill so identity route can await form_submit scoring first —
+  // backfill then sees the updated scoreBefore for correct threshold detection
+  setTimeout(() => {
+    scoreBackfilledEvents(supabase, agentId, contactId).catch((err) =>
+      console.error('Backfill scoring error:', err),
+    )
+  }, 500)
+
   return contactId
 }

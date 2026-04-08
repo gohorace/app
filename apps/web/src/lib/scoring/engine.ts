@@ -7,11 +7,11 @@ import { sendSmsIfThresholdCrossed } from '../notifications/sms'
 type AdminClient = SupabaseClient<Database>
 
 /**
- * Merges org-specific rule overrides with the defaults.
+ * Merges agent-specific rule overrides with the defaults.
  */
-function resolveRules(orgOverrides: ScoringRuleOverride): ScoringRule[] {
+function resolveRules(agentOverrides: ScoringRuleOverride): ScoringRule[] {
   return DEFAULT_SCORING_RULES.map((rule) => {
-    const override = orgOverrides[rule.event_type]
+    const override = agentOverrides[rule.event_type]
     return override ? { ...rule, ...override } : rule
   })
 }
@@ -22,12 +22,12 @@ function resolveRules(orgOverrides: ScoringRuleOverride): ScoringRule[] {
  */
 export async function scoreEventsForContact(
   supabase: AdminClient,
-  orgId: string,
+  agentId: string,
   contactId: string,
   events: IncomingEvent[],
-  orgOverrides: ScoringRuleOverride = {},
+  agentOverrides: ScoringRuleOverride = {},
 ): Promise<ScoreResult> {
-  const rules = resolveRules(orgOverrides)
+  const rules = resolveRules(agentOverrides)
 
   // Group events by session to enforce per-session caps
   const sessionCounts: Record<string, Record<string, number>> = {}
@@ -112,7 +112,7 @@ export async function scoreEventsForContact(
     const before = runningScore
     runningScore += points
     return {
-      org_id: orgId,
+      agent_id: agentId,
       contact_id: contactId,
       delta: points,
       reason: event_type,
@@ -124,7 +124,7 @@ export async function scoreEventsForContact(
   await supabase.from('score_history').insert(historyRows)
 
   // Check SMS threshold (non-blocking — don't fail if SMS fails)
-  sendSmsIfThresholdCrossed(supabase, orgId, contactId, scoreBefore, scoreAfter).catch(
+  sendSmsIfThresholdCrossed(supabase, agentId, contactId, scoreBefore, scoreAfter).catch(
     (err) => console.error('SMS check error:', err),
   )
 
@@ -132,17 +132,17 @@ export async function scoreEventsForContact(
 }
 
 /**
- * Returns org-specific scoring config overrides from org_settings.
+ * Returns agent-specific scoring config overrides from agent_settings.
  * Falls back to empty object (defaults used) if not set.
  */
-export async function getOrgScoringOverrides(
+export async function getAgentScoringOverrides(
   supabase: AdminClient,
-  orgId: string,
+  agentId: string,
 ): Promise<ScoringRuleOverride> {
   const { data } = await supabase
-    .from('org_settings')
+    .from('agent_settings')
     .select('scoring_config')
-    .eq('org_id', orgId)
+    .eq('agent_id', agentId)
     .single()
 
   return (data?.scoring_config as ScoringRuleOverride) ?? {}

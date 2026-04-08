@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveCampaignToken } from '@/lib/identity/resolver'
-import { scoreEventsForContact, getOrgScoringOverrides } from '@/lib/scoring/engine'
+import { scoreEventsForContact, getAgentScoringOverrides } from '@/lib/scoring/engine'
 import type { IncomingEvent } from '@/lib/scoring/types'
 import type { Json, TablesInsert } from '@/types/database.types'
 
@@ -17,7 +17,7 @@ export async function OPTIONS() {
 }
 
 interface TrackPayload {
-  k: string       // org key (slug)
+  k: string       // workspace snippet_key (UUID)
   aid: string     // anonymous ID
   sid: string     // session ID
   events: Array<{
@@ -46,30 +46,30 @@ export async function POST(request: NextRequest) {
     return new Response('Bad request', { status: 400, headers: CORS_HEADERS })
   }
 
-  const { k: orgKey, aid: anonymousId, sid: sessionId, events, s: sessionMeta } = payload
+  const { k: snippetKey, aid: anonymousId, sid: sessionId, events, s: sessionMeta } = payload
 
-  if (!orgKey || !anonymousId || !sessionId || !Array.isArray(events)) {
+  if (!snippetKey || !anonymousId || !sessionId || !Array.isArray(events)) {
     return new Response('Bad request', { status: 400, headers: CORS_HEADERS })
   }
 
   const supabase = createAdminClient()
 
-  // 1. Validate org key
-  const { data: org } = await supabase
-    .from('orgs')
+  // 1. Validate workspace by snippet_key
+  const { data: workspace } = await supabase
+    .from('workspaces')
     .select('id')
-    .eq('slug', orgKey)
+    .eq('snippet_key', snippetKey)
     .maybeSingle()
 
-  if (!org) {
-    return new Response('Unknown org', { status: 404, headers: CORS_HEADERS })
+  if (!workspace) {
+    return new Response('Unknown workspace', { status: 404, headers: CORS_HEADERS })
   }
 
-  const orgId = org.id
+  const workspaceId = workspace.id
 
   // 2. Upsert session — create if new, update last_seen_at if existing
   const sessionUpsert: TablesInsert<'sessions'> = {
-    org_id: orgId,
+    workspace_id: workspaceId,
     anonymous_id: anonymousId,
     last_seen_at: new Date().toISOString(),
     ...(sessionMeta?.ctoken && { campaign_token: sessionMeta.ctoken }),
@@ -83,8 +83,8 @@ export async function POST(request: NextRequest) {
 
   const { data: session, error: sessionErr } = await supabase
     .from('sessions')
-    .upsert(sessionUpsert, { onConflict: 'org_id,anonymous_id' })
-    .select('id, contact_id')
+    .upsert(sessionUpsert, { onConflict: 'workspace_id,anonymous_id' })
+    .select('id')
     .single()
 
   if (sessionErr || !session) {
@@ -93,20 +93,30 @@ export async function POST(request: NextRequest) {
   }
 
   const dbSessionId = session.id
-  let contactId: string | null = session.contact_id
+  let contactId: string | null = null
+  let agentId: string | null = null
 
-  // 3. Resolve campaign token if present and session not yet linked
-  if (sessionMeta?.ctoken && !contactId) {
-    contactId = await resolveCampaignToken(supabase, orgId, sessionMeta.ctoken, dbSessionId)
+  // 3. Resolve campaign token if present
+  if (sessionMeta?.ctoken) {
+    // Look up agent_id from campaign_tokens table
+    const { data: tokenRow } = await supabase
+      .from('campaign_tokens')
+      .select('agent_id')
+      .eq('token', sessionMeta.ctoken)
+      .maybeSingle()
+
+    if (tokenRow?.agent_id) {
+      agentId = tokenRow.agent_id
+      contactId = await resolveCampaignToken(supabase, workspaceId, agentId, sessionMeta.ctoken, anonymousId)
+    }
   }
 
   // 4. Map incoming events to DB rows
   const eventRows = events
     .filter((e) => isValidEventType(e.t))
     .map((e) => ({
-      org_id: orgId,
+      workspace_id: workspaceId,
       session_id: dbSessionId,
-      contact_id: contactId,
       event_type: e.t as IncomingEvent['event_type'],
       properties: (e.p ?? {}) as unknown as Json,
       occurred_at: e.ts ? new Date(e.ts).toISOString() : new Date().toISOString(),
@@ -124,8 +134,8 @@ export async function POST(request: NextRequest) {
     return new Response('Internal error', { status: 500, headers: CORS_HEADERS })
   }
 
-  // 6. Score events if contact is identified
-  if (contactId) {
+  // 6. Score events if contact and agent are identified
+  if (contactId && agentId) {
     const incomingEvents: IncomingEvent[] = eventRows.map((e) => ({
       session_id: dbSessionId,
       event_type: e.event_type,
@@ -133,10 +143,10 @@ export async function POST(request: NextRequest) {
       occurred_at: e.occurred_at,
     }))
 
-    const overrides = await getOrgScoringOverrides(supabase, orgId)
+    const overrides = await getAgentScoringOverrides(supabase, agentId)
     // Await scoring — fire-and-forget causes "fetch failed" in Vercel as the
     // function is killed before the in-flight Supabase request completes
-    await scoreEventsForContact(supabase, orgId, contactId, incomingEvents, overrides).catch(
+    await scoreEventsForContact(supabase, agentId, contactId, incomingEvents, overrides).catch(
       (err) => console.error('Scoring error:', err),
     )
   }

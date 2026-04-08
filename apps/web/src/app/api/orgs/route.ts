@@ -3,9 +3,11 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { z } from 'zod'
 
-const createOrgSchema = z.object({
+const createWorkspaceSchema = z.object({
   name: z.string().min(1).max(100),
   email: z.string().email(),
+  first_name: z.string().max(100).optional(),
+  last_name: z.string().max(100).optional(),
 })
 
 function slugify(name: string): string {
@@ -28,30 +30,30 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json()
-  const parsed = createOrgSchema.safeParse(body)
+  const parsed = createWorkspaceSchema.safeParse(body)
 
   if (!parsed.success) {
     return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
   }
 
-  const { name, email } = parsed.data
+  const { name, email, first_name, last_name } = parsed.data
   const admin = createAdminClient()
 
-  // Check if user already has an org (prevent duplicates on retry)
+  // Check if user already has a workspace (prevent duplicates on retry)
   const { data: existing } = await admin
-    .from('org_members')
-    .select('org_id')
+    .from('workspace_members')
+    .select('workspace_id')
     .eq('user_id', user.id)
     .maybeSingle()
 
   if (existing) {
-    return NextResponse.json({ orgId: existing.org_id })
+    return NextResponse.json({ workspaceId: existing.workspace_id })
   }
 
   // Generate a unique slug
   let slug = slugify(name)
   const { count } = await admin
-    .from('orgs')
+    .from('workspaces')
     .select('*', { count: 'exact', head: true })
     .eq('slug', slug)
 
@@ -59,18 +61,22 @@ export async function POST(request: NextRequest) {
     slug = `${slug}-${Math.floor(Math.random() * 9000) + 1000}`
   }
 
-  // Create org, member, and settings in one DB function call
-  const { data: orgId, error } = await admin.rpc('create_org_with_owner', {
+  // Create workspace, member, and agent in one DB function call
+  const { data: result, error } = await admin.rpc('create_workspace_with_agent', {
     p_user_id: user.id,
     p_name: name,
     p_slug: slug,
     p_email: email,
+    ...(first_name !== undefined && { p_first_name: first_name }),
+    ...(last_name !== undefined && { p_last_name: last_name }),
   })
 
   if (error) {
-    console.error('create_org_with_owner error:', error)
-    return NextResponse.json({ error: 'Failed to create organisation' }, { status: 500 })
+    console.error('create_workspace_with_agent error:', error)
+    return NextResponse.json({ error: 'Failed to create workspace' }, { status: 500 })
   }
 
-  return NextResponse.json({ orgId })
+  const { workspace_id: workspaceId, agent_id: agentId } = result as { workspace_id: string; agent_id: string }
+
+  return NextResponse.json({ workspaceId, agentId })
 }

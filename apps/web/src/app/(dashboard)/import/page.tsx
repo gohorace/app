@@ -9,17 +9,17 @@ export default async function ImportPage() {
   const { data: { user } } = await supabase.auth.getUser()
 
   const admin = createAdminClient()
-  const { data: membership } = await admin
-    .from('org_members')
-    .select('org_id')
+  const { data: agent } = await admin
+    .from('agents')
+    .select('id')
     .eq('user_id', user!.id)
     .maybeSingle()
 
-  const { data: imports } = membership
+  const { data: imports } = agent
     ? await admin
         .from('crm_imports')
         .select('id, filename, row_count, created_count, matched_count, skipped_count, status, created_at')
-        .eq('org_id', membership.org_id)
+        .eq('agent_id', agent.id)
         .order('created_at', { ascending: false })
         .limit(10)
     : { data: [] }

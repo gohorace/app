@@ -13,6 +13,7 @@ interface RIQConfig {
   captureEmail?: boolean
   apiUrl?: string
   debug?: boolean
+  email?: string  // pre-set on thank-you pages via merge tags e.g. window.RIQ.email = '{{contact.email}}'
   identify?: (email: string, source?: string, formId?: string | null) => void
 }
 
@@ -294,6 +295,28 @@ declare global {
   // Agents can call this from any form callback:
   //   window.addEventListener('form-success', e => window.RIQ.identify(e.detail.email))
   if (window.RIQ) window.RIQ.identify = identify.bind(null, 'manual', null)
+
+  // ─── Thank-you page detection ─────────────────────────────────────────────────
+
+  // 1. window.RIQ.email — set via server-side merge tags on the thank-you page template
+  if (config.email) {
+    identify(config.email, 'config-prefill')
+  }
+
+  // 2. sessionStorage handoff — works with HighLevel and any iframe form.
+  //    In the form's post-submit custom JS, store the email before redirect:
+  //      var e = document.querySelector('input[type="email"]');
+  //      if (e) sessionStorage.setItem('_riq_pending_email', e.value);
+  //    The tracker picks it up on the thank-you page and clears it.
+  if (!lastIdentifiedEmail) {
+    try {
+      const pending = sessionStorage.getItem('_riq_pending_email')
+      if (pending) {
+        sessionStorage.removeItem('_riq_pending_email')
+        identify(pending, 'sessionstorage-handoff')
+      }
+    } catch (_) {}
+  }
 
   // ─── Form email capture ───────────────────────────────────────────────────────
 

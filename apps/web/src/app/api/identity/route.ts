@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveEmail } from '@/lib/identity/resolver'
-import { scoreEventsForContact, getOrgScoringOverrides } from '@/lib/scoring/engine'
+import { scoreEventsForContact, getAgentScoringOverrides } from '@/lib/scoring/engine'
 import { sendFormSubmitSms } from '@/lib/notifications/sms'
 import type { IncomingEvent } from '@/lib/scoring/types'
 import { z } from 'zod'
@@ -17,7 +17,7 @@ export async function OPTIONS() {
 }
 
 const schema = z.object({
-  k: z.string().min(1),         // org key
+  k: z.string().uuid(),         // workspace snippet_key
   aid: z.string().uuid(),       // anonymous ID
   sid: z.string().uuid(),       // session ID from tracker
   email: z.string().email(),
@@ -36,44 +36,44 @@ export async function POST(request: NextRequest) {
     return new Response('Bad request', { status: 400, headers: CORS_HEADERS })
   }
 
-  const { k: orgKey, aid: anonymousId, email } = parsed.data
+  const { k: snippetKey, aid: anonymousId, email } = parsed.data
 
   const supabase = createAdminClient()
 
-  // Validate org
-  const { data: org } = await supabase
-    .from('orgs')
+  // Validate workspace by snippet_key
+  const { data: workspace } = await supabase
+    .from('workspaces')
     .select('id')
-    .eq('slug', orgKey)
+    .eq('snippet_key', snippetKey)
     .maybeSingle()
 
-  if (!org) {
-    return new Response('Unknown org', { status: 404, headers: CORS_HEADERS })
+  if (!workspace) {
+    return new Response('Unknown workspace', { status: 404, headers: CORS_HEADERS })
   }
 
-  const orgId = org.id
+  const workspaceId = workspace.id
 
-  // Find the session by anonymous_id (the tracker's sid might differ from DB session id)
+  // Find the session by anonymous_id
   const { data: session } = await supabase
     .from('sessions')
-    .select('id, contact_id')
-    .eq('org_id', orgId)
+    .select('id')
+    .eq('workspace_id', workspaceId)
     .eq('anonymous_id', anonymousId)
     .maybeSingle()
 
   if (!session) {
-    // Session not yet created (race condition) — still create/find the contact
-    const contactId = await resolveEmail(supabase, orgId, email, '')
-    return NextResponse.json({ ok: true, contactId }, { headers: CORS_HEADERS })
+    // Session not yet created (race condition) — still resolve the contact
+    const matches = await resolveEmail(supabase, workspaceId, email, anonymousId)
+    const firstContactId = matches[0]?.contactId ?? null
+    return NextResponse.json({ ok: true, contactId: firstContactId }, { headers: CORS_HEADERS })
   }
 
-  // Already identified — nothing to do
-  if (session.contact_id) {
-    return NextResponse.json({ ok: true, contactId: session.contact_id }, { headers: CORS_HEADERS })
-  }
+  // Resolve email → contacts via identity_map
+  const matches = await resolveEmail(supabase, workspaceId, email, anonymousId)
 
-  // Resolve email → contact and link session
-  const contactId = await resolveEmail(supabase, orgId, email, session.id)
+  if (matches.length === 0) {
+    return NextResponse.json({ ok: true, contactId: null }, { headers: CORS_HEADERS })
+  }
 
   // Fetch form name from the most recent form_submit event for this session
   const { data: recentFormEvent } = await supabase
@@ -87,22 +87,26 @@ export async function POST(request: NextRequest) {
 
   const formName = (recentFormEvent?.properties as Record<string, unknown> | null)?.form_id as string | null
 
-  // Score the form_submit event — await so backfill (triggered inside resolveEmail)
-  // runs after and sees the updated scoreBefore, ensuring threshold crossing is detected
-  const incomingEvents: IncomingEvent[] = [{
-    session_id: session.id,
-    event_type: 'form_submit',
-    properties: { form_id: formName },
-  }]
-  const overrides = await getOrgScoringOverrides(supabase, orgId)
-  await scoreEventsForContact(supabase, orgId, contactId, incomingEvents, overrides).catch(
-    (err) => console.error('Identity scoring error:', err),
-  )
+  // Score and notify for each matched agent/contact pair
+  for (const { agentId, contactId } of matches) {
+    const incomingEvents: IncomingEvent[] = [{
+      session_id: session.id,
+      event_type: 'form_submit',
+      properties: { form_id: formName },
+    }]
 
-  // Await SMS — fire-and-forget is killed by Vercel before Twilio fetch completes
-  await sendFormSubmitSms(supabase, orgId, contactId, formName).catch(
-    (err) => console.error('Form submit SMS error:', err),
-  )
+    // Score the form_submit event — await so backfill runs after and sees updated scoreBefore
+    const overrides = await getAgentScoringOverrides(supabase, agentId)
+    await scoreEventsForContact(supabase, agentId, contactId, incomingEvents, overrides).catch(
+      (err) => console.error('Identity scoring error:', err),
+    )
 
-  return NextResponse.json({ ok: true, contactId }, { headers: CORS_HEADERS })
+    // Await SMS — fire-and-forget is killed by Vercel before Twilio fetch completes
+    await sendFormSubmitSms(supabase, agentId, contactId, formName).catch(
+      (err) => console.error('Form submit SMS error:', err),
+    )
+  }
+
+  const firstContactId = matches[0].contactId
+  return NextResponse.json({ ok: true, contactId: firstContactId }, { headers: CORS_HEADERS })
 }

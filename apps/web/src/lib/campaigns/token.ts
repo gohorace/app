@@ -16,13 +16,13 @@ export function generateToken(length = 12): string {
  */
 export async function generateCampaignTokens(
   supabase: import('@supabase/supabase-js').SupabaseClient,
-  orgId: string,
+  agentId: string,
   campaignId: string,
   contactIds: string[],
   targetUrl: string,
 ): Promise<Array<{ contactId: string; token: string; trackedUrl: string }>> {
   const rows = contactIds.map((contactId) => ({
-    org_id: orgId,
+    agent_id: agentId,
     campaign_id: campaignId,
     contact_id: contactId,
     token: generateToken(),

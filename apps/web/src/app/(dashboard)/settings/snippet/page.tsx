@@ -9,13 +9,21 @@ export default async function SnippetPage() {
   const { data: { user } } = await supabase.auth.getUser()
 
   const admin = createAdminClient()
-  const { data: membership } = await admin
-    .from('org_members')
-    .select('org_id, orgs(slug)')
+  const { data: agent } = await admin
+    .from('agents')
+    .select('id, workspace_id')
     .eq('user_id', user!.id)
     .maybeSingle()
 
-  const orgSlug = (membership?.orgs as { slug: string } | null)?.slug ?? 'your-org-key'
+  const { data: workspace } = agent?.workspace_id
+    ? await admin
+        .from('workspaces')
+        .select('snippet_key')
+        .eq('id', agent.workspace_id)
+        .maybeSingle()
+    : { data: null }
+
+  const snippetKey = workspace?.snippet_key ?? 'your-snippet-key'
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://your-domain.com'
   const cdnUrl = `${appUrl}/tracker.min.js`
@@ -23,7 +31,7 @@ export default async function SnippetPage() {
   const snippetCode = `<!-- Real Estate Insights Tracker -->
 <script>
   window.RIQ = {
-    key: '${orgSlug}',
+    key: '${snippetKey}',
     apiUrl: '${appUrl}/api',
     propertyPattern: '/property/' // adjust to match your property URLs
   };
@@ -56,8 +64,8 @@ export default async function SnippetPage() {
             </div>
           </div>
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Badge variant="outline">Org key</Badge>
-            <code className="text-xs bg-muted px-2 py-1 rounded font-mono">{orgSlug}</code>
+            <Badge variant="outline">Snippet key</Badge>
+            <code className="text-xs bg-muted px-2 py-1 rounded font-mono">{snippetKey}</code>
           </div>
         </CardContent>
       </Card>
@@ -92,8 +100,8 @@ export default async function SnippetPage() {
               Go to <strong className="text-foreground">Settings → RE Insights</strong>
             </li>
             <li>
-              Paste your org key:{' '}
-              <code className="text-xs bg-muted px-1 py-0.5 rounded font-mono">{orgSlug}</code>
+              Paste your snippet key:{' '}
+              <code className="text-xs bg-muted px-1 py-0.5 rounded font-mono">{snippetKey}</code>
             </li>
             <li>
               Set your property URL pattern (e.g.{' '}

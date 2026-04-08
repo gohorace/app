@@ -22,35 +22,39 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
   const { data: { user } } = await supabase.auth.getUser()
 
   const admin = createAdminClient()
-  const { data: membership } = await admin
-    .from('org_members')
-    .select('org_id')
+  const { data: agent } = await admin
+    .from('agents')
+    .select('id')
     .eq('user_id', user!.id)
     .maybeSingle()
 
-  const orgId = membership!.org_id
+  const agentId = agent!.id
 
-  const [{ data: contact }, { data: events }, { data: scoreHistory }] = await Promise.all([
+  const [{ data: contact }, { data: contactEvents }, { data: scoreHistory }] = await Promise.all([
     admin
       .from('contacts')
       .select('*')
       .eq('id', params.id)
-      .eq('org_id', orgId)
+      .eq('agent_id', agentId)
       .maybeSingle(),
-    admin
-      .from('events')
-      .select('id, event_type, properties, score_delta, occurred_at')
-      .eq('contact_id', params.id)
-      .eq('org_id', orgId)
-      .order('occurred_at', { ascending: false })
-      .limit(50),
+    admin.rpc('get_contact_events', { p_contact_id: params.id }),
     admin
       .from('score_history')
       .select('id, delta, reason, score_before, score_after, occurred_at')
       .eq('contact_id', params.id)
+      .eq('agent_id', agentId)
       .order('occurred_at', { ascending: false })
       .limit(10),
   ])
+
+  // Normalise RPC result to the shape the timeline expects
+  const events = (contactEvents ?? []).map((e) => ({
+    id: e.event_id,
+    event_type: e.event_type,
+    properties: e.properties,
+    score_delta: e.score_delta,
+    occurred_at: e.occurred_at,
+  }))
 
   if (!contact) notFound()
 

@@ -11,15 +11,16 @@ export async function POST(request: NextRequest) {
 
   const admin = createAdminClient()
 
-  // Get org
-  const { data: membership } = await admin
-    .from('org_members')
-    .select('org_id')
+  // Get agent record for this user
+  const { data: agent } = await admin
+    .from('agents')
+    .select('id')
     .eq('user_id', user.id)
+    .not('workspace_id', 'is', null)
     .maybeSingle()
 
-  if (!membership) return NextResponse.json({ error: 'No organisation found' }, { status: 400 })
-  const orgId = membership.org_id
+  if (!agent) return NextResponse.json({ error: 'No agent found' }, { status: 400 })
+  const agentId = agent.id
 
   // Parse multipart form
   let formData: FormData
@@ -51,7 +52,7 @@ export async function POST(request: NextRequest) {
   const { data: importRecord } = await admin
     .from('crm_imports')
     .insert({
-      org_id: orgId,
+      agent_id: agentId,
       source: 'rex',
       filename,
       row_count: contacts.length + parseSkipped,
@@ -72,7 +73,7 @@ export async function POST(request: NextRequest) {
     const batch = contacts.slice(i, i + BATCH)
 
     const rows = batch.map((c) => ({
-      org_id: orgId,
+      agent_id: agentId,
       email: c.email,
       first_name: c.first_name,
       last_name: c.last_name,
@@ -82,14 +83,14 @@ export async function POST(request: NextRequest) {
       ...(c.email ? { identified_at: new Date().toISOString() } : {}),
     }))
 
-    // Contacts with email: upsert on (org_id, email)
+    // Contacts with email: upsert on (agent_id, email)
     const withEmail = rows.filter((r) => r.email)
     const withoutEmail = rows.filter((r) => !r.email)
 
     if (withEmail.length > 0) {
       const { data, error } = await admin
         .from('contacts')
-        .upsert(withEmail, { onConflict: 'org_id,email', ignoreDuplicates: false })
+        .upsert(withEmail, { onConflict: 'agent_id,email', ignoreDuplicates: false })
         .select('id, created_at')
 
       if (!error && data) {

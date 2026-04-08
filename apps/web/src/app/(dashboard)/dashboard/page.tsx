@@ -11,13 +11,15 @@ export default async function DashboardPage() {
     data: { user },
   } = await supabase.auth.getUser()
 
-  const { data: membership } = await supabase
-    .from('org_members')
-    .select('org_id')
+  // Get agent record for this user (includes workspace_id)
+  const { data: agent } = await supabase
+    .from('agents')
+    .select('id, workspace_id')
     .eq('user_id', user!.id)
     .maybeSingle()
 
-  const orgId = membership?.org_id
+  const agentId = agent?.id
+  const workspaceId = agent?.workspace_id
 
   // Fetch summary stats
   const [
@@ -29,21 +31,21 @@ export default async function DashboardPage() {
     supabase
       .from('contacts')
       .select('*', { count: 'exact', head: true })
-      .eq('org_id', orgId!),
+      .eq('agent_id', agentId!),
     supabase
       .from('contacts')
       .select('*', { count: 'exact', head: true })
-      .eq('org_id', orgId!)
+      .eq('agent_id', agentId!)
       .not('identified_at', 'is', null),
     supabase
       .from('events')
       .select('*', { count: 'exact', head: true })
-      .eq('org_id', orgId!)
+      .eq('workspace_id', workspaceId!)
       .gte('occurred_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()),
     supabase
       .from('contacts')
       .select('id, first_name, last_name, email, score, last_seen_at')
-      .eq('org_id', orgId!)
+      .eq('agent_id', agentId!)
       .order('score', { ascending: false })
       .limit(5),
   ])

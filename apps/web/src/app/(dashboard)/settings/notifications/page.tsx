@@ -9,16 +9,16 @@ export default async function NotificationsPage() {
   const { data: { user } } = await supabase.auth.getUser()
 
   const admin = createAdminClient()
-  const { data: membership } = await admin
-    .from('org_members')
-    .select('org_id')
+  const { data: agent } = await admin
+    .from('agents')
+    .select('id')
     .eq('user_id', user!.id)
     .maybeSingle()
 
   const { data: settings } = await admin
-    .from('org_settings')
+    .from('agent_settings')
     .select('sms_enabled, agent_phone, sms_threshold_score, agent_email, weekly_briefing_day')
-    .eq('org_id', membership!.org_id)
+    .eq('agent_id', agent!.id)
     .single()
 
   return (

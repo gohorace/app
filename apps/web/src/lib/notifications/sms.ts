@@ -36,7 +36,7 @@ async function sendSms(to: string, body: string): Promise<void> {
  */
 async function isRecentlySent(
   supabase: AdminClient,
-  orgId: string,
+  agentId: string,
   contactId: string,
   type: 'sms_threshold' | 'sms_form' | 'sms_return',
 ): Promise<boolean> {
@@ -44,7 +44,7 @@ async function isRecentlySent(
   const { count } = await supabase
     .from('notification_log')
     .select('*', { count: 'exact', head: true })
-    .eq('org_id', orgId)
+    .eq('agent_id', agentId)
     .eq('contact_id', contactId)
     .eq('type', type)
     .gte('sent_at', since)
@@ -54,11 +54,11 @@ async function isRecentlySent(
 
 async function logNotification(
   supabase: AdminClient,
-  orgId: string,
+  agentId: string,
   contactId: string,
   type: 'sms_threshold' | 'sms_form' | 'sms_return',
 ): Promise<void> {
-  await supabase.from('notification_log').insert({ org_id: orgId, contact_id: contactId, type })
+  await supabase.from('notification_log').insert({ agent_id: agentId, contact_id: contactId, type })
 }
 
 /**
@@ -66,15 +66,15 @@ async function logNotification(
  */
 export async function sendSmsIfThresholdCrossed(
   supabase: AdminClient,
-  orgId: string,
+  agentId: string,
   contactId: string,
   scoreBefore: number,
   scoreAfter: number,
 ): Promise<void> {
   const { data: settings } = await supabase
-    .from('org_settings')
+    .from('agent_settings')
     .select('sms_enabled, sms_threshold_score, agent_phone')
-    .eq('org_id', orgId)
+    .eq('agent_id', agentId)
     .single()
 
   if (!settings?.sms_enabled || !settings.agent_phone) return
@@ -82,7 +82,7 @@ export async function sendSmsIfThresholdCrossed(
   const threshold = settings.sms_threshold_score
   if (!(scoreBefore < threshold && scoreAfter >= threshold)) return
 
-  if (await isRecentlySent(supabase, orgId, contactId, 'sms_threshold')) return
+  if (await isRecentlySent(supabase, agentId, contactId, 'sms_threshold')) return
 
   const { data: contact } = await supabase
     .from('contacts')
@@ -97,7 +97,7 @@ export async function sendSmsIfThresholdCrossed(
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? ''
 
   await sendSms(settings.agent_phone, SMS_TEMPLATES.score_threshold(name, scoreAfter, contactId, appUrl))
-  await logNotification(supabase, orgId, contactId, 'sms_threshold')
+  await logNotification(supabase, agentId, contactId, 'sms_threshold')
 }
 
 /**
@@ -105,18 +105,18 @@ export async function sendSmsIfThresholdCrossed(
  */
 export async function sendFormSubmitSms(
   supabase: AdminClient,
-  orgId: string,
+  agentId: string,
   contactId: string,
   formName: string | null,
 ): Promise<void> {
   const { data: settings } = await supabase
-    .from('org_settings')
+    .from('agent_settings')
     .select('sms_enabled, agent_phone')
-    .eq('org_id', orgId)
+    .eq('agent_id', agentId)
     .single()
 
   if (!settings?.sms_enabled || !settings.agent_phone) return
-  if (await isRecentlySent(supabase, orgId, contactId, 'sms_form')) return
+  if (await isRecentlySent(supabase, agentId, contactId, 'sms_form')) return
 
   const { data: contact } = await supabase
     .from('contacts')
@@ -131,7 +131,7 @@ export async function sendFormSubmitSms(
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? ''
 
   await sendSms(settings.agent_phone, SMS_TEMPLATES.form_submit(name, formName, contactId, appUrl))
-  await logNotification(supabase, orgId, contactId, 'sms_form')
+  await logNotification(supabase, agentId, contactId, 'sms_form')
 }
 
 /**
@@ -139,21 +139,21 @@ export async function sendFormSubmitSms(
  */
 export async function sendReturnVisitSms(
   supabase: AdminClient,
-  orgId: string,
+  agentId: string,
   contactId: string,
   contactScore: number,
 ): Promise<void> {
   const { data: settings } = await supabase
-    .from('org_settings')
+    .from('agent_settings')
     .select('sms_enabled, agent_phone, sms_threshold_score')
-    .eq('org_id', orgId)
+    .eq('agent_id', agentId)
     .single()
 
   if (!settings?.sms_enabled || !settings.agent_phone) return
 
   // Only alert for contacts that have already crossed the threshold
   if (contactScore < settings.sms_threshold_score) return
-  if (await isRecentlySent(supabase, orgId, contactId, 'sms_return')) return
+  if (await isRecentlySent(supabase, agentId, contactId, 'sms_return')) return
 
   const { data: contact } = await supabase
     .from('contacts')
@@ -168,5 +168,5 @@ export async function sendReturnVisitSms(
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? ''
 
   await sendSms(settings.agent_phone, SMS_TEMPLATES.return_visit(name, contactId, appUrl))
-  await logNotification(supabase, orgId, contactId, 'sms_return')
+  await logNotification(supabase, agentId, contactId, 'sms_return')
 }

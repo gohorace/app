@@ -16,19 +16,19 @@ export default async function LeadsPage({
   const { data: { user } } = await supabase.auth.getUser()
 
   const admin = createAdminClient()
-  const { data: membership } = await admin
-    .from('org_members')
-    .select('org_id')
+  const { data: agent } = await admin
+    .from('agents')
+    .select('id')
     .eq('user_id', user!.id)
     .maybeSingle()
 
-  const orgId = membership!.org_id
+  const agentId = agent!.id
   const q = searchParams.q?.trim() ?? ''
 
   let query = admin
     .from('contacts')
     .select('id, first_name, last_name, email, phone, score, identified_at, last_seen_at, crm_source')
-    .eq('org_id', orgId)
+    .eq('agent_id', agentId)
     .order('score', { ascending: false })
     .limit(200)
 

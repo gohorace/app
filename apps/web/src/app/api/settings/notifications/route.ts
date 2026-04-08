@@ -23,18 +23,18 @@ export async function POST(request: NextRequest) {
   }
 
   const admin = createAdminClient()
-  const { data: membership } = await admin
-    .from('org_members')
-    .select('org_id')
+  const { data: agentRow } = await admin
+    .from('agents')
+    .select('id')
     .eq('user_id', user.id)
+    .not('workspace_id', 'is', null)
     .maybeSingle()
 
-  if (!membership) return NextResponse.json({ error: 'No organisation' }, { status: 400 })
+  if (!agentRow) return NextResponse.json({ error: 'No agent found' }, { status: 400 })
 
   const { error } = await admin
-    .from('org_settings')
-    .update(parsed.data)
-    .eq('org_id', membership.org_id)
+    .from('agent_settings')
+    .upsert({ agent_id: agentRow.id, ...parsed.data }, { onConflict: 'agent_id' })
 
   if (error) {
     console.error('Settings update error:', error)
