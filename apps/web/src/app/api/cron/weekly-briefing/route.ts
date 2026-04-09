@@ -94,7 +94,7 @@ export async function GET(request: NextRequest) {
       const { subject, html } = buildWeeklyBriefingEmail(agentName, leadsWithInsights, appUrl)
 
       await resend.emails.send({
-        from: process.env.RESEND_FROM_EMAIL ?? 'briefing@realestate-insights.app',
+        from: process.env.RESEND_FROM_EMAIL ?? 'briefing@horace.app',
         to: settings.agent_email!,
         subject,
         html,

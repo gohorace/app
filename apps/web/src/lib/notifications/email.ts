@@ -64,7 +64,7 @@ export function buildWeeklyBriefingEmail(
         <!-- Header -->
         <tr>
           <td style="background:#111827;padding:24px 32px;">
-            <p style="margin:0;color:#f9fafb;font-size:18px;font-weight:700;">RE Insights</p>
+            <p style="margin:0;color:#f9fafb;font-size:18px;font-weight:700;">Horace</p>
             <p style="margin:4px 0 0;color:#9ca3af;font-size:13px;">Weekly brief for ${agentName}</p>
           </td>
         </tr>

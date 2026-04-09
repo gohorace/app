@@ -50,7 +50,7 @@ export function Sidebar({ orgName }: { orgName: string }) {
           </div>
           <div className="min-w-0">
             <p className="text-sm font-semibold truncate">{orgName}</p>
-            <p className="text-xs text-muted-foreground">RE Insights</p>
+            <p className="text-xs text-muted-foreground">Horace</p>
           </div>
         </div>
       </div>

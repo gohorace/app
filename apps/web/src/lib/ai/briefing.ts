@@ -82,7 +82,8 @@ Respond in JSON only:
       messages: [{ role: 'user', content: prompt }],
     })
 
-    const text = message.content[0].type === 'text' ? message.content[0].text : ''
+    const raw = message.content[0].type === 'text' ? message.content[0].text : ''
+    const text = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim()
     const parsed = JSON.parse(text) as { why_now: string; action: string }
 
     return {

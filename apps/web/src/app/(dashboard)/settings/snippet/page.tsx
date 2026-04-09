@@ -28,7 +28,7 @@ export default async function SnippetPage() {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://your-domain.com'
   const cdnUrl = `${appUrl}/tracker.min.js`
 
-  const snippetCode = `<!-- Real Estate Insights Tracker -->
+  const snippetCode = `<!-- Horace Tracker -->
 <script>
   window.RIQ = {
     key: '${snippetKey}',
@@ -94,10 +94,10 @@ export default async function SnippetPage() {
         </CardHeader>
         <CardContent>
           <ol className="text-sm space-y-2 list-decimal list-inside text-muted-foreground">
-            <li>Download the Real Estate Insights WordPress plugin</li>
+            <li>Download the Horace WordPress plugin</li>
             <li>Install and activate it from your WordPress admin panel</li>
             <li>
-              Go to <strong className="text-foreground">Settings → RE Insights</strong>
+              Go to <strong className="text-foreground">Settings → Horace</strong>
             </li>
             <li>
               Paste your snippet key:{' '}
