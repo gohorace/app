@@ -305,22 +305,64 @@ export type Database = {
         Row: {
           id: string; workspace_id: string; agent_id: string; user_id: string
           name: string; token_hash: string
+          client_id: string | null; expires_at: string | null; scope: string | null
           last_used_at: string | null; revoked_at: string | null; created_at: string
         }
         Insert: {
           id?: string; workspace_id: string; agent_id: string; user_id: string
           name: string; token_hash: string
+          client_id?: string | null; expires_at?: string | null; scope?: string | null
           last_used_at?: string | null; revoked_at?: string | null; created_at?: string
         }
         Update: {
           id?: string; workspace_id?: string; agent_id?: string; user_id?: string
           name?: string; token_hash?: string
+          client_id?: string | null; expires_at?: string | null; scope?: string | null
           last_used_at?: string | null; revoked_at?: string | null; created_at?: string
         }
         Relationships: [
           { foreignKeyName: 'workspace_api_tokens_workspace_id_fkey'; columns: ['workspace_id']; isOneToOne: false; referencedRelation: 'workspaces'; referencedColumns: ['id'] },
           { foreignKeyName: 'workspace_api_tokens_agent_id_fkey'; columns: ['agent_id']; isOneToOne: false; referencedRelation: 'agents'; referencedColumns: ['id'] }
         ]
+      }
+      oauth_clients: {
+        Row: {
+          id: string; client_id: string; client_secret_hash: string | null
+          client_name: string | null; redirect_uris: string[]; scope: string
+          metadata: Json; created_at: string
+        }
+        Insert: {
+          id?: string; client_id: string; client_secret_hash?: string | null
+          client_name?: string | null; redirect_uris: string[]; scope?: string
+          metadata?: Json; created_at?: string
+        }
+        Update: {
+          id?: string; client_id?: string; client_secret_hash?: string | null
+          client_name?: string | null; redirect_uris?: string[]; scope?: string
+          metadata?: Json; created_at?: string
+        }
+        Relationships: []
+      }
+      oauth_authorization_codes: {
+        Row: {
+          id: string; code: string; client_id: string; user_id: string
+          agent_id: string; workspace_id: string; redirect_uri: string
+          code_challenge: string; code_challenge_method: 'S256'
+          scope: string; expires_at: string; used_at: string | null; created_at: string
+        }
+        Insert: {
+          id?: string; code: string; client_id: string; user_id: string
+          agent_id: string; workspace_id: string; redirect_uri: string
+          code_challenge: string; code_challenge_method?: 'S256'
+          scope: string; expires_at: string; used_at?: string | null; created_at?: string
+        }
+        Update: {
+          id?: string; code?: string; client_id?: string; user_id?: string
+          agent_id?: string; workspace_id?: string; redirect_uri?: string
+          code_challenge?: string; code_challenge_method?: 'S256'
+          scope?: string; expires_at?: string; used_at?: string | null; created_at?: string
+        }
+        Relationships: []
       }
     }
     Views: {
@@ -373,6 +415,19 @@ export type Database = {
           contact_id: string | null
           campaign_id: string | null
           target_url: string
+        }>
+      }
+      consume_oauth_code: {
+        Args: { p_code: string }
+        Returns: Array<{
+          client_id: string
+          user_id: string
+          agent_id: string
+          workspace_id: string
+          redirect_uri: string
+          code_challenge: string
+          code_challenge_method: string
+          scope: string
         }>
       }
     }

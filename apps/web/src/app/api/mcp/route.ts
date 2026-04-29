@@ -1,9 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authenticateRequest } from '@/lib/mcp/auth'
 import { TOOLS, TOOL_BY_NAME } from '@/lib/mcp/tools'
+import { getAppUrl } from '@/lib/url'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
+
+function unauthorizedResponse() {
+  // RFC 9728: tell the client where to find resource metadata so it can
+  // discover our OAuth authorization server and start the auth flow.
+  const url = getAppUrl()
+  const resourceMetadata = url ? `${url}/.well-known/oauth-protected-resource` : ''
+  const wwwAuth = resourceMetadata
+    ? `Bearer realm="horace-mcp", resource_metadata="${resourceMetadata}"`
+    : 'Bearer realm="horace-mcp"'
+  return NextResponse.json(
+    { error: 'unauthorized' },
+    { status: 401, headers: { 'WWW-Authenticate': wwwAuth } },
+  )
+}
 
 const MCP_PROTOCOL_VERSION = '2025-06-18'
 const SERVER_INFO = { name: 'horace', version: '0.1.0' }
@@ -30,7 +45,7 @@ function rpcResult(id: string | number | null, result: unknown): JsonRpcResponse
 export async function POST(req: NextRequest) {
   const ctx = await authenticateRequest(req)
   if (!ctx) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    return unauthorizedResponse()
   }
 
   let msg: JsonRpcRequest
@@ -121,7 +136,11 @@ export async function POST(req: NextRequest) {
 }
 
 // Streamable HTTP transport allows GET for an optional server→client SSE
-// stream. We don't emit notifications in v1, so respond 405 to indicate that.
-export async function GET() {
+// stream. Unauthenticated requests return 401 with WWW-Authenticate so MCP
+// clients can discover the OAuth metadata. Authenticated GETs get 405 since
+// we don't emit notifications in v1.
+export async function GET(req: NextRequest) {
+  const ctx = await authenticateRequest(req)
+  if (!ctx) return unauthorizedResponse()
   return new NextResponse('Method Not Allowed', { status: 405 })
 }
