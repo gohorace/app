@@ -10,6 +10,7 @@ import {
   Settings,
   LogOut,
   TrendingUp,
+  Key,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
@@ -28,6 +29,7 @@ const settingsItems = [
   { href: '/settings/snippet', label: 'Snippet install', icon: Settings },
   { href: '/settings/scoring', label: 'Scoring rules', icon: TrendingUp },
   { href: '/settings/notifications', label: 'Notifications', icon: Settings },
+  { href: '/settings/api-tokens', label: 'API tokens', icon: Key },
 ]
 
 export function Sidebar({ orgName }: { orgName: string }) {

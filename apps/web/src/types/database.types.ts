@@ -89,6 +89,7 @@ export type Database = {
           first_name: string | null; last_name: string | null; score: number
           crm_source: 'rex' | 'agentbox' | 'manual' | null; crm_external_id: string | null
           identified_at: string | null; last_seen_at: string | null
+          unsubscribed_at: string | null
           metadata: Json; created_at: string
         }
         Insert: {
@@ -96,6 +97,7 @@ export type Database = {
           first_name?: string | null; last_name?: string | null; score?: number
           crm_source?: 'rex' | 'agentbox' | 'manual' | null; crm_external_id?: string | null
           identified_at?: string | null; last_seen_at?: string | null
+          unsubscribed_at?: string | null
           metadata?: Json; created_at?: string
         }
         Update: {
@@ -103,6 +105,7 @@ export type Database = {
           first_name?: string | null; last_name?: string | null; score?: number
           crm_source?: 'rex' | 'agentbox' | 'manual' | null; crm_external_id?: string | null
           identified_at?: string | null; last_seen_at?: string | null
+          unsubscribed_at?: string | null
           metadata?: Json; created_at?: string
         }
         Relationships: [
@@ -239,6 +242,86 @@ export type Database = {
           { foreignKeyName: 'notification_log_agent_id_fkey'; columns: ['agent_id']; isOneToOne: false; referencedRelation: 'agents'; referencedColumns: ['id'] }
         ]
       }
+      outreach_log: {
+        Row: {
+          id: string; agent_id: string; contact_id: string; campaign_id: string | null
+          channel: 'email' | 'sms'; subject: string | null; message_preview: string | null
+          external_id: string | null; source: 'mcp' | 'ui' | 'auto'; sent_at: string
+        }
+        Insert: {
+          id?: string; agent_id: string; contact_id: string; campaign_id?: string | null
+          channel: 'email' | 'sms'; subject?: string | null; message_preview?: string | null
+          external_id?: string | null; source?: 'mcp' | 'ui' | 'auto'; sent_at?: string
+        }
+        Update: {
+          id?: string; agent_id?: string; contact_id?: string; campaign_id?: string | null
+          channel?: 'email' | 'sms'; subject?: string | null; message_preview?: string | null
+          external_id?: string | null; source?: 'mcp' | 'ui' | 'auto'; sent_at?: string
+        }
+        Relationships: [
+          { foreignKeyName: 'outreach_log_agent_id_fkey'; columns: ['agent_id']; isOneToOne: false; referencedRelation: 'agents'; referencedColumns: ['id'] },
+          { foreignKeyName: 'outreach_log_contact_id_fkey'; columns: ['contact_id']; isOneToOne: false; referencedRelation: 'contacts'; referencedColumns: ['id'] }
+        ]
+      }
+      short_links: {
+        Row: {
+          id: string; agent_id: string; contact_id: string | null; campaign_id: string | null
+          code: string; target_url: string
+          click_count: number; last_clicked_at: string | null; created_at: string
+        }
+        Insert: {
+          id?: string; agent_id: string; contact_id?: string | null; campaign_id?: string | null
+          code: string; target_url: string
+          click_count?: number; last_clicked_at?: string | null; created_at?: string
+        }
+        Update: {
+          id?: string; agent_id?: string; contact_id?: string | null; campaign_id?: string | null
+          code?: string; target_url?: string
+          click_count?: number; last_clicked_at?: string | null; created_at?: string
+        }
+        Relationships: [
+          { foreignKeyName: 'short_links_agent_id_fkey'; columns: ['agent_id']; isOneToOne: false; referencedRelation: 'agents'; referencedColumns: ['id'] }
+        ]
+      }
+      contact_notes: {
+        Row: {
+          id: string; agent_id: string; contact_id: string
+          body: string; source: 'mcp' | 'ui' | 'import'; created_at: string
+        }
+        Insert: {
+          id?: string; agent_id: string; contact_id: string
+          body: string; source?: 'mcp' | 'ui' | 'import'; created_at?: string
+        }
+        Update: {
+          id?: string; agent_id?: string; contact_id?: string
+          body?: string; source?: 'mcp' | 'ui' | 'import'; created_at?: string
+        }
+        Relationships: [
+          { foreignKeyName: 'contact_notes_agent_id_fkey'; columns: ['agent_id']; isOneToOne: false; referencedRelation: 'agents'; referencedColumns: ['id'] },
+          { foreignKeyName: 'contact_notes_contact_id_fkey'; columns: ['contact_id']; isOneToOne: false; referencedRelation: 'contacts'; referencedColumns: ['id'] }
+        ]
+      }
+      workspace_api_tokens: {
+        Row: {
+          id: string; workspace_id: string; agent_id: string; user_id: string
+          name: string; token_hash: string
+          last_used_at: string | null; revoked_at: string | null; created_at: string
+        }
+        Insert: {
+          id?: string; workspace_id: string; agent_id: string; user_id: string
+          name: string; token_hash: string
+          last_used_at?: string | null; revoked_at?: string | null; created_at?: string
+        }
+        Update: {
+          id?: string; workspace_id?: string; agent_id?: string; user_id?: string
+          name?: string; token_hash?: string
+          last_used_at?: string | null; revoked_at?: string | null; created_at?: string
+        }
+        Relationships: [
+          { foreignKeyName: 'workspace_api_tokens_workspace_id_fkey'; columns: ['workspace_id']; isOneToOne: false; referencedRelation: 'workspaces'; referencedColumns: ['id'] },
+          { foreignKeyName: 'workspace_api_tokens_agent_id_fkey'; columns: ['agent_id']; isOneToOne: false; referencedRelation: 'agents'; referencedColumns: ['id'] }
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -278,6 +361,19 @@ export type Database = {
       user_agent_ids: {
         Args: Record<never, never>
         Returns: string[]
+      }
+      resolve_api_token: {
+        Args: { p_token_hash: string }
+        Returns: Array<{ workspace_id: string; agent_id: string }>
+      }
+      click_short_link: {
+        Args: { p_code: string }
+        Returns: Array<{
+          agent_id: string
+          contact_id: string | null
+          campaign_id: string | null
+          target_url: string
+        }>
       }
     }
     Enums: {
