@@ -9,6 +9,7 @@ import {
 import { unsubscribeUrl } from '@/lib/outreach/unsubscribe'
 import { generateShortCode } from '@/lib/outreach/links'
 import { getAppUrl } from '@/lib/url'
+import { loadProfile, PROFILE_QUESTIONS, type AgentProfile } from '@/lib/mcp/profile'
 
 export interface McpTool {
   name: string
@@ -388,10 +389,14 @@ const draftOutreach: McpTool = {
   name: 'draft_outreach',
   description:
     'Build the structured pieces of an outreach email for a single contact: ' +
-    'recipient details, decorated links, an unsubscribe URL, a suggested ' +
-    'subject, and a body skeleton with the legal footer attached. The caller ' +
-    '(Claude) is expected to write the actual prose and hand the final email ' +
-    "to the user's connected email tool. Refuses if the contact has unsubscribed.",
+    'recipient details, decorated links, unsubscribe URL, suggested subject, ' +
+    'body skeleton, and the agent profile (brand voice, signature, website, ' +
+    'positioning) you must write in. The caller (Claude) writes the prose and ' +
+    "hands the final email to the user's connected email tool. " +
+    'REQUIRES a complete agent_profile (brand_voice + email_signature). If ' +
+    'incomplete, returns {setup_required: true} — call start_profile_interview, ' +
+    'collect answers from the user, save_agent_profile, then retry. Also ' +
+    'refuses if the contact has unsubscribed.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -435,6 +440,23 @@ const draftOutreach: McpTool = {
       campaign_name?: string
     }
     const admin = createAdminClient()
+
+    // Gate: profile must be complete before drafting outreach.
+    const profile = await loadProfile(admin, ctx.agentId)
+    if (!profile.complete) {
+      return {
+        setup_required: true,
+        missing: profile.missing_required,
+        message:
+          'Before I can draft outreach in your voice, I need a few setup details ' +
+          `from you (${profile.missing_required.join(', ')}).`,
+        next_action:
+          'Call start_profile_interview to get the question script, ask the user one ' +
+          'question at a time, then call save_agent_profile with their answers, then ' +
+          'retry draft_outreach.',
+      }
+    }
+
     const [contact] = await loadOwnedContacts(admin, ctx.agentId, [a.contact_id])
     if (contact.unsubscribed_at) {
       throw new Error('Contact has unsubscribed and cannot be contacted')
@@ -515,6 +537,18 @@ const draftOutreach: McpTool = {
       footer_markdown: footerMarkdown,
       recent_activity: recent,
       intent: a.intent,
+      agent_profile: {
+        brand_voice: profile.brand_voice,
+        email_signature: profile.email_signature,
+        website_url: profile.website_url,
+        market_positioning: profile.market_positioning,
+      },
+      drafting_guidance:
+        'Write the email body in the brand_voice exactly. End with the ' +
+        'email_signature verbatim (preserve newlines). Insert decorated_links ' +
+        'naturally — do not paste the raw target_url. Reference market_positioning ' +
+        'or website_url only if it fits the recipient\'s recent_activity. Keep the ' +
+        'unsubscribe footer at the bottom.',
     }
   },
 }
@@ -658,6 +692,132 @@ function capitalize(s: string): string {
   return s.length > 0 ? s[0].toUpperCase() + s.slice(1) : s
 }
 
+// ============================================================
+// AGENT PROFILE / ONBOARDING TOOLS
+// ============================================================
+
+const getAgentProfile: McpTool = {
+  name: 'get_agent_profile',
+  description:
+    'Read the agent\'s outreach profile: brand voice, email signature, website ' +
+    'URL, market positioning. Returns {complete} and {missing_required} so you ' +
+    'can decide whether to start the profile interview before drafting outreach.',
+  inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+  async handler(_args, ctx) {
+    const admin = createAdminClient()
+    return await loadProfile(admin, ctx.agentId)
+  },
+}
+
+const saveAgentProfile: McpTool = {
+  name: 'save_agent_profile',
+  description:
+    'Update one or more agent profile fields. Partial updates are fine — pass ' +
+    'only the fields you have answers for. Validates website_url is an https URL. ' +
+    'Use this after collecting answers via start_profile_interview, or whenever ' +
+    'the user wants to change tone/signature/etc.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      brand_voice:        { type: 'string', maxLength: 1000 },
+      email_signature:    { type: 'string', maxLength: 1000 },
+      website_url:        { type: 'string', maxLength: 500 },
+      market_positioning: { type: 'string', maxLength: 500 },
+    },
+    additionalProperties: false,
+  },
+  async handler(args, ctx) {
+    const a = (args ?? {}) as Partial<AgentProfile>
+    const update: Partial<AgentProfile> = {}
+
+    if (typeof a.brand_voice === 'string')        update.brand_voice = a.brand_voice.trim() || null
+    if (typeof a.email_signature === 'string')    update.email_signature = a.email_signature.trim() || null
+    if (typeof a.market_positioning === 'string') update.market_positioning = a.market_positioning.trim() || null
+
+    if (typeof a.website_url === 'string') {
+      let url = a.website_url.trim()
+      if (url) {
+        // Allow bare domains; coerce to https.
+        if (!/^https?:\/\//i.test(url)) url = 'https://' + url
+        try {
+          const parsed = new URL(url)
+          if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+            throw new Error('website_url must be http or https')
+          }
+          update.website_url = parsed.toString()
+        } catch {
+          throw new Error('website_url is not a valid URL')
+        }
+      } else {
+        update.website_url = null
+      }
+    }
+
+    if (Object.keys(update).length === 0) {
+      throw new Error('No fields supplied. Pass at least one of brand_voice, email_signature, website_url, market_positioning.')
+    }
+
+    const admin = createAdminClient()
+    const { error } = await admin
+      .from('agent_settings')
+      .update(update)
+      .eq('agent_id', ctx.agentId)
+    if (error) throw new Error(error.message)
+
+    return await loadProfile(admin, ctx.agentId)
+  },
+}
+
+const startProfileInterview: McpTool = {
+  name: 'start_profile_interview',
+  description:
+    'Get the script of questions to ask the user when setting up their outreach ' +
+    'profile. Filters to only the missing fields by default. Ask one question at ' +
+    'a time, show examples to unstick the user, then call save_agent_profile ' +
+    'with the answers.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      include_filled: {
+        type: 'boolean',
+        description: 'Include questions for fields that already have a value (default false).',
+      },
+    },
+    additionalProperties: false,
+  },
+  async handler(args, ctx) {
+    const a = (args ?? {}) as { include_filled?: boolean }
+    const admin = createAdminClient()
+    const profile = await loadProfile(admin, ctx.agentId)
+
+    const questions = PROFILE_QUESTIONS.filter((q) =>
+      a.include_filled ? true : !profile[q.field],
+    )
+
+    return {
+      current: {
+        brand_voice: profile.brand_voice,
+        email_signature: profile.email_signature,
+        website_url: profile.website_url,
+        market_positioning: profile.market_positioning,
+      },
+      complete: profile.complete,
+      missing_required: profile.missing_required,
+      questions,
+      instructions:
+        'Ask each question in turn. Show 1–2 examples if the user seems stuck — ' +
+        'do not invent answers for them. Keep your own commentary minimal; you\'re ' +
+        'collecting their words, not editorialising. After collecting all required ' +
+        'answers, call save_agent_profile with the values. Optional fields can be ' +
+        'left out.',
+      next_action:
+        questions.length === 0
+          ? 'Profile is already complete — no questions to ask.'
+          : 'Ask the first question, await the user\'s reply, then proceed.',
+    }
+  },
+}
+
 export const TOOLS: McpTool[] = [
   listContacts,
   getContact,
@@ -671,6 +831,9 @@ export const TOOLS: McpTool[] = [
   recordSend,
   sendSms,
   logNote,
+  getAgentProfile,
+  saveAgentProfile,
+  startProfileInterview,
 ]
 
 export const TOOL_BY_NAME: Record<string, McpTool> = Object.fromEntries(

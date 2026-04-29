@@ -65,18 +65,24 @@ export type Database = {
           agent_id: string; sms_enabled: boolean; sms_threshold_score: number
           agent_phone: string | null; agent_email: string | null
           scoring_config: Json; weekly_briefing_day: number
+          brand_voice: string | null; email_signature: string | null
+          website_url: string | null; market_positioning: string | null
           created_at: string; updated_at: string
         }
         Insert: {
           agent_id: string; sms_enabled?: boolean; sms_threshold_score?: number
           agent_phone?: string | null; agent_email?: string | null
           scoring_config?: Json; weekly_briefing_day?: number
+          brand_voice?: string | null; email_signature?: string | null
+          website_url?: string | null; market_positioning?: string | null
           created_at?: string; updated_at?: string
         }
         Update: {
           agent_id?: string; sms_enabled?: boolean; sms_threshold_score?: number
           agent_phone?: string | null; agent_email?: string | null
           scoring_config?: Json; weekly_briefing_day?: number
+          brand_voice?: string | null; email_signature?: string | null
+          website_url?: string | null; market_positioning?: string | null
           created_at?: string; updated_at?: string
         }
         Relationships: [
