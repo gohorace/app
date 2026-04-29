@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Key } from 'lucide-react'
 import { ApiTokensManager } from '@/components/settings/api-tokens-manager'
+import { getAppUrl } from '@/lib/url'
 
 export default async function ApiTokensPage() {
   const supabase = await createClient()
@@ -15,7 +16,7 @@ export default async function ApiTokensPage() {
     .eq('user_id', user!.id)
     .order('created_at', { ascending: false })
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? ''
+  const appUrl = getAppUrl()
   const mcpUrl = appUrl ? `${appUrl}/api/mcp` : ''
 
   return (

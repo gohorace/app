@@ -8,6 +8,7 @@ import {
 } from '@/lib/mcp/outreach-helpers'
 import { unsubscribeUrl } from '@/lib/outreach/unsubscribe'
 import { generateShortCode } from '@/lib/outreach/links'
+import { getAppUrl } from '@/lib/url'
 
 export interface McpTool {
   name: string
@@ -372,7 +373,7 @@ const shortenLink: McpTool = {
     }
     if (!row) throw new Error('Failed to allocate short code')
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? ''
+    const appUrl = getAppUrl()
     return {
       short_url: appUrl ? `${appUrl}/r/${row.code}` : `/r/${row.code}`,
       code: row.code,
@@ -459,7 +460,7 @@ const draftOutreach: McpTool = {
       decorated_url: token ? appendCampaignToken(t.url, token) : t.url,
     }))
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? ''
+    const appUrl = getAppUrl()
     const unsubUrl = appUrl ? unsubscribeUrl(appUrl, contact.id) : ''
 
     const fullName =
