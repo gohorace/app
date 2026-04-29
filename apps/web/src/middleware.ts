@@ -30,14 +30,22 @@ export async function middleware(request: NextRequest) {
 
   const { pathname } = request.nextUrl
 
-  // Public routes that don't need auth
+  // Public routes that don't need auth.
+  // /oauth/authorize is "public" here so the page itself can render an
+  // error or redirect to /login with the full query string preserved
+  // (middleware-level redirect strips search params).
   const isPublicRoute =
     pathname.startsWith('/login') ||
     pathname.startsWith('/signup') ||
     pathname.startsWith('/api/t') ||
     pathname.startsWith('/api/identity') ||
     pathname.startsWith('/api/cron') ||
-    pathname.startsWith('/api/webhooks')
+    pathname.startsWith('/api/webhooks') ||
+    pathname.startsWith('/api/mcp') ||
+    pathname.startsWith('/r/') ||
+    pathname.startsWith('/u/') ||
+    pathname.startsWith('/oauth/') ||
+    pathname.startsWith('/.well-known/')
 
   if (!user && !isPublicRoute) {
     const url = request.nextUrl.clone()
