@@ -62,7 +62,7 @@ export function SignupForm() {
       return
     }
 
-    window.location.href = '/dashboard'
+    window.location.href = '/onboarding'
   }
 
   return (

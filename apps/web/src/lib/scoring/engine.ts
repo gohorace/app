@@ -2,7 +2,11 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database.types'
 import { DEFAULT_SCORING_RULES } from './rules'
 import type { EventType, IncomingEvent, ScoreResult, ScoringRule, ScoringRuleOverride } from './types'
-import { sendSmsIfThresholdCrossed } from '../notifications/sms'
+import {
+  sendScoreThresholdAlert,
+  sendFormSubmitAlert,
+  sendReturnVisitAlert,
+} from '../notifications/push'
 
 type AdminClient = SupabaseClient<Database>
 
@@ -123,10 +127,37 @@ export async function scoreEventsForContact(
 
   await supabase.from('score_history').insert(historyRows)
 
-  // Check SMS threshold (non-blocking — don't fail if SMS fails)
-  sendSmsIfThresholdCrossed(supabase, agentId, contactId, scoreBefore, scoreAfter).catch(
-    (err) => console.error('SMS check error:', err),
-  )
+  // Fetch contact name for alert copy
+  const { data: contact } = await supabase
+    .from('contacts')
+    .select('first_name, last_name, email')
+    .eq('id', contactId)
+    .maybeSingle()
+
+  const contactName =
+    [contact?.first_name, contact?.last_name].filter(Boolean).join(' ') ||
+    contact?.email ||
+    'A contact'
+
+  // Fire push alerts (non-blocking)
+  const hasFormSubmit  = events.some((e) => e.event_type === 'form_submit')
+  const hasReturnVisit = events.some((e) => e.event_type === 'return_visit')
+
+  const formEvent = hasFormSubmit
+    ? events.find((e) => e.event_type === 'form_submit')
+    : null
+  const formName =
+    typeof formEvent?.properties === 'object' &&
+    formEvent.properties !== null &&
+    !Array.isArray(formEvent.properties)
+      ? ((formEvent.properties as Record<string, unknown>).form_name as string | null) ?? null
+      : null
+
+  Promise.all([
+    sendScoreThresholdAlert(agentId, contactId, contactName, scoreAfter, scoreBefore),
+    hasFormSubmit  ? sendFormSubmitAlert(agentId, contactId, contactName, formName)  : null,
+    hasReturnVisit ? sendReturnVisitAlert(agentId, contactId, contactName)           : null,
+  ]).catch((err) => console.error('[alerts] push error:', err))
 
   return { delta, newScore: scoreAfter, appliedRules }
 }
