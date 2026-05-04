@@ -149,7 +149,7 @@ export async function resolveEmail(
           stitch_method: 'form',
           confidence: 'high',
         },
-        { onConflict: 'workspace_id,agent_id,anonymous_id,contact_id', ignoreDuplicates: true },
+        { onConflict: 'workspace_id,agent_id,anonymous_id', ignoreDuplicates: true },
       )
 
     // Set identified_at if not already set
