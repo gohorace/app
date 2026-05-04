@@ -247,11 +247,19 @@ export type Database = {
         ]
       }
       notification_log: {
-        Row: { id: string; agent_id: string; contact_id: string | null; type: 'sms_threshold' | 'sms_form' | 'sms_return' | 'email_briefing'; sent_at: string }
-        Insert: { id?: string; agent_id: string; contact_id?: string | null; type: 'sms_threshold' | 'sms_form' | 'sms_return' | 'email_briefing'; sent_at?: string }
-        Update: { id?: string; agent_id?: string; contact_id?: string | null; type?: 'sms_threshold' | 'sms_form' | 'sms_return' | 'email_briefing'; sent_at?: string }
+        Row: { id: string; agent_id: string; contact_id: string | null; type: 'sms_threshold' | 'sms_form' | 'sms_return' | 'email_briefing' | 'alert_threshold' | 'alert_form' | 'alert_return'; sent_at: string }
+        Insert: { id?: string; agent_id: string; contact_id?: string | null; type: 'sms_threshold' | 'sms_form' | 'sms_return' | 'email_briefing' | 'alert_threshold' | 'alert_form' | 'alert_return'; sent_at?: string }
+        Update: { id?: string; agent_id?: string; contact_id?: string | null; type?: 'sms_threshold' | 'sms_form' | 'sms_return' | 'email_briefing' | 'alert_threshold' | 'alert_form' | 'alert_return'; sent_at?: string }
         Relationships: [
           { foreignKeyName: 'notification_log_agent_id_fkey'; columns: ['agent_id']; isOneToOne: false; referencedRelation: 'agents'; referencedColumns: ['id'] }
+        ]
+      }
+      push_subscriptions: {
+        Row: { id: string; agent_id: string; endpoint: string; p256dh: string; auth: string; created_at: string }
+        Insert: { id?: string; agent_id: string; endpoint: string; p256dh: string; auth: string; created_at?: string }
+        Update: { id?: string; agent_id?: string; endpoint?: string; p256dh?: string; auth?: string; created_at?: string }
+        Relationships: [
+          { foreignKeyName: 'push_subscriptions_agent_id_fkey'; columns: ['agent_id']; isOneToOne: false; referencedRelation: 'agents'; referencedColumns: ['id'] }
         ]
       }
       outreach_log: {
@@ -386,6 +394,14 @@ export type Database = {
         Returns: Array<{ workspace_id: string; agent_id: string }>
       }
       get_weekly_briefing_data: {
+        Args: { p_agent_id: string }
+        Returns: Array<{
+          contact_id: string; first_name: string | null; last_name: string | null
+          email: string | null; score: number; score_change: number
+          event_count: number; last_seen_at: string | null
+        }>
+      }
+      get_daily_briefing_data: {
         Args: { p_agent_id: string }
         Returns: Array<{
           contact_id: string; first_name: string | null; last_name: string | null
