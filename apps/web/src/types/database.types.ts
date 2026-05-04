@@ -67,6 +67,8 @@ export type Database = {
           scoring_config: Json; weekly_briefing_day: number
           brand_voice: string | null; email_signature: string | null
           website_url: string | null; market_positioning: string | null
+          push_alert_mode: string; briefing_emails: string[]
+          timezone: string; daily_briefing_hour: number
           created_at: string; updated_at: string
         }
         Insert: {
@@ -75,6 +77,8 @@ export type Database = {
           scoring_config?: Json; weekly_briefing_day?: number
           brand_voice?: string | null; email_signature?: string | null
           website_url?: string | null; market_positioning?: string | null
+          push_alert_mode?: string; briefing_emails?: string[]
+          timezone?: string; daily_briefing_hour?: number
           created_at?: string; updated_at?: string
         }
         Update: {
@@ -83,6 +87,8 @@ export type Database = {
           scoring_config?: Json; weekly_briefing_day?: number
           brand_voice?: string | null; email_signature?: string | null
           website_url?: string | null; market_positioning?: string | null
+          push_alert_mode?: string; briefing_emails?: string[]
+          timezone?: string; daily_briefing_hour?: number
           created_at?: string; updated_at?: string
         }
         Relationships: [
