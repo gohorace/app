@@ -80,17 +80,28 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true, contactId: null }, { headers: CORS_HEADERS })
   }
 
-  // Fetch form name from the most recent form_submit event for this session
-  const { data: recentFormEvent } = await supabase
+  // Ensure a form_submit event row exists for this session so the activity timeline shows it.
+  // The tracker queues one via /api/t but CORS failures can drop it — insert here as the
+  // authoritative record since identity resolution confirms the submission happened.
+  const { data: existingFormEvent } = await supabase
     .from('events')
-    .select('properties')
+    .select('id, properties')
     .eq('session_id', session.id)
     .eq('event_type', 'form_submit')
     .order('occurred_at', { ascending: false })
     .limit(1)
     .maybeSingle()
 
-  const formName = (recentFormEvent?.properties as Record<string, unknown> | null)?.form_id as string | null
+  if (!existingFormEvent) {
+    await supabase.from('events').insert({
+      workspace_id: workspaceId,
+      session_id: session.id,
+      event_type: 'form_submit',
+      properties: {},
+    })
+  }
+
+  const formName = (existingFormEvent?.properties as Record<string, unknown> | null)?.form_id as string | null
 
   // Score and notify for each matched agent/contact pair
   for (const { agentId, contactId } of matches) {

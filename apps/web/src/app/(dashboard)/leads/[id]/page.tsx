@@ -31,7 +31,11 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
 
   const agentId = agent!.id
 
-  const [{ data: contact }, { data: contactEvents }, { data: scoreHistory }] = await Promise.all([
+  const [
+    { data: contact },
+    { data: contactEvents, error: eventsError },
+    { data: scoreHistory },
+  ] = await Promise.all([
     admin
       .from('contacts')
       .select('*')
@@ -47,6 +51,10 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
       .order('occurred_at', { ascending: false })
       .limit(10),
   ])
+
+  if (eventsError) {
+    console.error('[leads/id] get_contact_events error:', eventsError)
+  }
 
   // Normalise RPC result to the shape the timeline expects
   const events = (contactEvents ?? []).map((e) => ({
@@ -185,7 +193,9 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
         <CardContent>
           {!events || events.length === 0 ? (
             <p className="text-sm text-muted-foreground py-4 text-center">
-              No website activity recorded yet.
+              {eventsError
+                ? `Error loading activity: ${eventsError.message}`
+                : 'No website activity recorded yet.'}
             </p>
           ) : (
             <div className="relative space-y-0">
