@@ -21,6 +21,11 @@ const schema = z.object({
   aid: z.string().uuid(),       // anonymous ID
   sid: z.string().uuid(),       // session ID from tracker
   email: z.string().email(),
+  meta: z.object({
+    first_name: z.string().max(100).optional(),
+    last_name: z.string().max(100).optional(),
+    phone: z.string().max(50).optional(),
+  }).optional(),
 })
 
 export async function POST(request: NextRequest) {
@@ -36,7 +41,7 @@ export async function POST(request: NextRequest) {
     return new Response('Bad request', { status: 400, headers: CORS_HEADERS })
   }
 
-  const { k: snippetKey, aid: anonymousId, email } = parsed.data
+  const { k: snippetKey, aid: anonymousId, email, meta } = parsed.data
 
   const supabase = createAdminClient()
 
@@ -63,13 +68,13 @@ export async function POST(request: NextRequest) {
 
   if (!session) {
     // Session not yet created (race condition) — still resolve the contact
-    const matches = await resolveEmail(supabase, workspaceId, email, anonymousId)
+    const matches = await resolveEmail(supabase, workspaceId, email, anonymousId, meta)
     const firstContactId = matches[0]?.contactId ?? null
     return NextResponse.json({ ok: true, contactId: firstContactId }, { headers: CORS_HEADERS })
   }
 
   // Resolve email → contacts via identity_map
-  const matches = await resolveEmail(supabase, workspaceId, email, anonymousId)
+  const matches = await resolveEmail(supabase, workspaceId, email, anonymousId, meta)
 
   if (matches.length === 0) {
     return NextResponse.json({ ok: true, contactId: null }, { headers: CORS_HEADERS })

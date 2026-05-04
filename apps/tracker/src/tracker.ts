@@ -195,6 +195,7 @@ declare global {
         headers: { 'Content-Type': 'application/json' },
         body,
         keepalive: true,
+        credentials: 'omit',
       })
         .then((r) => log(`/api/t response: ${r.status} ${r.statusText}`))
         .catch((err) => log('Fetch error:', err))
@@ -270,25 +271,65 @@ declare global {
 
   // ─── Identity resolution core ─────────────────────────────────────────────────
 
+  interface ContactMeta {
+    first_name?: string
+    last_name?: string
+    phone?: string
+  }
+
   let lastIdentifiedEmail = ''
 
-  function identify(email: string, source: string, formId?: string | null): void {
+  function identify(email: string, source: string, formId?: string | null, meta?: ContactMeta): void {
     const e = email.trim().toLowerCase()
     if (!e || !e.includes('@')) return
     if (e === lastIdentifiedEmail) return // deduplicate within page
     lastIdentifiedEmail = e
 
-    log(`Identity captured via ${source}:`, e)
+    log(`Identity captured via ${source}:`, e, meta ?? {})
     track('form_submit', { url, form_id: formId ?? null, source })
 
     fetch(`${API_URL}/identity`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ k: config.key, aid: anonymousId, sid: sessionId, email: e }),
+      body: JSON.stringify({ k: config.key, aid: anonymousId, sid: sessionId, email: e, meta }),
       keepalive: true,
+      credentials: 'omit',
     })
       .then((r) => log(`/api/identity response: ${r.status} ${r.statusText}`))
       .catch((err) => log('Identity fetch error:', err))
+  }
+
+  // ─── Helpers: extract name + phone from form fields ──────────────────────────
+
+  function extractMeta(fields: Array<{ name?: string; title?: string; value: string; type?: string }>): ContactMeta {
+    const meta: ContactMeta = {}
+    let fullName: string | undefined
+
+    for (const f of fields) {
+      const key = (f.name ?? f.title ?? '').toLowerCase()
+      const val = (f.value ?? '').trim()
+      if (!val) continue
+
+      if (!meta.first_name && (key === 'first_name' || key === 'first-name' || key === 'firstname')) {
+        meta.first_name = val
+      } else if (!meta.last_name && (key === 'last_name' || key === 'last-name' || key === 'lastname')) {
+        meta.last_name = val
+      } else if (!fullName && (key === 'name' || key === 'full_name' || key === 'fullname' ||
+        key.includes('your name') || key.includes('full name'))) {
+        fullName = val
+      } else if (!meta.phone && (f.type === 'tel' || key.includes('phone') || key.includes('mobile') || key.includes('tel'))) {
+        meta.phone = val
+      }
+    }
+
+    // Split "Full Name" into first/last if dedicated fields weren't found
+    if (fullName && !meta.first_name) {
+      const parts = fullName.split(/\s+/)
+      meta.first_name = parts[0]
+      if (parts.length > 1) meta.last_name = parts.slice(1).join(' ')
+    }
+
+    return meta
   }
 
   // ─── Manual API: window.RIQ.identify(email) ──────────────────────────────────
@@ -331,7 +372,9 @@ declare global {
         (form.querySelector('input[name*="email"]') as HTMLInputElement) ||
         (form.querySelector('input[name*="Email"]') as HTMLInputElement)
       if (!emailInput?.value) return
-      identify(emailInput.value, 'form-submit', form.id || form.getAttribute('name'))
+      const inputs = Array.from(form.querySelectorAll('input, textarea, select')) as HTMLInputElement[]
+      const meta = extractMeta(inputs.map((i) => ({ name: i.name, value: i.value, type: i.type })))
+      identify(emailInput.value, 'form-submit', form.id || form.getAttribute('name'), meta)
     })
 
     // 2. PostMessage — catches HighLevel, Typeform, and other iframe forms
@@ -374,9 +417,12 @@ declare global {
     // Elementor forms
     document.addEventListener('elementorFormSubmitSuccess', (e: Event) => {
       const detail = (e as CustomEvent).detail
-      const email = detail?.data?.fields?.find((f: {id: string; value: string}) =>
-        f.id.toLowerCase().includes('email'))?.value
-      if (email) identify(email, 'elementor')
+      const fields: Array<{id: string; title?: string; value: string}> = detail?.data?.fields ?? []
+      const emailField = fields.find((f) =>
+        f.id.toLowerCase().includes('email') || f.title?.toLowerCase().includes('email'))
+      if (!emailField?.value) return
+      const meta = extractMeta(fields.map((f) => ({ name: f.id, title: f.title, value: f.value })))
+      identify(emailField.value, 'elementor', detail?.data?.id ?? null, meta)
     })
 
     // Ninja Forms

@@ -62,6 +62,12 @@ async function scoreBackfilledEvents(
   await scoreEventsForContact(supabase, agentId, contactId, incomingEvents, overrides)
 }
 
+interface ContactMeta {
+  first_name?: string
+  last_name?: string
+  phone?: string
+}
+
 /**
  * Resolves an email address to one or more contacts across all agents in the workspace.
  * Creates a contact under the workspace's default_agent_id if no match found.
@@ -73,6 +79,7 @@ export async function resolveEmail(
   workspaceId: string,
   email: string,
   anonymousId: string,
+  meta?: ContactMeta,
 ): Promise<Array<{ agentId: string; contactId: string }>> {
   const normalizedEmail = email.toLowerCase().trim()
 
@@ -114,6 +121,9 @@ export async function resolveEmail(
         agent_id: workspace.default_agent_id,
         email: normalizedEmail,
         crm_source: 'manual',
+        ...(meta?.first_name && { first_name: meta.first_name }),
+        ...(meta?.last_name && { last_name: meta.last_name }),
+        ...(meta?.phone && { phone: meta.phone }),
       })
       .select('id')
       .single()
@@ -148,6 +158,21 @@ export async function resolveEmail(
       .update({ identified_at: now })
       .eq('id', contactId)
       .is('identified_at', null)
+
+    // Backfill name/phone from form — only fills fields that are currently null
+    if (meta) {
+      const fields: Array<[keyof typeof meta, string]> = [
+        ['first_name', 'first_name'],
+        ['last_name', 'last_name'],
+        ['phone', 'phone'],
+      ]
+      for (const [metaKey, col] of fields) {
+        const val = meta[metaKey]
+        if (val) {
+          await supabase.from('contacts').update({ [col]: val }).eq('id', contactId).is(col, null)
+        }
+      }
+    }
 
     // Always update last_seen_at
     await supabase
