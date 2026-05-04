@@ -1,7 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Bell } from 'lucide-react'
 import { NotificationsForm } from '@/components/settings/notifications-form'
 
 export default async function NotificationsPage() {
@@ -17,39 +15,26 @@ export default async function NotificationsPage() {
 
   const { data: settings } = await admin
     .from('agent_settings')
-    .select('sms_enabled, agent_phone, sms_threshold_score, agent_email, weekly_briefing_day')
+    .select('agent_email, timezone, daily_briefing_hour, sms_threshold_score')
     .eq('agent_id', agent!.id)
     .single()
 
   return (
-    <div className="p-8 space-y-6 max-w-2xl">
+    <div className="p-6 md:p-8 max-w-lg space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Notifications</h1>
-        <p className="text-muted-foreground">Configure SMS alerts and weekly email briefings</p>
+        <h1 className="text-xl font-bold tracking-tight">Alerts & briefing</h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          Configure your daily brief and prospect alerts
+        </p>
       </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Bell className="w-4 h-4" />
-            Notification settings
-          </CardTitle>
-          <CardDescription>
-            Requires Twilio (SMS) and Resend (email) to be configured in your environment.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <NotificationsForm
-            initial={{
-              sms_enabled: settings?.sms_enabled ?? false,
-              agent_phone: settings?.agent_phone ?? null,
-              sms_threshold_score: settings?.sms_threshold_score ?? 50,
-              agent_email: settings?.agent_email ?? null,
-              weekly_briefing_day: settings?.weekly_briefing_day ?? 1,
-            }}
-          />
-        </CardContent>
-      </Card>
+      <NotificationsForm
+        initial={{
+          agent_email:          settings?.agent_email          ?? '',
+          timezone:             settings?.timezone             ?? 'Australia/Sydney',
+          daily_briefing_hour:  settings?.daily_briefing_hour  ?? 17,
+          alert_threshold:      settings?.sms_threshold_score  ?? 50,
+        }}
+      />
     </div>
   )
 }

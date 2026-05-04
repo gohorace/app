@@ -4,11 +4,10 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { z } from 'zod'
 
 const schema = z.object({
-  sms_enabled: z.boolean(),
-  agent_phone: z.string().max(20).nullable(),
-  sms_threshold_score: z.number().int().min(1).max(999),
-  agent_email: z.string().email().nullable(),
-  weekly_briefing_day: z.number().int().min(0).max(6),
+  agent_email:         z.string().email().nullable(),
+  timezone:            z.string().min(1).max(100),
+  daily_briefing_hour: z.number().int().min(0).max(23),
+  alert_threshold:     z.number().int().min(1).max(999),
 })
 
 export async function POST(request: NextRequest) {
@@ -32,9 +31,18 @@ export async function POST(request: NextRequest) {
 
   if (!agentRow) return NextResponse.json({ error: 'No agent found' }, { status: 400 })
 
+  const { alert_threshold, ...rest } = parsed.data
+
   const { error } = await admin
     .from('agent_settings')
-    .upsert({ agent_id: agentRow.id, ...parsed.data }, { onConflict: 'agent_id' })
+    .upsert(
+      {
+        agent_id: agentRow.id,
+        ...rest,
+        sms_threshold_score: alert_threshold, // reused for push alert threshold
+      },
+      { onConflict: 'agent_id' },
+    )
 
   if (error) {
     console.error('Settings update error:', error)
