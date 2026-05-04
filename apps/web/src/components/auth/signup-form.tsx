@@ -31,15 +31,22 @@ export function SignupForm() {
     let userEmail = email
 
     if (!alreadyAuthed) {
-      // New user — create auth account first
-      const { data: authData, error: signUpError } = await supabase.auth.signUp({
+      // Create account then immediately sign in so session is active
+      const { error: signUpError } = await supabase.auth.signUp({
         email,
         password,
         options: { data: { full_name: name } },
       })
 
-      if (signUpError || !authData.user) {
-        setError(signUpError?.message ?? 'Sign up failed')
+      if (signUpError) {
+        setError(signUpError.message)
+        setLoading(false)
+        return
+      }
+
+      const { error: signInError } = await supabase.auth.signInWithPassword({ email, password })
+      if (signInError) {
+        setError(signInError.message)
         setLoading(false)
         return
       }
