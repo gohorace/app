@@ -377,7 +377,12 @@ declare global {
         (form.querySelector('input[name*="Email"]') as HTMLInputElement)
       if (!emailInput?.value) return
       const inputs = Array.from(form.querySelectorAll('input, textarea, select')) as HTMLInputElement[]
-      const meta = extractMeta(inputs.map((i) => ({ name: i.name, value: i.value, type: i.type })))
+      const meta = extractMeta(inputs.map((i) => {
+        const label = i.id
+          ? document.querySelector('label[for="' + i.id + '"]')?.textContent?.trim()
+          : undefined
+        return { name: i.name, title: label, value: i.value, type: i.type }
+      }))
       identify(emailInput.value, 'form-submit', form.id || form.getAttribute('name'), meta)
     })
 
@@ -422,10 +427,19 @@ declare global {
     document.addEventListener('elementorFormSubmitSuccess', (e: Event) => {
       const detail = (e as CustomEvent).detail
       const fields: Array<{id: string; title?: string; value: string}> = detail?.data?.fields ?? []
-      const emailField = fields.find((f) =>
-        f.id.toLowerCase().includes('email') || f.title?.toLowerCase().includes('email'))
+      // Elementor only sends field id + value in the event — look up the visible
+      // label from the DOM so extractMeta can match "Name", "Phone" etc.
+      const enriched = fields.map((f) => {
+        const inputEl = document.getElementById('form-field-' + f.id)
+        const label = inputEl
+          ? document.querySelector('label[for="' + inputEl.id + '"]')?.textContent?.trim()
+          : undefined
+        return { name: f.id, title: f.title ?? label, value: f.value }
+      })
+      const emailField = enriched.find((f) =>
+        f.name.toLowerCase().includes('email') || f.title?.toLowerCase().includes('email'))
       if (!emailField?.value) return
-      const meta = extractMeta(fields.map((f) => ({ name: f.id, title: f.title, value: f.value })))
+      const meta = extractMeta(enriched)
       identify(emailField.value, 'elementor', detail?.data?.id ?? null, meta)
     })
 
