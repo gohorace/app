@@ -4,10 +4,11 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { z } from 'zod'
 
 const schema = z.object({
-  agent_email:         z.string().email().nullable(),
+  push_alert_mode:     z.enum(['threshold', 'all', 'hourly_digest']),
+  alert_threshold:     z.number().int().min(1).max(999),
+  briefing_emails:     z.array(z.string().email()).max(20),
   timezone:            z.string().min(1).max(100),
   daily_briefing_hour: z.number().int().min(0).max(23),
-  alert_threshold:     z.number().int().min(1).max(999),
 })
 
 export async function POST(request: NextRequest) {
@@ -39,7 +40,7 @@ export async function POST(request: NextRequest) {
       {
         agent_id: agentRow.id,
         ...rest,
-        sms_threshold_score: alert_threshold, // reused for push alert threshold
+        sms_threshold_score: alert_threshold,
       },
       { onConflict: 'agent_id' },
     )

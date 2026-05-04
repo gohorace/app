@@ -127,37 +127,44 @@ export async function scoreEventsForContact(
 
   await supabase.from('score_history').insert(historyRows)
 
-  // Fetch contact name for alert copy
-  const { data: contact } = await supabase
-    .from('contacts')
-    .select('first_name, last_name, email')
-    .eq('id', contactId)
-    .maybeSingle()
+  // Fetch contact name + agent alert mode
+  const [{ data: contact }, { data: agentSettingsRow }] = await Promise.all([
+    supabase.from('contacts').select('first_name, last_name, email').eq('id', contactId).maybeSingle(),
+    supabase.from('agent_settings').select('push_alert_mode').eq('agent_id', agentId).maybeSingle(),
+  ])
 
   const contactName =
     [contact?.first_name, contact?.last_name].filter(Boolean).join(' ') ||
     contact?.email ||
     'A contact'
 
-  // Fire push alerts (non-blocking)
-  const hasFormSubmit  = events.some((e) => e.event_type === 'form_submit')
-  const hasReturnVisit = events.some((e) => e.event_type === 'return_visit')
+  const alertMode = (agentSettingsRow?.push_alert_mode ?? 'threshold') as 'threshold' | 'all' | 'hourly_digest'
 
-  const formEvent = hasFormSubmit
-    ? events.find((e) => e.event_type === 'form_submit')
-    : null
-  const formName =
-    typeof formEvent?.properties === 'object' &&
-    formEvent.properties !== null &&
-    !Array.isArray(formEvent.properties)
-      ? ((formEvent.properties as Record<string, unknown>).form_name as string | null) ?? null
-      : null
+  // Fire push alerts based on agent's chosen mode (non-blocking)
+  if (alertMode !== 'hourly_digest') {
+    const hasFormSubmit  = events.some((e) => e.event_type === 'form_submit')
+    const hasReturnVisit = events.some((e) => e.event_type === 'return_visit')
+    const formEvent      = events.find((e) => e.event_type === 'form_submit') ?? null
+    const formName =
+      formEvent?.properties &&
+      typeof formEvent.properties === 'object' &&
+      !Array.isArray(formEvent.properties)
+        ? ((formEvent.properties as Record<string, unknown>).form_name as string | null) ?? null
+        : null
 
-  Promise.all([
-    sendScoreThresholdAlert(agentId, contactId, contactName, scoreAfter, scoreBefore),
-    hasFormSubmit  ? sendFormSubmitAlert(agentId, contactId, contactName, formName)  : null,
-    hasReturnVisit ? sendReturnVisitAlert(agentId, contactId, contactName)           : null,
-  ]).catch((err) => console.error('[alerts] push error:', err))
+    Promise.all([
+      // Threshold mode: only fire when score crosses the configured threshold
+      // All mode: fire for any scoring activity (dedup prevents spam)
+      sendScoreThresholdAlert(agentId, contactId, contactName, scoreAfter, scoreBefore),
+      hasFormSubmit  ? sendFormSubmitAlert(agentId, contactId, contactName, formName) : null,
+      hasReturnVisit ? sendReturnVisitAlert(agentId, contactId, contactName)          : null,
+      // 'all' mode: also alert on general activity (page/property views etc.)
+      alertMode === 'all' && !hasFormSubmit && !hasReturnVisit
+        ? sendReturnVisitAlert(agentId, contactId, contactName)
+        : null,
+    ]).catch((err) => console.error('[alerts] push error:', err))
+  }
+  // hourly_digest: no real-time push — handled by the hourly digest cron
 
   return { delta, newScore: scoreAfter, appliedRules }
 }

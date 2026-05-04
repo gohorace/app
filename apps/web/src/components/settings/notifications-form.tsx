@@ -1,11 +1,37 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef, KeyboardEvent } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent } from '@/components/ui/card'
-import { CheckCircle2 } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
+import { CheckCircle2, X, Bell, Users, Clock } from 'lucide-react'
+import { cn } from '@/lib/utils'
+
+type AlertMode = 'threshold' | 'all' | 'hourly_digest'
+
+const ALERT_MODES: { value: AlertMode; icon: React.ElementType; label: string; description: string; note?: string }[] = [
+  {
+    value: 'threshold',
+    icon: Bell,
+    label: 'Score milestone',
+    description: 'Alert when a contact reaches a score of 50 or above',
+  },
+  {
+    value: 'all',
+    icon: Users,
+    label: 'All activity',
+    description: 'Alert on every activity across all contacts',
+    note: 'Can get noisy',
+  },
+  {
+    value: 'hourly_digest',
+    icon: Clock,
+    label: 'Hourly digest',
+    description: 'One grouped alert per hour with top prospects and a summary of their activity',
+  },
+]
 
 const TIMEZONES = [
   { value: 'Australia/Sydney',    label: 'Sydney / Melbourne (AEST)' },
@@ -28,21 +54,46 @@ const HOURS = Array.from({ length: 24 }, (_, i) => {
 
 interface Props {
   initial: {
-    agent_email:         string
+    push_alert_mode:     AlertMode
+    alert_threshold:     number
+    briefing_emails:     string[]
     timezone:            string
     daily_briefing_hour: number
-    alert_threshold:     number
   }
 }
 
 export function NotificationsForm({ initial }: Props) {
-  const [email,     setEmail]     = useState(initial.agent_email)
-  const [timezone,  setTimezone]  = useState(initial.timezone)
-  const [hour,      setHour]      = useState(initial.daily_briefing_hour)
-  const [threshold, setThreshold] = useState(initial.alert_threshold)
-  const [saving,    setSaving]    = useState(false)
-  const [saved,     setSaved]     = useState(false)
-  const [error,     setError]     = useState<string | null>(null)
+  const [alertMode,  setAlertMode]  = useState<AlertMode>(initial.push_alert_mode)
+  const [threshold,  setThreshold]  = useState(initial.alert_threshold)
+  const [emails,     setEmails]     = useState<string[]>(initial.briefing_emails)
+  const [emailInput, setEmailInput] = useState('')
+  const [timezone,   setTimezone]   = useState(initial.timezone)
+  const [hour,       setHour]       = useState(initial.daily_briefing_hour)
+  const [saving,     setSaving]     = useState(false)
+  const [saved,      setSaved]      = useState(false)
+  const [error,      setError]      = useState<string | null>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  function addEmail(raw: string) {
+    const val = raw.trim().toLowerCase()
+    if (!val || emails.includes(val)) { setEmailInput(''); return }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) return
+    setEmails([...emails, val])
+    setEmailInput('')
+  }
+
+  function removeEmail(email: string) {
+    setEmails(emails.filter((e) => e !== email))
+  }
+
+  function handleEmailKey(e: KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault()
+      addEmail(emailInput)
+    } else if (e.key === 'Backspace' && !emailInput && emails.length) {
+      setEmails(emails.slice(0, -1))
+    }
+  }
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
@@ -54,10 +105,11 @@ export function NotificationsForm({ initial }: Props) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        agent_email:         email.trim() || null,
+        push_alert_mode:     alertMode,
+        alert_threshold:     threshold,
+        briefing_emails:     emails,
         timezone,
         daily_briefing_hour: hour,
-        alert_threshold:     threshold,
       }),
     })
 
@@ -68,37 +120,128 @@ export function NotificationsForm({ initial }: Props) {
       setSaved(true)
       setTimeout(() => setSaved(false), 3000)
     }
-
     setSaving(false)
   }
 
   return (
     <form onSubmit={handleSave} className="space-y-4">
 
-      {/* Daily brief */}
+      {/* Push notifications */}
       <Card>
         <CardContent className="pt-5 space-y-4">
           <div>
-            <p className="text-sm font-medium">Daily brief</p>
+            <p className="text-sm font-semibold">Push notifications</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Alerts sent to your device when prospect activity is detected
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            {ALERT_MODES.map(({ value, icon: Icon, label, description, note }) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setAlertMode(value)}
+                className={cn(
+                  'w-full text-left rounded-lg border px-4 py-3 transition-colors',
+                  alertMode === value
+                    ? 'border-primary bg-primary/5'
+                    : 'border-border hover:border-muted-foreground/40'
+                )}
+              >
+                <div className="flex items-start gap-3">
+                  <div className={cn(
+                    'mt-0.5 rounded-md p-1.5',
+                    alertMode === value ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'
+                  )}>
+                    <Icon className="w-3.5 h-3.5" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium">{label}</p>
+                      {note && (
+                        <Badge variant="outline" className="text-xs py-0 px-1.5">{note}</Badge>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
+                  </div>
+                  <div className={cn(
+                    'mt-1 h-4 w-4 rounded-full border-2 shrink-0 transition-colors',
+                    alertMode === value ? 'border-primary bg-primary' : 'border-muted-foreground/40'
+                  )} />
+                </div>
+              </button>
+            ))}
+          </div>
+
+          {alertMode === 'threshold' && (
+            <div className="flex items-center gap-3 pt-1">
+              <Label htmlFor="threshold" className="text-xs shrink-0">Alert at score</Label>
+              <Input
+                id="threshold"
+                type="number"
+                min={1}
+                max={999}
+                value={threshold}
+                onChange={(e) => setThreshold(Number(e.target.value))}
+                className="w-20 h-8 text-sm"
+              />
+              <p className="text-xs text-muted-foreground">points or above</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Daily email round-up */}
+      <Card>
+        <CardContent className="pt-5 space-y-4">
+          <div>
+            <p className="text-sm font-semibold">Daily email round-up</p>
             <p className="text-xs text-muted-foreground mt-0.5">
               Sent every day with your top prospects and recommended actions
             </p>
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="email">Send to</Label>
-            <Input
-              id="email"
-              type="email"
-              placeholder="you@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
+            <Label className="text-xs">Recipients</Label>
+            <div
+              className="min-h-[2.5rem] flex flex-wrap gap-1.5 rounded-md border border-input bg-background px-3 py-2 cursor-text"
+              onClick={() => inputRef.current?.focus()}
+            >
+              {emails.map((email) => (
+                <span
+                  key={email}
+                  className="inline-flex items-center gap-1 bg-muted rounded px-2 py-0.5 text-xs font-medium"
+                >
+                  {email}
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); removeEmail(email) }}
+                    className="text-muted-foreground hover:text-foreground"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              ))}
+              <input
+                ref={inputRef}
+                type="email"
+                value={emailInput}
+                onChange={(e) => setEmailInput(e.target.value)}
+                onKeyDown={handleEmailKey}
+                onBlur={() => addEmail(emailInput)}
+                placeholder={emails.length === 0 ? 'Add email address…' : ''}
+                className="flex-1 min-w-32 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Press Enter or comma to add. Add team members to copy them in.
+            </p>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label htmlFor="timezone">Timezone</Label>
+              <Label htmlFor="timezone" className="text-xs">Timezone</Label>
               <select
                 id="timezone"
                 value={timezone}
@@ -112,7 +255,7 @@ export function NotificationsForm({ initial }: Props) {
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="hour">Send at</Label>
+              <Label htmlFor="hour" className="text-xs">Send at</Label>
               <select
                 id="hour"
                 value={hour}
@@ -128,39 +271,11 @@ export function NotificationsForm({ initial }: Props) {
         </CardContent>
       </Card>
 
-      {/* Push alerts */}
-      <Card>
-        <CardContent className="pt-5 space-y-4">
-          <div>
-            <p className="text-sm font-medium">Prospect alerts</p>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Push notifications for form submits, return visits, and score milestones
-            </p>
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="threshold">Alert when score reaches</Label>
-            <div className="flex items-center gap-3">
-              <Input
-                id="threshold"
-                type="number"
-                min={1}
-                max={999}
-                value={threshold}
-                onChange={(e) => setThreshold(Number(e.target.value))}
-                className="w-24"
-              />
-              <p className="text-xs text-muted-foreground">points</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
       {error && <p className="text-sm text-destructive">{error}</p>}
 
       <Button type="submit" className="w-full" disabled={saving}>
         {saved
-          ? <span className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4" /> Saved</span>
+          ? <span className="flex items-center justify-center gap-2"><CheckCircle2 className="w-4 h-4" /> Saved</span>
           : saving ? 'Saving…' : 'Save settings'}
       </Button>
     </form>

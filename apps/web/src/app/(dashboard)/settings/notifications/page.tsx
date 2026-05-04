@@ -9,30 +9,37 @@ export default async function NotificationsPage() {
   const admin = createAdminClient()
   const { data: agent } = await admin
     .from('agents')
-    .select('id')
+    .select('id, email')
     .eq('user_id', user!.id)
     .maybeSingle()
 
   const { data: settings } = await admin
     .from('agent_settings')
-    .select('agent_email, timezone, daily_briefing_hour, sms_threshold_score')
+    .select('agent_email, briefing_emails, timezone, daily_briefing_hour, sms_threshold_score, push_alert_mode')
     .eq('agent_id', agent!.id)
     .single()
+
+  // Default briefing recipients: stored list, or fall back to agent email
+  const defaultEmails: string[] =
+    settings?.briefing_emails?.length
+      ? settings.briefing_emails
+      : [agent?.email ?? settings?.agent_email ?? ''].filter(Boolean)
 
   return (
     <div className="p-6 md:p-8 max-w-lg space-y-6">
       <div>
         <h1 className="text-xl font-bold tracking-tight">Alerts & briefing</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Configure your daily brief and prospect alerts
+          Configure push notifications and your daily email round-up
         </p>
       </div>
       <NotificationsForm
         initial={{
-          agent_email:          settings?.agent_email          ?? '',
+          push_alert_mode:     (settings?.push_alert_mode as 'threshold' | 'all' | 'hourly_digest') ?? 'threshold',
+          alert_threshold:      settings?.sms_threshold_score  ?? 50,
+          briefing_emails:      defaultEmails,
           timezone:             settings?.timezone             ?? 'Australia/Sydney',
           daily_briefing_hour:  settings?.daily_briefing_hour  ?? 17,
-          alert_threshold:      settings?.sms_threshold_score  ?? 50,
         }}
       />
     </div>
