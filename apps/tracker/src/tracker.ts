@@ -306,18 +306,22 @@ declare global {
     let fullName: string | undefined
 
     for (const f of fields) {
-      const key = (f.name ?? f.title ?? '').toLowerCase()
+      // Check both name attr/id AND label/title — Elementor uses auto-generated IDs
+      // like form_field_0 so we must also check the human-readable title
+      const keys = [(f.name ?? '').toLowerCase(), (f.title ?? '').toLowerCase()].filter(Boolean)
       const val = (f.value ?? '').trim()
       if (!val) continue
 
-      if (!meta.first_name && (key === 'first_name' || key === 'first-name' || key === 'firstname')) {
+      const matches = (patterns: string[]) => keys.some((k) => patterns.some((p) => k === p))
+      const includes = (substrings: string[]) => keys.some((k) => substrings.some((s) => k.includes(s)))
+
+      if (!meta.first_name && matches(['first_name', 'first-name', 'firstname', 'first name'])) {
         meta.first_name = val
-      } else if (!meta.last_name && (key === 'last_name' || key === 'last-name' || key === 'lastname')) {
+      } else if (!meta.last_name && matches(['last_name', 'last-name', 'lastname', 'last name', 'surname'])) {
         meta.last_name = val
-      } else if (!fullName && (key === 'name' || key === 'full_name' || key === 'fullname' ||
-        key.includes('your name') || key.includes('full name'))) {
+      } else if (!fullName && matches(['name', 'full_name', 'fullname', 'full name', 'your name'])) {
         fullName = val
-      } else if (!meta.phone && (f.type === 'tel' || key.includes('phone') || key.includes('mobile') || key.includes('tel'))) {
+      } else if (!meta.phone && (f.type === 'tel' || includes(['phone', 'mobile', 'tel']))) {
         meta.phone = val
       }
     }

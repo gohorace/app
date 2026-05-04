@@ -58,19 +58,19 @@ export async function POST(request: NextRequest) {
 
   const workspaceId = workspace.id
 
-  // Find the session by anonymous_id
-  const { data: session } = await supabase
+  // Upsert session — creates it if the tracker hasn't flushed yet (race condition)
+  const { data: session, error: sessionErr } = await supabase
     .from('sessions')
+    .upsert(
+      { workspace_id: workspaceId, anonymous_id: anonymousId, last_seen_at: new Date().toISOString() },
+      { onConflict: 'workspace_id,anonymous_id' },
+    )
     .select('id')
-    .eq('workspace_id', workspaceId)
-    .eq('anonymous_id', anonymousId)
-    .maybeSingle()
+    .single()
 
-  if (!session) {
-    // Session not yet created (race condition) — still resolve the contact
-    const matches = await resolveEmail(supabase, workspaceId, email, anonymousId, meta)
-    const firstContactId = matches[0]?.contactId ?? null
-    return NextResponse.json({ ok: true, contactId: firstContactId }, { headers: CORS_HEADERS })
+  if (sessionErr || !session) {
+    console.error('[identity] session upsert error:', sessionErr)
+    return new Response('Internal error', { status: 500, headers: CORS_HEADERS })
   }
 
   // Resolve email → contacts via identity_map
