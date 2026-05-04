@@ -75,7 +75,7 @@ export default async function LeadsPage({
                 <>
                   No contacts yet.{' '}
                   <Link href="/import" className="underline">
-                    Import your Rex CRM export
+                    Import your contacts
                   </Link>{' '}
                   to get started.
                 </>

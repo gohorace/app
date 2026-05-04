@@ -147,7 +147,7 @@ export function OnboardingWizard({ snippetKey, appUrl }: Props) {
           <CardHeader>
             <CardTitle>Import your contacts</CardTitle>
             <CardDescription>
-              Upload a CSV export from Rex or any other CRM. We'll match contacts to website activity automatically.
+              Upload a CSV export from your CRM. We'll match contacts to website activity automatically.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">

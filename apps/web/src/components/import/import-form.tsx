@@ -118,7 +118,7 @@ export function ImportForm() {
             ) : (
               <>
                 <Upload className="w-10 h-10 mx-auto mb-3 text-muted-foreground opacity-50" />
-                <p className="text-sm font-medium">Drop your Rex CSV file here</p>
+                <p className="text-sm font-medium">Drop your CSV file here</p>
                 <p className="text-xs text-muted-foreground mt-1">or click to browse</p>
               </>
             )}

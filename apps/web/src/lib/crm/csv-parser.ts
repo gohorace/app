@@ -1,6 +1,6 @@
 import Papa from 'papaparse'
 
-export interface RexContact {
+export interface CsvContact {
   first_name: string | null
   last_name: string | null
   email: string | null
@@ -8,13 +8,13 @@ export interface RexContact {
   crm_external_id: string | null
 }
 
-// Rex CRM column name variations
-const FIELD_MAP: Record<keyof RexContact, string[]> = {
+// Flexible column name matching — works with exports from any CRM
+const FIELD_MAP: Record<keyof CsvContact, string[]> = {
   first_name:       ['First Name', 'Firstname', 'First', 'Given Name'],
   last_name:        ['Last Name', 'Lastname', 'Surname', 'Family Name'],
   email:            ['Email', 'Email Address', 'Email 1', 'Primary Email'],
   phone:            ['Mobile', 'Mobile Phone', 'Cell', 'Cell Phone', 'Phone', 'Phone Number'],
-  crm_external_id:  ['ID', 'Rex ID', 'Contact ID', 'Id'],
+  crm_external_id:  ['ID', 'Contact ID', 'Id', 'External ID', 'CRM ID'],
 }
 
 function findColumn(headers: string[], candidates: string[]): string | null {
@@ -28,12 +28,12 @@ function findColumn(headers: string[], candidates: string[]): string | null {
 }
 
 export interface ParseResult {
-  contacts: RexContact[]
+  contacts: CsvContact[]
   skipped: number
   errors: string[]
 }
 
-export function parseRexCsv(csvText: string): ParseResult {
+export function parseCsv(csvText: string): ParseResult {
   const result = Papa.parse<Record<string, string>>(csvText, {
     header: true,
     skipEmptyLines: true,
@@ -49,10 +49,10 @@ export function parseRexCsv(csvText: string): ParseResult {
       field,
       findColumn(headers, candidates),
     ]),
-  ) as Record<keyof RexContact, string | null>
+  ) as Record<keyof CsvContact, string | null>
 
   let skipped = 0
-  const contacts: RexContact[] = []
+  const contacts: CsvContact[] = []
 
   for (const row of result.data) {
     const email = colMap.email ? row[colMap.email]?.trim() || null : null

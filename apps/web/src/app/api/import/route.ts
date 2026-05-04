@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { parseRexCsv } from '@/lib/crm/rex-parser'
+import { parseCsv } from '@/lib/crm/csv-parser'
 
 export async function POST(request: NextRequest) {
   // Auth check
@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
   const csvText = await (file as File).text()
 
   // Parse CSV
-  const { contacts, skipped: parseSkipped, errors: parseErrors } = parseRexCsv(csvText)
+  const { contacts, skipped: parseSkipped, errors: parseErrors } = parseCsv(csvText)
 
   if (contacts.length === 0) {
     return NextResponse.json(
@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
     .from('crm_imports')
     .insert({
       agent_id: agentId,
-      source: 'rex',
+      source: 'manual',
       filename,
       row_count: contacts.length + parseSkipped,
       status: 'processing',
@@ -104,7 +104,7 @@ export async function POST(request: NextRequest) {
           first_name: c.first_name,
           last_name: c.last_name,
           phone: c.phone,
-          crm_source: 'rex' as const,
+          crm_source: 'manual' as const,
           crm_external_id: c.crm_external_id,
           identified_at: now,
         })),
@@ -157,7 +157,7 @@ export async function POST(request: NextRequest) {
           first_name: c.first_name,
           last_name: c.last_name,
           phone: c.phone,
-          crm_source: 'rex' as const,
+          crm_source: 'manual' as const,
           crm_external_id: c.crm_external_id,
         })),
       )

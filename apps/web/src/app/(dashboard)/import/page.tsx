@@ -27,16 +27,18 @@ export default async function ImportPage() {
   return (
     <div className="p-8 space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Import CRM</h1>
-        <p className="text-muted-foreground">Upload a Rex CRM CSV export to sync your contacts</p>
+        <h1 className="font-display font-semibold tracking-tight" style={{ fontSize: '26px', color: '#1A1612' }}>
+          Import contacts
+        </h1>
+        <p className="text-sm text-muted-foreground mt-0.5">Upload a CSV to sync your contacts with Horace.</p>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Rex CRM import</CardTitle>
+          <CardTitle className="font-sans text-base font-semibold">CSV import</CardTitle>
           <CardDescription>
-            In Rex, go to <strong>Contacts → Export</strong> and download as CSV. Upload it here —
-            existing contacts are matched by email and updated; new ones are created.
+            Export your contacts as a CSV from any CRM and upload here. Existing contacts are matched
+            by email and updated; new ones are created.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -47,7 +49,7 @@ export default async function ImportPage() {
       {imports && imports.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>Import history</CardTitle>
+            <CardTitle className="font-sans text-base font-semibold">Import history</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="divide-y">
@@ -61,9 +63,9 @@ export default async function ImportPage() {
                   </div>
                   <div className="text-right shrink-0 ml-4">
                     <p className="text-sm tabular-nums">
-                      <span className="text-green-700 font-medium">{imp.created_count ?? 0} new</span>
+                      <span className="font-medium" style={{ color: '#3D5246' }}>{imp.created_count ?? 0} new</span>
                       {' · '}
-                      <span className="text-blue-700">{imp.matched_count ?? 0} updated</span>
+                      <span className="text-muted-foreground">{imp.matched_count ?? 0} updated</span>
                     </p>
                     <p className="text-xs text-muted-foreground">{imp.row_count ?? 0} total rows</p>
                   </div>
