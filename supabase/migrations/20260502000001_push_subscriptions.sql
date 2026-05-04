@@ -32,6 +32,12 @@ ALTER TABLE agent_settings
 ALTER TABLE notification_log
   DROP CONSTRAINT IF EXISTS notification_log_type_check;
 
+-- Migrate existing rows BEFORE applying constraint
+UPDATE notification_log SET type = 'email_daily_brief'     WHERE type = 'email_briefing';
+UPDATE notification_log SET type = 'alert_score_threshold' WHERE type = 'sms_threshold';
+UPDATE notification_log SET type = 'alert_form_submit'     WHERE type = 'sms_form';
+UPDATE notification_log SET type = 'alert_return_visit'    WHERE type = 'sms_return';
+
 ALTER TABLE notification_log
   ADD CONSTRAINT notification_log_type_check
   CHECK (type IN (
@@ -40,6 +46,3 @@ ALTER TABLE notification_log
     'alert_form_submit',
     'alert_return_visit'
   ));
-
--- Migrate existing rows
-UPDATE notification_log SET type = 'email_daily_brief' WHERE type = 'email_briefing';
