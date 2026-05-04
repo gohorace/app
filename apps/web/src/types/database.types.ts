@@ -99,7 +99,7 @@ export type Database = {
         Row: {
           id: string; agent_id: string; email: string | null; phone: string | null
           first_name: string | null; last_name: string | null; score: number
-          crm_source: 'rex' | 'agentbox' | 'manual' | null; crm_external_id: string | null
+          crm_source: 'rex' | 'agentbox' | 'manual' | 'website' | null; crm_external_id: string | null
           identified_at: string | null; last_seen_at: string | null
           unsubscribed_at: string | null
           metadata: Json; created_at: string
@@ -107,7 +107,7 @@ export type Database = {
         Insert: {
           id?: string; agent_id: string; email?: string | null; phone?: string | null
           first_name?: string | null; last_name?: string | null; score?: number
-          crm_source?: 'rex' | 'agentbox' | 'manual' | null; crm_external_id?: string | null
+          crm_source?: 'rex' | 'agentbox' | 'manual' | 'website' | null; crm_external_id?: string | null
           identified_at?: string | null; last_seen_at?: string | null
           unsubscribed_at?: string | null
           metadata?: Json; created_at?: string
@@ -115,7 +115,7 @@ export type Database = {
         Update: {
           id?: string; agent_id?: string; email?: string | null; phone?: string | null
           first_name?: string | null; last_name?: string | null; score?: number
-          crm_source?: 'rex' | 'agentbox' | 'manual' | null; crm_external_id?: string | null
+          crm_source?: 'rex' | 'agentbox' | 'manual' | 'website' | null; crm_external_id?: string | null
           identified_at?: string | null; last_seen_at?: string | null
           unsubscribed_at?: string | null
           metadata?: Json; created_at?: string
