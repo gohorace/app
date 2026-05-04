@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input'
 import Link from 'next/link'
 import { formatDistanceToNow } from 'date-fns'
 import { Search } from 'lucide-react'
+import { ClaudeButton } from '@/components/ui/claude-button'
 
 export default async function LeadsPage({
   searchParams,
@@ -42,12 +43,20 @@ export default async function LeadsPage({
 
   return (
     <div className="p-8 space-y-6">
-      <div className="flex items-start justify-between">
+      <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Leads</h1>
-          <p className="text-muted-foreground">All contacts ranked by engagement score</p>
+          <h1 className="font-display font-semibold tracking-tight" style={{ fontSize: '26px', color: '#1A1612' }}>
+            Contacts
+          </h1>
+          <p className="text-sm text-muted-foreground mt-0.5">Everyone Horace is watching for you.</p>
         </div>
-        <form method="GET" className="relative w-64">
+        <div className="flex items-center gap-3">
+          <ClaudeButton
+            prompt={`I'm a real estate agent. I have ${leads?.length ?? 0} contacts tracked in Horace, my lead intelligence platform. The top contacts by engagement score are: ${(leads ?? []).slice(0, 5).map(l => `${[l.first_name, l.last_name].filter(Boolean).join(' ') || l.email} (score: ${l.score})`).join(', ')}. Who should I focus on and what would you recommend I say to them?`}
+            label="Ask Claude"
+            size="sm"
+          />
+          <form method="GET" className="relative w-64">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
             name="q"
@@ -56,6 +65,7 @@ export default async function LeadsPage({
             className="pl-9"
           />
         </form>
+        </div>
       </div>
 
       <Card>

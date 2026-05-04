@@ -16,6 +16,7 @@ import {
   ArrowDownToLine,
   Repeat,
 } from 'lucide-react'
+import { ClaudeButton } from '@/components/ui/claude-button'
 
 export default async function LeadDetailPage({ params }: { params: { id: string } }) {
   const supabase = await createClient()
@@ -60,21 +61,43 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
 
   const name = [contact.first_name, contact.last_name].filter(Boolean).join(' ') || 'Unknown'
 
+  const recentActivity = events.slice(0, 5).map(e =>
+    `- ${e.event_type.replace(/_/g, ' ')} (${formatDistanceToNow(new Date(e.occurred_at), { addSuffix: true })})`
+  ).join('\n')
+
+  const claudePrompt = [
+    `I'm a real estate agent reviewing a contact in Horace, my lead intelligence platform.`,
+    ``,
+    `Contact: ${name}`,
+    contact.email ? `Email: ${contact.email}` : null,
+    contact.phone ? `Phone: ${contact.phone}` : null,
+    `Engagement score: ${contact.score}${contact.score >= 50 ? ' (high intent)' : contact.score >= 20 ? ' (warm)' : ' (early stage)'}`,
+    contact.last_seen_at ? `Last seen: ${formatDistanceToNow(new Date(contact.last_seen_at), { addSuffix: true })}` : null,
+    recentActivity ? `\nRecent activity:\n${recentActivity}` : null,
+    ``,
+    `Based on this, what should I do next? Should I reach out, and if so, how?`,
+  ].filter(Boolean).join('\n')
+
   return (
     <div className="p-8 space-y-6 max-w-4xl">
-      <div className="flex items-center gap-3">
-        <Link
-          href="/leads"
-          className="text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <ArrowLeft className="w-4 h-4" />
-        </Link>
-        <h1 className="text-2xl font-bold tracking-tight">{name}</h1>
-        {contact.crm_source && (
-          <Badge variant="outline" className="capitalize">
-            {contact.crm_source}
-          </Badge>
-        )}
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <Link
+            href="/leads"
+            className="text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </Link>
+          <h1 className="font-display font-semibold tracking-tight" style={{ fontSize: '26px', color: '#1A1612' }}>
+            {name}
+          </h1>
+          {contact.score >= 50 && (
+            <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: 'rgba(196,98,45,0.1)', color: '#C4622D' }}>
+              High intent
+            </span>
+          )}
+        </div>
+        <ClaudeButton prompt={claudePrompt} />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

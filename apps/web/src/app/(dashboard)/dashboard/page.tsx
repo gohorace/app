@@ -1,8 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import { Users, TrendingUp, Eye, Bell } from 'lucide-react'
 import Link from 'next/link'
+import { ClaudeButton } from '@/components/ui/claude-button'
 
 export default async function DashboardPage() {
   const supabase = await createClient()
@@ -73,11 +73,17 @@ export default async function DashboardPage() {
 
   return (
     <div className="p-8 space-y-8 max-w-4xl">
-      <div>
-        <h1 className="font-display font-semibold tracking-tight" style={{ fontSize: '26px', color: '#1A1612' }}>
-          Signals
-        </h1>
-        <p className="text-sm text-muted-foreground mt-0.5">What Horace picked up this week.</p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="font-display font-semibold tracking-tight" style={{ fontSize: '26px', color: '#1A1612' }}>
+            Signals
+          </h1>
+          <p className="text-sm text-muted-foreground mt-0.5">What Horace picked up this week.</p>
+        </div>
+        <ClaudeButton
+          prompt={`I'm a real estate agent using Horace, a lead intelligence platform. I have ${totalContacts ?? 0} contacts being tracked, ${identifiedContacts ?? 0} identified from website visits, and ${recentEvents ?? 0} website events in the last 24 hours. Can you help me understand what I should focus on today and what outreach I should prioritise?`}
+          label="Review with Claude"
+        />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
