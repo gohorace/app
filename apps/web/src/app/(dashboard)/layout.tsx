@@ -37,9 +37,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const workspaceName = workspace?.name ?? 'My Agency'
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex h-screen overflow-hidden bg-background">
       <Sidebar orgName={workspaceName} />
-      <main className="flex-1 overflow-y-auto">{children}</main>
+      <main className="flex-1 overflow-y-auto p-0">{children}</main>
     </div>
   )
 }

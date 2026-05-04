@@ -9,7 +9,23 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        display: ['var(--font-display)', 'Playfair Display', 'Georgia', 'serif'],
+        sans:    ['var(--font-body)',    'DM Sans', 'Helvetica Neue', 'sans-serif'],
+        mono:    ['var(--font-mono)',    'DM Mono', 'Courier New', 'monospace'],
+      },
       colors: {
+        /* Horace raw palette — use these for one-offs */
+        horace: {
+          ink:        '#1A1612',
+          charcoal:   '#2E2823',
+          stone:      '#8C7B6B',
+          parchment:  '#F5F0E8',
+          cream:      '#FAF7F2',
+          terracotta: '#C4622D',
+          ember:      '#E8956D',
+          moss:       '#3D5246',
+        },
         border: 'hsl(var(--border))',
         input: 'hsl(var(--input))',
         ring: 'hsl(var(--ring))',

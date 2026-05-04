@@ -4,66 +4,131 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 224 71.4% 4.1%;
-    --card: 0 0% 100%;
-    --card-foreground: 224 71.4% 4.1%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 224 71.4% 4.1%;
-    --primary: 220.9 39.3% 11%;
-    --primary-foreground: 210 20% 98%;
-    --secondary: 220 14.3% 95.9%;
-    --secondary-foreground: 220.9 39.3% 11%;
-    --muted: 220 14.3% 95.9%;
-    --muted-foreground: 220 8.9% 46.1%;
-    --accent: 220 14.3% 95.9%;
-    --accent-foreground: 220.9 39.3% 11%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 20% 98%;
-    --border: 220 13% 91%;
-    --input: 220 13% 91%;
-    --ring: 224 71.4% 4.1%;
-    --chart-1: 12 76% 61%;
-    --chart-2: 173 58% 39%;
-    --chart-3: 197 37% 24%;
-    --chart-4: 43 74% 66%;
-    --chart-5: 27 87% 67%;
-    --radius: 0.5rem;
+    /* ── Horace Design System — Color tokens mapped to shadcn HSL vars ── */
+
+    /* Background: Parchment #F5F0E8 */
+    --background: 37 39% 94%;
+    --foreground: 30 18% 9%;           /* Ink #1A1612 */
+
+    /* Cards: Cream #FAF7F2 */
+    --card: 38 45% 97%;
+    --card-foreground: 30 18% 9%;
+
+    --popover: 38 45% 97%;
+    --popover-foreground: 30 18% 9%;
+
+    /* Primary: Ink (dark button bg) */
+    --primary: 30 18% 9%;
+    --primary-foreground: 38 45% 97%;
+
+    /* Secondary: light stone-tinted surface */
+    --secondary: 30 12% 90%;
+    --secondary-foreground: 30 18% 9%;
+
+    /* Muted: stone-tinted */
+    --muted: 30 12% 90%;
+    --muted-foreground: 29 13% 48%;    /* Stone #8C7B6B */
+
+    /* Accent: hover bg (stone at 8% on parchment) */
+    --accent: 30 10% 92%;
+    --accent-foreground: 30 18% 9%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 38 45% 97%;
+
+    /* Border: stone at ~20% on parchment ≈ #DDD6CC */
+    --border: 30 14% 83%;
+    --input: 30 14% 83%;
+
+    /* Ring/focus: Terracotta #C4622D */
+    --ring: 21 63% 47%;
+
+    --radius: 0.5rem;   /* 8px — --radius-md */
+
+    /* ── Horace raw palette (for inline use) ── */
+    --color-ink:        #1A1612;
+    --color-charcoal:   #2E2823;
+    --color-stone:      #8C7B6B;
+    --color-parchment:  #F5F0E8;
+    --color-cream:      #FAF7F2;
+    --color-terracotta: #C4622D;
+    --color-ember:      #E8956D;
+    --color-moss:       #3D5246;
+
+    /* ── Shadows (warm-tinted) ── */
+    --shadow-sm:  0 1px 3px rgba(26,22,18,0.08), 0 1px 2px rgba(26,22,18,0.04);
+    --shadow-md:  0 4px 12px rgba(26,22,18,0.12), 0 2px 4px rgba(26,22,18,0.06);
+    --shadow-lg:  0 8px 32px rgba(26,22,18,0.16), 0 4px 8px rgba(26,22,18,0.08);
+
+    /* ── Animation ── */
+    --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+    --duration-fast: 180ms;
+    --duration-base: 280ms;
   }
 
-  .dark {
-    --background: 224 71.4% 4.1%;
-    --foreground: 210 20% 98%;
-    --card: 224 71.4% 4.1%;
-    --card-foreground: 210 20% 98%;
-    --popover: 224 71.4% 4.1%;
-    --popover-foreground: 210 20% 98%;
-    --primary: 210 20% 98%;
-    --primary-foreground: 220.9 39.3% 11%;
-    --secondary: 215 27.9% 16.9%;
-    --secondary-foreground: 210 20% 98%;
-    --muted: 215 27.9% 16.9%;
-    --muted-foreground: 217.9 10.6% 64.9%;
-    --accent: 215 27.9% 16.9%;
-    --accent-foreground: 210 20% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 20% 98%;
-    --border: 215 27.9% 16.9%;
-    --input: 215 27.9% 16.9%;
-    --ring: 216 12.2% 83.9%;
-    --chart-1: 220 70% 50%;
-    --chart-2: 160 60% 45%;
-    --chart-3: 30 80% 55%;
-    --chart-4: 280 65% 60%;
-    --chart-5: 340 75% 55%;
-  }
+  /* No dark mode override — Horace is warm/light-first. Dark surfaces are
+     handled component-by-component (e.g. sidebar, onboarding). */
 }
 
 @layer base {
   * {
     @apply border-border;
   }
+
   body {
     @apply bg-background text-foreground;
+    font-family: var(--font-body, 'DM Sans', 'Helvetica Neue', sans-serif);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
   }
+
+  h1, h2 {
+    font-family: var(--font-display, 'Playfair Display', Georgia, serif);
+    letter-spacing: -0.02em;
+  }
+
+  h3, h4, h5, h6 {
+    font-family: var(--font-body, 'DM Sans', 'Helvetica Neue', sans-serif);
+  }
+
+  code, pre, .font-mono {
+    font-family: var(--font-mono, 'DM Mono', 'Courier New', monospace);
+  }
+}
+
+/* ── Horace utility classes ── */
+@layer utilities {
+  .font-display {
+    font-family: var(--font-display, 'Playfair Display', Georgia, serif);
+  }
+
+  .horace-nudge {
+    font-family: var(--font-display, 'Playfair Display', Georgia, serif);
+    font-style: italic;
+    font-size: 1.125rem;
+    line-height: 1.65;
+    color: var(--color-ink);
+  }
+
+  .horace-signature {
+    font-family: var(--font-body, 'DM Sans', sans-serif);
+    font-size: 0.625rem;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(140, 123, 107, 0.45);
+  }
+
+  .horace-label {
+    font-size: 0.5625rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--color-stone);
+  }
+
+  .shadow-horace-sm { box-shadow: var(--shadow-sm); }
+  .shadow-horace-md { box-shadow: var(--shadow-md); }
+  .shadow-horace-lg { box-shadow: var(--shadow-lg); }
 }
