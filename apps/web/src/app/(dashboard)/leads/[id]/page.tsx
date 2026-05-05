@@ -12,6 +12,7 @@ import {
   RotateCcw,
   Globe,
   ExternalLink,
+  BookOpen,
 } from 'lucide-react'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -70,6 +71,15 @@ function eventLabel(type: string, props: Record<string, unknown>): string {
       const title = props.title
       return title ? `Read "${title}"` : 'Visited your website'
     }
+    case 'scroll_depth': {
+      const pct = typeof props.pct === 'number' ? props.pct : null
+      const title = typeof props.title === 'string' ? props.title : null
+      const consumption = pct === null ? 'Read a page in depth'
+        : pct >= 75 ? 'Read this page in depth'
+        : pct >= 40 ? 'Read through a page'
+        : 'Skimmed a page'
+      return title ? `${consumption} — "${title}"` : consumption
+    }
     default:
       return type.replace(/_/g, ' ')
   }
@@ -82,14 +92,13 @@ function scoreReason(reason: string): string {
     case 'property_view':  return 'Viewed a listing'
     case 'form_submit':    return 'Submitted an enquiry'
     case 'return_visit':   return 'Came back to the site'
-    case 'scroll_depth':   return 'Read content in depth'
+    case 'scroll_depth':   return 'Read a page in depth'
     default:               return reason.replace(/_/g, ' ')
   }
 }
 
-/** Strip scroll_depth — consolidate it into nearby page views conceptually */
 function shouldShowEvent(type: string): boolean {
-  return type !== 'scroll_depth' && type !== 'campaign_click'
+  return type !== 'campaign_click'
 }
 
 /** Get the URL to link from an event, if any */
@@ -399,10 +408,11 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
 function TimelineIcon({ type }: { type: string }) {
   const style = { width: '13px', height: '13px' }
   switch (type) {
-    case 'property_view': return <Home      style={{ ...style, color: '#8C7B6B' }} />
-    case 'form_submit':   return <FileText  style={{ ...style, color: '#C4622D' }} />
-    case 'return_visit':  return <RotateCcw style={{ ...style, color: '#3D5246' }} />
+    case 'property_view':  return <Home     style={{ ...style, color: '#8C7B6B' }} />
+    case 'form_submit':    return <FileText style={{ ...style, color: '#C4622D' }} />
+    case 'return_visit':   return <RotateCcw style={{ ...style, color: '#3D5246' }} />
+    case 'scroll_depth':   return <BookOpen style={{ ...style, color: '#8C7B6B' }} />
     case 'page_view':
-    default:              return <Globe     style={{ ...style, color: '#8C7B6B' }} />
+    default:               return <Globe   style={{ ...style, color: '#8C7B6B' }} />
   }
 }
