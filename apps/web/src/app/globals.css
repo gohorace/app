@@ -131,4 +131,14 @@
   .shadow-horace-sm { box-shadow: var(--shadow-sm); }
   .shadow-horace-md { box-shadow: var(--shadow-md); }
   .shadow-horace-lg { box-shadow: var(--shadow-lg); }
+
+  /* Signal card hover */
+  .signal-card:hover {
+    box-shadow: 0 4px 12px rgba(26,22,18,0.11) !important;
+  }
+
+  /* Contact row hover */
+  .contact-row:hover {
+    background: rgba(140,123,107,0.05) !important;
+  }
 }

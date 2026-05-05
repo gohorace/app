@@ -29,6 +29,12 @@ export const metadata: Metadata = {
   title: 'Horace',
   description: 'Helping real estate agents win their market',
   manifest: '/manifest.json',
+  icons: {
+    icon: [
+      { url: '/favicon.svg', type: 'image/svg+xml' },
+    ],
+    apple: '/icon-192.png',
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
