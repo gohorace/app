@@ -54,8 +54,11 @@ export async function removePushSubscription(): Promise<void> {
 }
 
 function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
-  const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
-  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
+  // Trim whitespace and strip any characters not valid in base64url
+  // (guards against stray quotes, newlines, or encoding artifacts in env vars)
+  const cleaned = base64String.trim().replace(/[^A-Za-z0-9\-_]/g, '')
+  const padding = '='.repeat((4 - (cleaned.length % 4)) % 4)
+  const base64 = (cleaned + padding).replace(/-/g, '+').replace(/_/g, '/')
   const rawData = atob(base64)
   return new Uint8Array([...rawData].map((c) => c.charCodeAt(0)))
 }
