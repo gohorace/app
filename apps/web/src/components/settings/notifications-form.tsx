@@ -6,7 +6,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { CheckCircle2, X, Bell, Users, Clock, Loader2, AlertCircle, Send, Smartphone } from 'lucide-react'
+import { CheckCircle2, X, Bell, Users, Clock, Loader2, AlertCircle, Send, Smartphone, BellPlus } from 'lucide-react'
+import { requestPushPermission, savePushSubscription } from '@/components/push-manager'
 import { cn } from '@/lib/utils'
 
 type AlertMode = 'threshold' | 'all' | 'hourly_digest'
@@ -59,12 +60,14 @@ interface DiagnosticResult {
 }
 
 function PushStatusCard() {
-  const [diag, setDiag]         = useState<DiagnosticResult | null>(null)
-  const [diagError, setDiagError] = useState<string | null>(null)
-  const [testing, setTesting]   = useState(false)
+  const [diag, setDiag]             = useState<DiagnosticResult | null>(null)
+  const [diagError, setDiagError]   = useState<string | null>(null)
+  const [testing, setTesting]       = useState(false)
   const [testResult, setTestResult] = useState<{ ok?: boolean; sent?: number; error?: string } | null>(null)
+  const [enabling, setEnabling]     = useState(false)
+  const [enableResult, setEnableResult] = useState<{ ok?: boolean; error?: string } | null>(null)
 
-  useEffect(() => {
+  async function loadDiag() {
     fetch('/api/push/test')
       .then((r) => r.json())
       .then((d) => {
@@ -72,7 +75,9 @@ function PushStatusCard() {
         else setDiag(d)
       })
       .catch(() => setDiagError('Could not reach diagnostic endpoint'))
-  }, [])
+  }
+
+  useEffect(() => { loadDiag() }, [])
 
   async function sendTest() {
     setTesting(true)
@@ -85,6 +90,26 @@ function PushStatusCard() {
       setTestResult({ error: 'Request failed' })
     }
     setTesting(false)
+  }
+
+  async function enablePush() {
+    setEnabling(true)
+    setEnableResult(null)
+    try {
+      const sub = await requestPushPermission()
+      if (!sub) {
+        setEnableResult({ error: 'Permission denied or browser does not support push notifications' })
+        setEnabling(false)
+        return
+      }
+      await savePushSubscription(sub)
+      setEnableResult({ ok: true })
+      // Refresh diagnostic
+      await loadDiag()
+    } catch (err) {
+      setEnableResult({ error: String(err) })
+    }
+    setEnabling(false)
   }
 
   return (
@@ -145,6 +170,29 @@ function PushStatusCard() {
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <Loader2 className="w-3 h-3 animate-spin" />
             Checking status…
+          </div>
+        )}
+
+        {/* Enable push button — shown when no subscription exists */}
+        {diag && diag.subscriptionCount === 0 && (
+          <div className="space-y-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={enablePush}
+              disabled={enabling}
+              className="w-full gap-1.5 text-xs"
+            >
+              {enabling
+                ? <><Loader2 className="w-3 h-3 animate-spin" /> Enabling…</>
+                : <><BellPlus className="w-3 h-3" /> Enable push notifications on this device</>}
+            </Button>
+            {enableResult && (
+              <p className={cn('text-xs', enableResult.ok ? 'text-green-700' : 'text-destructive')}>
+                {enableResult.ok ? '✓ This device is now subscribed.' : `✗ ${enableResult.error}`}
+              </p>
+            )}
           </div>
         )}
 
