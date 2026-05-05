@@ -22,11 +22,13 @@ export default async function SettingsPage() {
     : { data: null }
 
   return (
-    <ProfileSettings
-      firstName={agent?.first_name ?? null}
-      lastName={agent?.last_name ?? null}
-      email={user?.email ?? null}
-      workspaceName={workspace?.name ?? 'My Agency'}
-    />
+    <div className="flex-1 overflow-y-auto pb-20 md:pb-0">
+      <ProfileSettings
+        firstName={agent?.first_name ?? null}
+        lastName={agent?.last_name ?? null}
+        email={user?.email ?? null}
+        workspaceName={workspace?.name ?? 'My Agency'}
+      />
+    </div>
   )
 }

@@ -130,6 +130,7 @@ export default async function DashboardPage({
   const topContactName = signals.find(s => s.intent === 'high')?.first_name ?? null
 
   return (
+    <div className="flex-1 overflow-y-auto pb-20 md:pb-0">
     <div className="p-4 md:p-8 space-y-4 md:space-y-5 max-w-3xl">
       {/* Daily summary card — mobile only */}
       <div className="md:hidden">
@@ -182,6 +183,7 @@ export default async function DashboardPage({
           ))}
         </div>
       )}
+    </div>
     </div>
   )
 }

@@ -146,4 +146,25 @@
   .settings-nav-row:hover {
     background: rgba(140,123,107,0.06) !important;
   }
+
+  /* Contacts grid row hover */
+  .grid-row:hover {
+    background: rgba(140,123,107,0.07) !important;
+  }
+
+  /* Drawer toolbar button hover */
+  .dt-btn:hover {
+    background: rgba(140,123,107,0.1) !important;
+  }
+
+  /* Editable field pencil reveal on hover */
+  .editable-field-btn:hover .field-pencil {
+    opacity: 1 !important;
+  }
+
+  /* Contacts search focus ring */
+  .contacts-search:focus-within {
+    background: #FAF7F2 !important;
+    border-color: rgba(140,123,107,0.3) !important;
+  }
 }

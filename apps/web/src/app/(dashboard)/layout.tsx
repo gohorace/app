@@ -48,11 +48,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
         />
       </div>
 
-      {/* Main content — bottom padding on mobile to clear tab bar */}
-      <main className="flex-1 overflow-y-auto p-0 pb-[env(safe-area-inset-bottom)] md:pb-0">
-        <div className="pb-20 md:pb-0">
-          {children}
-        </div>
+      {/* Main content — overflow hidden here; each page manages its own scroll */}
+      <main className="flex-1 overflow-hidden flex flex-col h-full">
+        {children}
       </main>
 
       {/* Mobile bottom tab bar — hidden on desktop */}

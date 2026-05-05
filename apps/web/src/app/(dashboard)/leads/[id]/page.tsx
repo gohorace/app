@@ -14,6 +14,7 @@ import {
   ExternalLink,
   BookOpen,
 } from 'lucide-react'
+import { PropertyAddress } from '@/components/contacts/property-address'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -226,6 +227,7 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
   const intent = getIntent(contact.score)
 
   return (
+    <div className="flex-1 overflow-y-auto pb-20 md:pb-0">
     <div style={{ padding: '24px 28px', maxWidth: '780px' }}>
 
       {/* Back */}
@@ -265,6 +267,9 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
           <p style={{ fontSize: '13px', color: '#8C7B6B', margin: '2px 0 0' }}>
             {INTENT_NUDGE[intent]}
           </p>
+          <div style={{ marginTop: '6px' }}>
+            <PropertyAddress contactId={contact.id} initial={contact.property_address ?? null} />
+          </div>
         </div>
       </div>
 
@@ -454,6 +459,7 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
           )}
         </div>
       </div>
+    </div>
     </div>
   )
 }
