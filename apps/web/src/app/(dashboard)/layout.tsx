@@ -41,7 +41,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
     <div className="flex h-screen overflow-hidden bg-background">
       {/* Desktop sidebar — hidden on mobile */}
       <div className="hidden md:flex">
-        <Sidebar orgName={workspaceName} />
+        <Sidebar
+          orgName={workspaceName}
+          agentFirstName={agent.first_name}
+          agentLastName={agent.last_name}
+        />
       </div>
 
       {/* Main content — bottom padding on mobile to clear tab bar */}
