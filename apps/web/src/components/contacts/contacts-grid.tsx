@@ -1,9 +1,17 @@
 'use client'
 
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { formatDistanceToNow } from 'date-fns'
 import { Search } from 'lucide-react'
 import { ContactDrawer } from './contact-drawer'
+import { createClient } from '@/lib/supabase/client'
+
+const ONLINE_MS = 5 * 60 * 1000 // 5 minutes
+
+function isRecentlySeen(ts: string | null): boolean {
+  if (!ts) return false
+  return Date.now() - new Date(ts).getTime() < ONLINE_MS
+}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -73,8 +81,9 @@ function lastPageLabel(eventType: string | null, title: string | null): string {
 // ── ContactsGrid ──────────────────────────────────────────────────────────────
 
 interface Props {
-  contacts:    ContactRow[]
+  contacts:   ContactRow[]
   initialQ?:  string
+  agentId:    string
 }
 
 // Flex proportions — columns scale to fill available width.
@@ -95,9 +104,57 @@ const COL_MIN: Partial<Record<keyof typeof COL_FLEX, string>> = {
   lastSeen: '70px',
 }
 
-export function ContactsGrid({ contacts, initialQ = '' }: Props) {
+export function ContactsGrid({ contacts, initialQ = '', agentId }: Props) {
   const [search,     setSearch]     = useState(initialQ)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [onlineIds,  setOnlineIds]  = useState<Set<string>>(() => {
+    const safe = Array.isArray(contacts) ? contacts : []
+    return new Set(safe.filter(c => isRecentlySeen(c.last_seen_at)).map(c => c.id))
+  })
+  const latestSeenRef = useRef<Map<string, string>>(new Map(
+    (Array.isArray(contacts) ? contacts : []).map(c => [c.id, c.last_seen_at ?? ''])
+  ))
+
+  // Supabase Realtime — watch for last_seen_at updates on this agent's contacts
+  useEffect(() => {
+    const supabase = createClient()
+    const channel = supabase
+      .channel('contacts-online')
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'contacts', filter: `agent_id=eq.${agentId}` },
+        (payload) => {
+          const row = payload.new as { id: string; last_seen_at: string | null }
+          latestSeenRef.current.set(row.id, row.last_seen_at ?? '')
+          setOnlineIds(prev => {
+            const next = new Set(prev)
+            if (isRecentlySeen(row.last_seen_at)) {
+              next.add(row.id)
+            } else {
+              next.delete(row.id)
+            }
+            return next
+          })
+        }
+      )
+      .subscribe()
+
+    // Tick every 60s to expire stale online statuses
+    const interval = setInterval(() => {
+      setOnlineIds(() => {
+        const next = new Set<string>()
+        for (const [id, ts] of latestSeenRef.current) {
+          if (isRecentlySeen(ts)) next.add(id)
+        }
+        return next
+      })
+    }, 60_000)
+
+    return () => {
+      supabase.removeChannel(channel)
+      clearInterval(interval)
+    }
+  }, [agentId])
 
   const safeContacts = Array.isArray(contacts) ? contacts : []
 
@@ -234,6 +291,7 @@ export function ContactsGrid({ contacts, initialQ = '' }: Props) {
               const initials  = ((contact.first_name?.[0] ?? '') + (contact.last_name?.[0] ?? '')).toUpperCase() || (contact.email?.[0]?.toUpperCase() ?? '?')
               const selected  = contact.id === selectedId
               const isEven    = idx % 2 === 0
+              const isOnline  = onlineIds.has(contact.id)
 
               return (
                 <div
@@ -256,13 +314,24 @@ export function ContactsGrid({ contacts, initialQ = '' }: Props) {
                 >
                   {/* Name */}
                   <div style={{ flex: COL_FLEX.name, minWidth: COL_MIN.name, display: 'flex', alignItems: 'center', gap: '9px', paddingRight: '12px', overflow: 'hidden' }}>
-                    <div style={{
-                      width: '26px', height: '26px', borderRadius: '50%', flexShrink: 0,
-                      background: INTENT_BG[intent], color: INTENT_FG[intent],
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: '10px', fontWeight: 700,
-                    }}>
-                      {initials.slice(0, 2)}
+                    <div style={{ position: 'relative', flexShrink: 0 }}>
+                      <div style={{
+                        width: '26px', height: '26px', borderRadius: '50%',
+                        background: INTENT_BG[intent], color: INTENT_FG[intent],
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: '10px', fontWeight: 700,
+                      }}>
+                        {initials.slice(0, 2)}
+                      </div>
+                      {isOnline && (
+                        <span style={{
+                          position: 'absolute', bottom: '0px', right: '0px',
+                          width: '8px', height: '8px', borderRadius: '50%',
+                          background: '#3DA361',
+                          border: '1.5px solid #FAF7F2',
+                          animation: 'online-pulse 2s ease-in-out infinite',
+                        }} />
+                      )}
                     </div>
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontSize: '13px', fontWeight: 600, color: '#1A1612', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -348,6 +417,7 @@ export function ContactsGrid({ contacts, initialQ = '' }: Props) {
             key={selectedContact.id}
             contactId={selectedContact.id}
             preview={selectedContact}
+            isOnline={onlineIds.has(selectedContact.id)}
             onClose={() => setSelectedId(null)}
             onPrev={handlePrev}
             onNext={handleNext}

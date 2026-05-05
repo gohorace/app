@@ -238,6 +238,7 @@ export interface DrawerContact {
 interface Props {
   contactId:  string
   preview:    DrawerContact   // data we already have from the list
+  isOnline?:  boolean
   onClose:    () => void
   onPrev?:    () => void
   onNext?:    () => void
@@ -251,7 +252,7 @@ type DetailData = {
   scoreHistory: { id: string; delta: number; reason: string; score_after: number; occurred_at: string }[]
 }
 
-export function ContactDrawer({ contactId, preview, onClose, onPrev, onNext, hasPrev, hasNext }: Props) {
+export function ContactDrawer({ contactId, preview, isOnline = false, onClose, onPrev, onNext, hasPrev, hasNext }: Props) {
   const [detail, setDetail] = useState<DetailData | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -359,6 +360,21 @@ export function ContactDrawer({ contactId, preview, onClose, onPrev, onNext, has
                     <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: INTENT_DOT[intent], display: 'inline-block' }} />
                     {INTENT_LABEL[intent]}
                   </span>
+                  {isOnline && (
+                    <span style={{
+                      display: 'inline-flex', alignItems: 'center', gap: '5px',
+                      padding: '2px 8px', borderRadius: '4px',
+                      background: 'rgba(61,163,97,0.1)', color: '#2D8A50',
+                      fontSize: '11px', fontWeight: 600,
+                    }}>
+                      <span style={{
+                        width: '5px', height: '5px', borderRadius: '50%',
+                        background: '#3DA361', display: 'inline-block',
+                        animation: 'online-pulse 2s ease-in-out infinite',
+                      }} />
+                      Online now
+                    </span>
+                  )}
                   {contact.suburb && (
                     <span style={{ fontSize: '12px', color: '#8C7B6B' }}>
                       {contact.suburb}

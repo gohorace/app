@@ -58,7 +58,7 @@ export default async function LeadsPage({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-      <ContactsGrid contacts={contacts} initialQ={q} />
+      <ContactsGrid contacts={contacts} initialQ={q} agentId={agentId} />
     </div>
   )
 }
