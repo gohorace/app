@@ -742,6 +742,12 @@
 
   .notifBubble { display: none; }
 
+  /* Hero buttons — reduce padding so text stays on one line */
+  .btnLg {
+    padding: 12px 18px;
+    font-size: 14px;
+  }
+
   /* Footer — stack to two rows */
   .footerInner {
     flex-direction: column;
