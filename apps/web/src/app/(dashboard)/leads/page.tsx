@@ -27,7 +27,7 @@ export default async function LeadsPage({
   const { data: richData, error: richErr } = await admin
     .rpc('get_contacts_list', { p_agent_id: agentId })
 
-  if (!richErr && richData) {
+  if (!richErr && Array.isArray(richData) && richData.length >= 0) {
     contacts = richData as ContactRow[]
   } else {
     // Fallback: basic contacts query without session stats

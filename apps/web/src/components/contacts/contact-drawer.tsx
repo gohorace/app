@@ -250,12 +250,18 @@ export function ContactDrawer({ contactId, preview, onClose, onPrev, onNext, has
     setDetail(null)
     fetch(`/api/contacts/${contactId}`)
       .then(r => r.json())
-      .then(d => setDetail(d))
+      .then(d => {
+        // Only set detail if we got a valid response shape
+        if (d && d.contact && Array.isArray(d.events)) {
+          setDetail(d)
+        }
+      })
+      .catch(() => { /* silently fall back to preview data */ })
       .finally(() => setLoading(false))
   }, [contactId])
 
   const contact: DrawerContact = detail?.contact ?? preview
-  const events  = detail ? mergeScrollDepth(detail.events) : []
+  const events  = Array.isArray(detail?.events) ? mergeScrollDepth(detail!.events) : []
 
   const name    = [contact.first_name, contact.last_name].filter(Boolean).join(' ') || '—'
   const initials = ((contact.first_name?.[0] ?? '') + (contact.last_name?.[0] ?? '')).toUpperCase() || (contact.email?.[0]?.toUpperCase() ?? '?')

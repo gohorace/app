@@ -91,14 +91,16 @@ export function ContactsGrid({ contacts, initialQ = '' }: Props) {
   const [search,     setSearch]     = useState(initialQ)
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
+  const safeContacts = Array.isArray(contacts) ? contacts : []
+
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim()
-    if (!q) return contacts
-    return contacts.filter(c =>
+    if (!q) return safeContacts
+    return safeContacts.filter(c =>
       [c.first_name, c.last_name, c.email, c.suburb, c.property_address]
         .join(' ').toLowerCase().includes(q)
     )
-  }, [contacts, search])
+  }, [safeContacts, search])
 
   const selectedIdx  = selectedId ? filtered.findIndex(c => c.id === selectedId) : -1
   const selectedContact = selectedIdx >= 0 ? filtered[selectedIdx] : null
@@ -203,11 +205,11 @@ export function ContactsGrid({ contacts, initialQ = '' }: Props) {
                 <p style={{ fontSize: '14px', fontWeight: 500, color: '#1A1612', marginBottom: '6px' }}>
                   {search
                     ? `No contacts match "${search}"`
-                    : contacts.length === 0
+                    : safeContacts.length === 0
                       ? "Horace hasn't met anyone yet."
                       : 'No contacts found.'}
                 </p>
-                {!search && contacts.length === 0 && (
+                {!search && safeContacts.length === 0 && (
                   <p style={{ fontSize: '13px', color: '#8C7B6B' }}>
                     Import your contacts to get started.
                   </p>
@@ -355,7 +357,7 @@ export function ContactsGrid({ contacts, initialQ = '' }: Props) {
         <span style={{ fontSize: '11px', color: '#8C7B6B' }}>
           {search
             ? `${filtered.length} result${filtered.length !== 1 ? 's' : ''}`
-            : `${contacts.length} contact${contacts.length !== 1 ? 's' : ''}`}
+            : `${safeContacts.length} contact${safeContacts.length !== 1 ? 's' : ''}`}
         </span>
       </div>
     </div>
