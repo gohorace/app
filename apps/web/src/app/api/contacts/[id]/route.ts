@@ -22,7 +22,7 @@ export async function GET(
   const [{ data: contact }, { data: events }, { data: scoreHistory }] = await Promise.all([
     admin
       .from('contacts')
-      .select('id, first_name, last_name, email, phone, score, last_seen_at, property_address, suburb, crm_source, notes')
+      .select('id, first_name, last_name, email, phone, score, last_seen_at, property_address, suburb, crm_source')
       .eq('id', params.id)
       .eq('agent_id', agent.id)
       .maybeSingle(),
@@ -61,7 +61,7 @@ export async function PATCH(
   const body = await req.json()
 
   // Allowlist of patchable fields
-  const allowed = ['property_address', 'suburb', 'first_name', 'last_name', 'email', 'phone', 'notes'] as const
+  const allowed = ['property_address', 'suburb', 'first_name', 'last_name', 'email', 'phone'] as const
   const update: Record<string, unknown> = {}
   for (const key of allowed) {
     if (key in body) update[key] = body[key]
