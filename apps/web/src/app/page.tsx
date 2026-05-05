@@ -298,7 +298,7 @@ export default function MarketingHomePage() {
             <p className={styles.ctaSig}>Seize the moment — Horace</p>
           </div>
           <div className={styles.ctaCharacter}>
-            <Image src="/horace-charcoal.png" alt="Horace" fill style={{ objectFit: 'cover' }} />
+            <Image src="/horace-mark-512.png" alt="Horace" fill style={{ objectFit: 'contain' }} />
           </div>
         </div>
       </section>
