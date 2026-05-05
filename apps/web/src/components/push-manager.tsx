@@ -38,11 +38,15 @@ export async function requestPushPermission(): Promise<PushSubscription | null> 
 }
 
 export async function savePushSubscription(sub: PushSubscription): Promise<void> {
-  await fetch('/api/push/subscribe', {
+  const res = await fetch('/api/push/subscribe', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(sub.toJSON()),
   })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error(data.error ?? `Subscribe failed (${res.status})`)
+  }
 }
 
 export async function removePushSubscription(): Promise<void> {

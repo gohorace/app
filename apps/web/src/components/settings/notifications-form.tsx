@@ -88,8 +88,8 @@ function PushStatusCard() {
         return
       }
       await savePushSubscription(sub)
-      setEnableResult({ ok: true })
       await loadDiag()
+      setEnableResult({ ok: true })
     } catch (err) {
       setEnableResult({ error: String(err) })
     }
