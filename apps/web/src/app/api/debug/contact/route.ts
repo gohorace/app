@@ -59,6 +59,14 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  // Check if session anonymous_ids are already mapped to OTHER contacts (explains 23505 silent failure)
+  const sessionAnonIds = (recentSessions ?? []).map(s => s.anonymous_id)
+  const { data: conflictingMappings } = sessionAnonIds.length
+    ? await admin.from('identity_map')
+        .select('anonymous_id, contact_id, agent_id')
+        .in('anonymous_id', sessionAnonIds)
+    : { data: [] }
+
   // Score history
   const { data: scoreHistory } = await admin
     .from('score_history')
@@ -80,6 +88,7 @@ export async function GET(request: NextRequest) {
     identityMap,
     imReadError,
     recentSessions,
+    conflictingMappings,
     realInsertTest,
     scoreHistory,
     events,
