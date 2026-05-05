@@ -1,6 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 
-const DEDUP_MINUTES = 5
+const DEDUP_MINUTES = 30
 
 export type AlertType = 'alert_score_threshold' | 'alert_form_submit' | 'alert_return_visit'
 
