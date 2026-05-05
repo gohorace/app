@@ -140,12 +140,22 @@ function EditableField({
     if (draft === current) { setEditing(false); return }
     setSaving(true)
     try {
-      await fetch(`/api/contacts/${contactId}`, {
+      const res = await fetch(`/api/contacts/${contactId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ [field]: draft.trim() || null }),
       })
-      setCurrent(draft.trim())
+      if (res.ok) {
+        setCurrent(draft.trim())
+      } else {
+        const err = await res.json().catch(() => ({}))
+        console.error('PATCH failed', res.status, err)
+        // Revert draft to current on failure
+        setDraft(current)
+      }
+    } catch (e) {
+      console.error('PATCH error', e)
+      setDraft(current)
     } finally {
       setSaving(false)
       setEditing(false)
