@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { buildWeeklyBriefingEmail } from '@/lib/notifications/email'
-import { generateContactInsight } from '@/lib/ai/briefing'
+import { generateContactInsight, generateBriefingNarrative } from '@/lib/ai/briefing'
 import type { LeadWithInsight, ContactEvent } from '@/lib/ai/briefing'
 
 export async function GET(request: NextRequest) {
-  // Verify this is called by Vercel Cron (or manually with the secret)
   const authHeader = request.headers.get('authorization')
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -21,7 +20,6 @@ export async function GET(request: NextRequest) {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? ''
   const today = new Date().getDay() // 0=Sun, 1=Mon, ...
 
-  // Find all agents whose briefing day matches today and have an agent_email
   const { data: agentSettings } = await admin
     .from('agent_settings')
     .select('agent_id, agent_email, weekly_briefing_day, agents(first_name, last_name, email)')
@@ -35,7 +33,6 @@ export async function GET(request: NextRequest) {
   const { Resend } = await import('resend')
   const resend = new Resend(resendKey)
 
-  // Initialise Anthropic client if key is available
   const anthropicKey = process.env.ANTHROPIC_API_KEY
   let anthropic: import('@anthropic-ai/sdk').default | null = null
   if (anthropicKey) {
@@ -56,17 +53,14 @@ export async function GET(request: NextRequest) {
         agent?.email ||
         'Your Agent'
 
-      // Fetch top leads for this agent (last 7 days activity)
       const { data: rawLeads } = await admin.rpc('get_weekly_briefing_data', {
         p_agent_id: settings.agent_id,
       })
 
       const leads = rawLeads ?? []
 
-      // Generate AI insights for each lead
       const leadsWithInsights: LeadWithInsight[] = await Promise.all(
         leads.map(async (lead) => {
-          // Fetch recent events for this contact via identity_map
           const { data: events } = await admin.rpc('get_contact_events', {
             p_contact_id: lead.contact_id,
           })
@@ -81,7 +75,7 @@ export async function GET(request: NextRequest) {
             }))
 
           const insight = anthropic
-            ? await generateContactInsight(anthropic, lead, recentEvents)
+            ? await generateContactInsight(anthropic, agentName, lead, recentEvents)
             : {
                 why_now: `${[lead.first_name, lead.last_name].filter(Boolean).join(' ') || lead.email || 'This contact'} has been active on your website recently.`,
                 action: `Follow up with ${lead.first_name ?? lead.email ?? 'this contact'} this week.`,
@@ -91,7 +85,11 @@ export async function GET(request: NextRequest) {
         }),
       )
 
-      const { subject, html } = buildWeeklyBriefingEmail(agentName, leadsWithInsights, appUrl)
+      const narrative = anthropic
+        ? await generateBriefingNarrative(anthropic, agentName, leads, 'this week')
+        : `${leads.length} contact${leads.length === 1 ? '' : 's'} worth your attention this week.`
+
+      const { subject, html } = buildWeeklyBriefingEmail(agentName, leadsWithInsights, narrative, appUrl)
 
       await resend.emails.send({
         from: process.env.RESEND_FROM_EMAIL ?? 'briefing@horace.app',
@@ -100,7 +98,6 @@ export async function GET(request: NextRequest) {
         html,
       })
 
-      // Log it
       await admin.from('notification_log').insert({
         agent_id: settings.agent_id,
         contact_id: null,

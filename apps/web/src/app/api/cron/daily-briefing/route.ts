@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { buildWeeklyBriefingEmail } from '@/lib/notifications/email'
-import { generateContactInsight } from '@/lib/ai/briefing'
+import { buildDailyBriefingEmail } from '@/lib/notifications/email'
+import { generateContactInsight, generateBriefingNarrative } from '@/lib/ai/briefing'
 import type { LeadWithInsight, ContactEvent } from '@/lib/ai/briefing'
 
 export async function GET(request: NextRequest) {
@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
   const admin = createAdminClient()
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? ''
 
-  // Find agents whose local time is currently the 17:xx hour (5pm)
+  // Find agents whose local time is currently their configured send hour
   const { data: agentSettings } = await admin
     .from('agent_settings')
     .select('agent_id, agent_email, timezone, daily_briefing_hour, agents(first_name, last_name, email)')
@@ -69,16 +69,14 @@ export async function GET(request: NextRequest) {
         agent?.email ||
         'Your Agent'
 
-      // Top contacts by activity in the last 24 hours
+      // Top contacts with activity in the last 24 hours
       const { data: rawLeads } = await admin.rpc('get_daily_briefing_data', {
         p_agent_id: settings.agent_id,
       })
 
       const leads = rawLeads ?? []
-      if (leads.length === 0) {
-        continue
-      }
 
+      // Generate per-contact AI insights
       const leadsWithInsights: LeadWithInsight[] = await Promise.all(
         leads.map(async (lead) => {
           const { data: events } = await admin.rpc('get_contact_events', {
@@ -95,7 +93,7 @@ export async function GET(request: NextRequest) {
             }))
 
           const insight = anthropic
-            ? await generateContactInsight(anthropic, lead, recentEvents)
+            ? await generateContactInsight(anthropic, agentName, lead, recentEvents)
             : {
                 why_now: `${[lead.first_name, lead.last_name].filter(Boolean).join(' ') || lead.email || 'This contact'} was active on your website today.`,
                 action: `Follow up with ${lead.first_name ?? lead.email ?? 'this contact'} today.`,
@@ -105,13 +103,17 @@ export async function GET(request: NextRequest) {
         }),
       )
 
-      const { subject, html } = buildWeeklyBriefingEmail(agentName, leadsWithInsights, appUrl)
-      const dailySubject = subject.replace('weekly brief', 'daily brief')
+      // Generate Horace-voiced narrative intro
+      const narrative = anthropic
+        ? await generateBriefingNarrative(anthropic, agentName, leads, 'today')
+        : `${leads.length} contact${leads.length === 1 ? '' : 's'} worth your attention today.`
+
+      const { subject, html } = buildDailyBriefingEmail(agentName, leadsWithInsights, narrative, appUrl)
 
       await resend.emails.send({
         from: process.env.RESEND_FROM_EMAIL ?? 'briefing@horace.app',
         to: settings.agent_email!,
-        subject: dailySubject,
+        subject,
         html,
       })
 
