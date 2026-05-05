@@ -741,4 +741,17 @@
   .navInner { padding: 0 24px; }
 
   .notifBubble { display: none; }
+
+  /* Footer — stack to two rows */
+  .footerInner {
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    padding: 32px 24px;
+    text-align: center;
+  }
+
+  .footerLinks {
+    gap: 24px;
+  }
 }
