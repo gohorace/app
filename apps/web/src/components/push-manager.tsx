@@ -54,11 +54,23 @@ export async function removePushSubscription(): Promise<void> {
 }
 
 function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
-  // Trim whitespace and strip any characters not valid in base64url
-  // (guards against stray quotes, newlines, or encoding artifacts in env vars)
-  const cleaned = base64String.trim().replace(/[^A-Za-z0-9\-_]/g, '')
+  // Unwrap surrounding quotes if the value was accidentally stored as "key" or 'key'
+  let raw = base64String.trim()
+  if ((raw.startsWith('"') && raw.endsWith('"')) || (raw.startsWith("'") && raw.endsWith("'"))) {
+    raw = raw.slice(1, -1)
+  }
+  // Strip any characters not valid in base64url
+  const cleaned = raw.replace(/[^A-Za-z0-9\-_]/g, '')
   const padding = '='.repeat((4 - (cleaned.length % 4)) % 4)
   const base64 = (cleaned + padding).replace(/-/g, '+').replace(/_/g, '/')
-  const rawData = atob(base64)
-  return new Uint8Array([...rawData].map((c) => c.charCodeAt(0)))
+  try {
+    const rawData = atob(base64)
+    return new Uint8Array([...rawData].map((c) => c.charCodeAt(0)))
+  } catch (err) {
+    throw new Error(
+      `VAPID key is not valid base64. ` +
+      `Raw length: ${base64String.length}, cleaned: "${cleaned.slice(0, 20)}…". ` +
+      `Check NEXT_PUBLIC_VAPID_PUBLIC_KEY in Vercel. Original error: ${err}`
+    )
+  }
 }
