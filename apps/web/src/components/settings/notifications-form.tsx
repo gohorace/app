@@ -63,6 +63,8 @@ function PushStatusCard() {
   const [diag, setDiag]             = useState<DiagnosticResult | null>(null)
   const [testing, setTesting]       = useState(false)
   const [testResult, setTestResult] = useState<{ ok?: boolean; sent?: number; error?: string } | null>(null)
+  const [simulating, setSimulating] = useState(false)
+  const [simResult, setSimResult]   = useState<{ ok?: boolean; contact?: string; scoreDelta?: number; newScore?: number; error?: string } | null>(null)
   const [enabling, setEnabling]     = useState(false)
   const [enableResult, setEnableResult] = useState<{ ok?: boolean; error?: string } | null>(null)
 
@@ -106,6 +108,18 @@ function PushStatusCard() {
     setTesting(false)
   }
 
+  async function simulate() {
+    setSimulating(true)
+    setSimResult(null)
+    try {
+      const res = await fetch('/api/push/simulate', { method: 'POST' })
+      setSimResult(await res.json())
+    } catch {
+      setSimResult({ error: 'Request failed' })
+    }
+    setSimulating(false)
+  }
+
   const subscribed = (diag?.subscriptionCount ?? 0) > 0
 
   return (
@@ -143,27 +157,55 @@ function PushStatusCard() {
           </div>
         )}
 
-        {/* Subscribed — compact status + test */}
+        {/* Subscribed — compact status + test buttons */}
         {subscribed && (
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2 text-sm">
-              <div className="w-2 h-2 rounded-full bg-green-500" />
-              <span className="font-medium">
-                {diag!.subscriptionCount} device{diag!.subscriptionCount !== 1 ? 's' : ''} registered
-              </span>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-sm">
+                <div className="w-2 h-2 rounded-full bg-green-500" />
+                <span className="font-medium">
+                  {diag!.subscriptionCount} device{diag!.subscriptionCount !== 1 ? 's' : ''} registered
+                </span>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={sendTest}
+                disabled={testing || simulating}
+                className="gap-1.5 text-xs shrink-0"
+              >
+                {testing
+                  ? <><Loader2 className="w-3 h-3 animate-spin" /> Sending…</>
+                  : <><Send className="w-3 h-3" /> Send test</>}
+              </Button>
             </div>
             <Button
               type="button"
               size="sm"
-              variant="outline"
-              onClick={sendTest}
-              disabled={testing}
-              className="gap-1.5 text-xs shrink-0"
+              variant="ghost"
+              onClick={simulate}
+              disabled={simulating || testing}
+              className="w-full gap-1.5 text-xs text-muted-foreground"
             >
-              {testing
-                ? <><Loader2 className="w-3 h-3 animate-spin" /> Sending…</>
-                : <><Send className="w-3 h-3" /> Send test</>}
+              {simulating
+                ? <><Loader2 className="w-3 h-3 animate-spin" /> Simulating…</>
+                : 'Simulate return visit for top contact'}
             </Button>
+          </div>
+        )}
+
+        {/* Simulate result */}
+        {simResult && (
+          <div className={cn(
+            'rounded-md px-3 py-2 text-xs',
+            simResult.ok
+              ? 'bg-green-50 text-green-800 border border-green-200'
+              : 'bg-destructive/10 text-destructive border border-destructive/20'
+          )}>
+            {simResult.ok
+              ? `✓ Fired for ${simResult.contact} — +${simResult.scoreDelta} pts (score now ${simResult.newScore}). Check your notifications.`
+              : `✗ ${simResult.error}`}
           </div>
         )}
 
