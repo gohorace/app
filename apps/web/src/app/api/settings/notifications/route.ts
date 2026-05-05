@@ -27,7 +27,6 @@ export async function POST(request: NextRequest) {
     .from('agents')
     .select('id')
     .eq('user_id', user.id)
-    .not('workspace_id', 'is', null)
     .maybeSingle()
 
   if (!agentRow) return NextResponse.json({ error: 'No agent found' }, { status: 400 })
