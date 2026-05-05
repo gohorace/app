@@ -105,6 +105,12 @@ export async function POST(request: NextRequest) {
   if (identity) {
     contactId = identity.contact_id
     agentId   = identity.agent_id
+
+    // Update contact's last_seen_at on every visit
+    await supabase
+      .from('contacts')
+      .update({ last_seen_at: new Date().toISOString() })
+      .eq('id', contactId)
   }
 
   // 4. Map incoming events to DB rows
