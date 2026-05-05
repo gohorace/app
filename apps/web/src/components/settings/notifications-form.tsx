@@ -1,12 +1,12 @@
 'use client'
 
-import { useState, useRef, KeyboardEvent } from 'react'
+import { useState, useRef, useEffect, KeyboardEvent } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { CheckCircle2, X, Bell, Users, Clock } from 'lucide-react'
+import { CheckCircle2, X, Bell, Users, Clock, Loader2, AlertCircle, Send, Smartphone } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 type AlertMode = 'threshold' | 'all' | 'hourly_digest'
@@ -51,6 +51,142 @@ const HOURS = Array.from({ length: 24 }, (_, i) => {
   const h = i % 12 === 0 ? 12 : i % 12
   return { value: i, label: `${h}:00 ${ampm}` }
 })
+
+interface DiagnosticResult {
+  vapidConfigured: boolean
+  clientKeyConfigured: boolean
+  subscriptionCount: number
+}
+
+function PushStatusCard() {
+  const [diag, setDiag]         = useState<DiagnosticResult | null>(null)
+  const [diagError, setDiagError] = useState<string | null>(null)
+  const [testing, setTesting]   = useState(false)
+  const [testResult, setTestResult] = useState<{ ok?: boolean; sent?: number; error?: string } | null>(null)
+
+  useEffect(() => {
+    fetch('/api/push/test')
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.error) setDiagError(d.error)
+        else setDiag(d)
+      })
+      .catch(() => setDiagError('Could not reach diagnostic endpoint'))
+  }, [])
+
+  async function sendTest() {
+    setTesting(true)
+    setTestResult(null)
+    try {
+      const res = await fetch('/api/push/test', { method: 'POST' })
+      const data = await res.json()
+      setTestResult(data)
+    } catch {
+      setTestResult({ error: 'Request failed' })
+    }
+    setTesting(false)
+  }
+
+  return (
+    <Card>
+      <CardContent className="pt-5 space-y-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold flex items-center gap-1.5">
+              <Smartphone className="w-3.5 h-3.5" />
+              Push notification status
+            </p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Diagnose your device push setup
+            </p>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={sendTest}
+            disabled={testing}
+            className="shrink-0 gap-1.5 text-xs"
+          >
+            {testing
+              ? <><Loader2 className="w-3 h-3 animate-spin" /> Sending…</>
+              : <><Send className="w-3 h-3" /> Send test</>}
+          </Button>
+        </div>
+
+        {/* Diagnostic rows */}
+        {diag ? (
+          <div className="space-y-2 text-xs">
+            <StatusRow
+              label="VAPID server keys"
+              ok={diag.vapidConfigured}
+              okText="Configured"
+              failText="Missing — add VAPID_PUBLIC_KEY & VAPID_PRIVATE_KEY in Vercel"
+            />
+            <StatusRow
+              label="Client VAPID key"
+              ok={diag.clientKeyConfigured}
+              okText="Configured"
+              failText="Missing — add NEXT_PUBLIC_VAPID_PUBLIC_KEY to Vercel (same value as VAPID_PUBLIC_KEY), then redeploy"
+            />
+            <StatusRow
+              label="Active subscription"
+              ok={diag.subscriptionCount > 0}
+              okText={`${diag.subscriptionCount} device${diag.subscriptionCount !== 1 ? 's' : ''} registered`}
+              failText="No subscription — grant notification permission in Settings → Alerts & briefing, then reload"
+            />
+          </div>
+        ) : diagError ? (
+          <p className="text-xs text-destructive flex items-center gap-1.5">
+            <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+            {diagError}
+          </p>
+        ) : (
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Loader2 className="w-3 h-3 animate-spin" />
+            Checking status…
+          </div>
+        )}
+
+        {/* Test result */}
+        {testResult && (
+          <div className={cn(
+            'rounded-md px-3 py-2 text-xs',
+            testResult.ok
+              ? 'bg-green-50 text-green-800 border border-green-200'
+              : 'bg-destructive/10 text-destructive border border-destructive/20'
+          )}>
+            {testResult.ok
+              ? `✓ Notification sent to ${testResult.sent} device${(testResult.sent ?? 0) !== 1 ? 's' : ''}. Check your browser or OS notifications.`
+              : `✗ ${testResult.error}`}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function StatusRow({ label, ok, okText, failText }: {
+  label: string
+  ok: boolean
+  okText: string
+  failText: string
+}) {
+  return (
+    <div className="flex items-start gap-2">
+      <div className={cn(
+        'mt-0.5 h-2 w-2 rounded-full shrink-0',
+        ok ? 'bg-green-500' : 'bg-destructive'
+      )} />
+      <div className="flex-1 min-w-0">
+        <span className="font-medium text-foreground">{label}: </span>
+        <span className={ok ? 'text-muted-foreground' : 'text-destructive'}>
+          {ok ? okText : failText}
+        </span>
+      </div>
+    </div>
+  )
+}
 
 interface Props {
   initial: {
@@ -125,6 +261,9 @@ export function NotificationsForm({ initial }: Props) {
 
   return (
     <form onSubmit={handleSave} className="space-y-4">
+
+      {/* Push diagnostic */}
+      <PushStatusCard />
 
       {/* Push notifications */}
       <Card>
