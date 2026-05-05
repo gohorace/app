@@ -23,10 +23,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid subscription' }, { status: 400 })
   }
 
-  await admin.from('push_subscriptions').upsert(
+  const { error } = await admin.from('push_subscriptions').upsert(
     { agent_id: agent.id, endpoint, p256dh: keys.p256dh, auth: keys.auth },
     { onConflict: 'agent_id,endpoint' },
   )
+
+  if (error) {
+    console.error('[push/subscribe] upsert error:', error)
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
 
   return NextResponse.json({ ok: true })
 }
