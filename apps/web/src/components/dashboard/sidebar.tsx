@@ -5,7 +5,6 @@ import { usePathname } from 'next/navigation'
 import {
   Eye,
   Users,
-  Inbox,
   TrendingUp,
   Settings,
   LogOut,
@@ -34,9 +33,8 @@ const navGroups: NavGroup[] = [
   {
     label: 'Intelligence',
     items: [
-      { href: '/dashboard', label: 'Signals',  icon: Eye,       badge: null },
-      { href: '/leads',     label: 'Contacts', icon: Users,     badge: null },
-      { href: '/campaigns', label: 'Campaigns', icon: Inbox,    badge: null },
+      { href: '/dashboard', label: 'Signals',  icon: Eye,   badge: null },
+      { href: '/leads',     label: 'Contacts', icon: Users, badge: null },
     ],
   },
   {

@@ -1,11 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { McpAuthContext } from '@/lib/mcp/auth'
-import {
-  loadOwnedContacts,
-  resolveOrCreateCampaign,
-  ensureCampaignTokens,
-  appendCampaignToken,
-} from '@/lib/mcp/outreach-helpers'
+import { loadOwnedContacts } from '@/lib/mcp/outreach-helpers'
 import { unsubscribeUrl } from '@/lib/outreach/unsubscribe'
 import { generateShortCode } from '@/lib/outreach/links'
 import { getAppUrl } from '@/lib/url'
@@ -214,116 +209,16 @@ const searchContacts: McpTool = {
 // WRITE / OUTREACH TOOLS
 // ============================================================
 
-const createCampaign: McpTool = {
-  name: 'create_campaign',
-  description:
-    'Create a named campaign to group outreach activity (decorated links, ' +
-    'sends, click-throughs). Use when the user explicitly names a campaign; ' +
-    'otherwise decorate_links and shorten_link can auto-create one.',
-  inputSchema: {
-    type: 'object',
-    properties: {
-      name: { type: 'string', minLength: 1, maxLength: 120 },
-      description: { type: 'string', maxLength: 500 },
-    },
-    required: ['name'],
-    additionalProperties: false,
-  },
-  async handler(args, ctx) {
-    const a = args as { name: string; description?: string }
-    const admin = createAdminClient()
-    const { data, error } = await admin
-      .from('campaigns')
-      .insert({
-        agent_id: ctx.agentId,
-        name: a.name.trim(),
-        description: a.description?.trim() || null,
-      })
-      .select('id, name, description, created_at')
-      .single()
-    if (error || !data) throw new Error(error?.message ?? 'Failed to create campaign')
-    return { campaign: data }
-  },
-}
-
-const decorateLinks: McpTool = {
-  name: 'decorate_links',
-  description:
-    'Append per-contact tracking tokens to one or more target URLs so that ' +
-    'when the recipient clicks, the website tracker can stitch identity. ' +
-    'Returns one decorated URL per (contact, target_url) pair. Auto-creates ' +
-    'an ad-hoc campaign if no campaign_id is given. Skips contacts who have ' +
-    'unsubscribed.',
-  inputSchema: {
-    type: 'object',
-    properties: {
-      contact_ids: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 200 },
-      target_urls: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 10 },
-      campaign_id: { type: 'string', description: 'Existing campaign UUID (optional)' },
-      campaign_name: { type: 'string', description: 'Name for auto-created campaign (optional)' },
-    },
-    required: ['contact_ids', 'target_urls'],
-    additionalProperties: false,
-  },
-  async handler(args, ctx) {
-    const a = args as {
-      contact_ids: string[]
-      target_urls: string[]
-      campaign_id?: string
-      campaign_name?: string
-    }
-    const admin = createAdminClient()
-    const contacts = await loadOwnedContacts(admin, ctx.agentId, a.contact_ids)
-    const eligible = contacts.filter((c) => !c.unsubscribed_at)
-    const skipped = contacts.filter((c) => c.unsubscribed_at).map((c) => c.id)
-
-    const campaign = await resolveOrCreateCampaign(admin, ctx.agentId, {
-      campaignId: a.campaign_id,
-      campaignName: a.campaign_name,
-    })
-
-    const tokens = await ensureCampaignTokens(
-      admin,
-      ctx.agentId,
-      campaign.id,
-      eligible.map((c) => c.id),
-    )
-
-    const links = eligible.map((c) => {
-      const token = tokens.get(c.id)!
-      return {
-        contact_id: c.id,
-        contact_email: c.email,
-        decorated_urls: a.target_urls.map((url) => ({
-          target_url: url,
-          decorated_url: appendCampaignToken(url, token),
-        })),
-      }
-    })
-
-    return {
-      campaign_id: campaign.id,
-      campaign_created: campaign.created,
-      links,
-      skipped_unsubscribed: skipped,
-    }
-  },
-}
-
 const shortenLink: McpTool = {
   name: 'shorten_link',
   description:
     'Create a Horace-hosted short URL (https://<app>/r/<code>) that 302s ' +
-    'to the target. When contact_id is given, the click also stitches identity ' +
-    'on the destination site (campaign token appended at redirect time). Use ' +
-    'in SMS where character count matters.',
+    'to the target. Use in SMS where character count matters.',
   inputSchema: {
     type: 'object',
     properties: {
       target_url: { type: 'string', minLength: 8 },
       contact_id: { type: 'string', description: 'Optional contact to attribute the click to' },
-      campaign_id: { type: 'string', description: 'Optional campaign for the click' },
-      campaign_name: { type: 'string', description: 'Name for auto-created campaign (optional)' },
     },
     required: ['target_url'],
     additionalProperties: false,
@@ -332,26 +227,14 @@ const shortenLink: McpTool = {
     const a = args as {
       target_url: string
       contact_id?: string
-      campaign_id?: string
-      campaign_name?: string
     }
     if (!/^https?:\/\//i.test(a.target_url)) {
       throw new Error('target_url must be an absolute http(s) URL')
     }
     const admin = createAdminClient()
 
-    let campaignId: string | null = null
     if (a.contact_id) {
       await loadOwnedContacts(admin, ctx.agentId, [a.contact_id])
-      const camp = await resolveOrCreateCampaign(admin, ctx.agentId, {
-        campaignId: a.campaign_id,
-        campaignName: a.campaign_name,
-      })
-      campaignId = camp.id
-      await ensureCampaignTokens(admin, ctx.agentId, camp.id, [a.contact_id])
-    } else if (a.campaign_id) {
-      const camp = await resolveOrCreateCampaign(admin, ctx.agentId, { campaignId: a.campaign_id })
-      campaignId = camp.id
     }
 
     // Insert with retry on rare collision (~1 in 218T at 8 chars)
@@ -363,7 +246,6 @@ const shortenLink: McpTool = {
         .insert({
           agent_id: ctx.agentId,
           contact_id: a.contact_id ?? null,
-          campaign_id: campaignId,
           code,
           target_url: a.target_url,
         })
@@ -380,7 +262,6 @@ const shortenLink: McpTool = {
       code: row.code,
       target_url: a.target_url,
       contact_id: a.contact_id ?? null,
-      campaign_id: campaignId,
     }
   },
 }
@@ -425,8 +306,6 @@ const draftOutreach: McpTool = {
         },
         maxItems: 5,
       },
-      campaign_id: { type: 'string' },
-      campaign_name: { type: 'string' },
     },
     required: ['contact_id', 'intent'],
     additionalProperties: false,
@@ -436,8 +315,6 @@ const draftOutreach: McpTool = {
       contact_id: string
       intent: string
       target_urls?: Array<string | { url: string; label?: string }>
-      campaign_id?: string
-      campaign_name?: string
     }
     const admin = createAdminClient()
 
@@ -466,20 +343,9 @@ const draftOutreach: McpTool = {
       typeof t === 'string' ? { url: t, label: undefined } : t,
     )
 
-    const campaign = await resolveOrCreateCampaign(admin, ctx.agentId, {
-      campaignId: a.campaign_id,
-      campaignName: a.campaign_name,
-    })
-
-    const tokens = targets.length
-      ? await ensureCampaignTokens(admin, ctx.agentId, campaign.id, [a.contact_id])
-      : new Map<string, string>()
-    const token = tokens.get(a.contact_id)
-
     const decoratedLinks = targets.map((t) => ({
       label: t.label ?? null,
       target_url: t.url,
-      decorated_url: token ? appendCampaignToken(t.url, token) : t.url,
     }))
 
     const appUrl = getAppUrl()
@@ -511,7 +377,7 @@ const draftOutreach: McpTool = {
     const linksBlock = decoratedLinks.length
       ? '\n\n' +
         decoratedLinks
-          .map((l) => `- [${l.label ?? l.target_url}](${l.decorated_url})`)
+          .map((l) => `- [${l.label ?? l.target_url}](${l.target_url})`)
           .join('\n')
       : ''
 
@@ -529,7 +395,6 @@ const draftOutreach: McpTool = {
         last_name: contact.last_name,
         full_name: fullName,
       },
-      campaign_id: campaign.id,
       decorated_links: decoratedLinks,
       unsubscribe_url: unsubUrl,
       suggested_subject: suggestedSubject,
@@ -564,7 +429,6 @@ const recordSend: McpTool = {
     properties: {
       contact_id: { type: 'string' },
       channel: { type: 'string', enum: ['email', 'sms'] },
-      campaign_id: { type: 'string' },
       subject: { type: 'string', maxLength: 200 },
       message_preview: { type: 'string', maxLength: 500, description: 'First ~500 chars of body' },
       external_id: { type: 'string', description: 'Provider message id (Gmail thread, Twilio SID, etc.)' },
@@ -576,7 +440,6 @@ const recordSend: McpTool = {
     const a = args as {
       contact_id: string
       channel: 'email' | 'sms'
-      campaign_id?: string
       subject?: string
       message_preview?: string
       external_id?: string
@@ -589,7 +452,6 @@ const recordSend: McpTool = {
       .insert({
         agent_id: ctx.agentId,
         contact_id: a.contact_id,
-        campaign_id: a.campaign_id ?? null,
         channel: a.channel,
         subject: a.subject ?? null,
         message_preview: a.message_preview ?? null,
@@ -824,8 +686,6 @@ export const TOOLS: McpTool[] = [
   getLeadActivity,
   getWeeklyBrief,
   searchContacts,
-  createCampaign,
-  decorateLinks,
   shortenLink,
   draftOutreach,
   recordSend,

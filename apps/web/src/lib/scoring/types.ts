@@ -4,7 +4,6 @@ export type EventType =
   | 'form_submit'
   | 'scroll_depth'
   | 'return_visit'
-  | 'campaign_click'
 
 export interface ScoringRule {
   event_type: EventType

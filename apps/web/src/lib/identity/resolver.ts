@@ -189,34 +189,3 @@ export async function resolveEmail(
 
   return matches
 }
-
-/**
- * Resolves a campaign token to a contact and upserts the identity_map entry.
- * Returns the contactId if resolved, null otherwise.
- */
-export async function resolveCampaignToken(
-  supabase: AdminClient,
-  workspaceId: string,
-  agentId: string,
-  token: string,
-  anonymousId: string,
-): Promise<string | null> {
-  const { data: contactId } = await supabase.rpc('resolve_campaign_token', {
-    p_workspace_id: workspaceId,
-    p_agent_id: agentId,
-    p_token: token,
-    p_anonymous_id: anonymousId,
-  })
-
-  if (!contactId) return null
-
-  // Delay backfill so identity route can await form_submit scoring first —
-  // backfill then sees the updated scoreBefore for correct threshold detection
-  setTimeout(() => {
-    scoreBackfilledEvents(supabase, agentId, contactId).catch((err) =>
-      console.error('Backfill scoring error:', err),
-    )
-  }, 500)
-
-  return contactId
-}

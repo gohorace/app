@@ -1,7 +1,6 @@
 // Node.js runtime — needed for Twilio (via scoring engine SMS check)
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { resolveCampaignToken } from '@/lib/identity/resolver'
 import { scoreEventsForContact, getAgentScoringOverrides } from '@/lib/scoring/engine'
 import type { IncomingEvent } from '@/lib/scoring/types'
 import type { Json, TablesInsert } from '@/types/database.types'
@@ -72,7 +71,6 @@ export async function POST(request: NextRequest) {
     workspace_id: workspaceId,
     anonymous_id: anonymousId,
     last_seen_at: new Date().toISOString(),
-    ...(sessionMeta?.ctoken && { campaign_token: sessionMeta.ctoken }),
     ...(sessionMeta?.utm_source && { utm_source: sessionMeta.utm_source }),
     ...(sessionMeta?.utm_medium && { utm_medium: sessionMeta.utm_medium }),
     ...(sessionMeta?.utm_campaign && { utm_campaign: sessionMeta.utm_campaign }),
@@ -96,21 +94,6 @@ export async function POST(request: NextRequest) {
   let contactId: string | null = null
   let agentId: string | null = null
 
-  // 3. Resolve campaign token if present
-  if (sessionMeta?.ctoken) {
-    // Look up agent_id from campaign_tokens table
-    const { data: tokenRow } = await supabase
-      .from('campaign_tokens')
-      .select('agent_id')
-      .eq('token', sessionMeta.ctoken)
-      .maybeSingle()
-
-    if (tokenRow?.agent_id) {
-      agentId = tokenRow.agent_id
-      contactId = await resolveCampaignToken(supabase, workspaceId, agentId, sessionMeta.ctoken, anonymousId)
-    }
-  }
-
   // 4. Map incoming events to DB rows
   const eventRows = events
     .filter((e) => isValidEventType(e.t))
@@ -126,7 +109,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true }, { headers: CORS_HEADERS })
   }
 
-  // 5. Bulk insert events
+  // 5. Bulk-insert events
   const { error: eventsErr } = await supabase.from('events').insert(eventRows)
 
   if (eventsErr) {
@@ -134,7 +117,7 @@ export async function POST(request: NextRequest) {
     return new Response('Internal error', { status: 500, headers: CORS_HEADERS })
   }
 
-  // 6. Score events if contact and agent are identified
+  // 6. Score events if contact + agent are identified
   if (contactId && agentId) {
     const incomingEvents: IncomingEvent[] = eventRows.map((e) => ({
       session_id: dbSessionId,
@@ -156,7 +139,7 @@ export async function POST(request: NextRequest) {
 
 const VALID_EVENT_TYPES = new Set([
   'page_view', 'property_view', 'form_submit',
-  'scroll_depth', 'return_visit', 'campaign_click',
+  'scroll_depth', 'return_visit',
 ])
 
 function isValidEventType(t: unknown): t is string {

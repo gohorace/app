@@ -78,7 +78,6 @@ export default async function SnippetPage() {
           <p>The snippet is <strong className="text-foreground">1.5 KB gzipped</strong> and loads asynchronously — no impact on page speed.</p>
           <ul className="space-y-1.5 list-disc list-inside">
             <li>Tracks page views, property views, scroll depth, form submissions</li>
-            <li>Captures campaign links (<code className="text-xs bg-muted px-1 rounded">?_ri=token</code>) to identify known contacts</li>
             <li>Intercepts email form submissions to link anonymous visitors to contacts</li>
             <li>Fires a return visit event when a known visitor comes back</li>
           </ul>

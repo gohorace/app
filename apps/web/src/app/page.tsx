@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { Eye, TrendingUp, Shield, ChevronDown } from 'lucide-react'
+import { createClient } from '@/lib/supabase/client'
 import styles from './page.module.css'
 
 const faqs = [
@@ -105,6 +106,18 @@ function RevealWrapper({ children, className }: { children: React.ReactNode; cla
 }
 
 export default function MarketingHomePage() {
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
+
+  useEffect(() => {
+    const supabase = createClient()
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setIsLoggedIn(!!session)
+    })
+  }, [])
+
+  const ctaHref = isLoggedIn ? '/dashboard' : '/login'
+  const ctaLabel = isLoggedIn ? 'Dashboard →' : 'Get started →'
+
   return (
     <div style={{ background: 'var(--color-parchment)', color: 'var(--color-ink)', minHeight: '100vh' }}>
 
@@ -120,8 +133,8 @@ export default function MarketingHomePage() {
             <li><a href="#faq">FAQ</a></li>
             <li><a href="#" style={{ color: 'var(--color-stone)' }}>Pricing</a></li>
           </ul>
-          <Link href="/login" className={`${styles.btn} ${styles.btnPrimary}`}>
-            Get started
+          <Link href={ctaHref} className={`${styles.btn} ${styles.btnPrimary}`}>
+            {isLoggedIn ? 'Dashboard' : 'Get started'}
           </Link>
         </div>
       </nav>
@@ -138,8 +151,8 @@ export default function MarketingHomePage() {
               Horace reads the signals your visitors leave behind — and tells you before anyone else knows.
             </p>
             <div className={styles.heroActions}>
-              <Link href="/login" className={`${styles.btn} ${styles.btnPrimary} ${styles.btnLg}`}>
-                Get started →
+              <Link href={ctaHref} className={`${styles.btn} ${styles.btnPrimary} ${styles.btnLg}`}>
+                {ctaLabel}
               </Link>
               <a href="#why" className={`${styles.btn} ${styles.btnSecondary} ${styles.btnLg}`}>
                 How it works
@@ -293,8 +306,8 @@ export default function MarketingHomePage() {
             <p className={styles.ctaSub}>
               Horace is watching your street. Let&apos;s make sure you&apos;re the first to know.
             </p>
-            <Link href="/login" className={`${styles.btn} ${styles.btnCream} ${styles.btnLg}`}>
-              Get started →
+            <Link href={ctaHref} className={`${styles.btn} ${styles.btnCream} ${styles.btnLg}`}>
+              {ctaLabel}
             </Link>
             <p className={styles.ctaSig}>Seize the moment — Horace</p>
           </div>

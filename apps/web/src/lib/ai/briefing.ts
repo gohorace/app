@@ -51,7 +51,6 @@ export async function generateContactInsight(
         e.event_type === 'property_view'  ? `viewed property: ${props.address ?? props.property_id ?? ''}` :
         e.event_type === 'form_submit'    ? `submitted form: ${props.form_id ?? props.form_name ?? 'enquiry'}` :
         e.event_type === 'return_visit'   ? 'returned to the website' :
-        e.event_type === 'campaign_click' ? `clicked campaign email` :
         e.event_type === 'scroll_depth'   ? `read ${props.pct ?? ''}% of a page` :
         e.event_type
       const when = new Date(e.occurred_at).toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' })

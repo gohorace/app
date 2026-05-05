@@ -60,8 +60,8 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  // Redirect logged-in users away from login and the marketing home to the dashboard
-  if (user && (pathname === '/login' || pathname === '/')) {
+  // Redirect logged-in users away from login to the dashboard
+  if (user && pathname === '/login') {
     const url = request.nextUrl.clone()
     url.pathname = '/dashboard'
     return NextResponse.redirect(url)
