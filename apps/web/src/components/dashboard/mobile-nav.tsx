@@ -7,7 +7,7 @@ import { Home, Users, Settings } from 'lucide-react'
 const TABS = [
   { href: '/dashboard', label: 'Today',    icon: Home    },
   { href: '/leads',     label: 'Contacts', icon: Users   },
-  { href: '/settings/notifications', label: 'Settings', icon: Settings },
+  { href: '/settings', label: 'Profile', icon: Settings },
 ]
 
 export function MobileNav() {

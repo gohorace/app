@@ -141,4 +141,9 @@
   .contact-row:hover {
     background: rgba(140,123,107,0.05) !important;
   }
+
+  /* Settings nav row hover */
+  .settings-nav-row:hover {
+    background: rgba(140,123,107,0.06) !important;
+  }
 }
