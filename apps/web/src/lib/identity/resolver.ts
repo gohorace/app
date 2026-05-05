@@ -138,20 +138,24 @@ export async function resolveEmail(
 
   // For each match, insert identity_map and update contact timestamps
   for (const { agentId, contactId } of matches) {
+    // Upsert on (workspace_id, agent_id, anonymous_id) so re-submissions from the
+    // same browser (same cookie/anonymous_id) always map to the most recent contact.
     const { error: imError } = await supabase
       .from('identity_map')
-      .insert({
-        workspace_id: workspaceId,
-        agent_id: agentId,
-        anonymous_id: anonymousId,
-        contact_id: contactId,
-        stitch_method: 'form',
-        confidence: 'high',
-      })
+      .upsert(
+        {
+          workspace_id: workspaceId,
+          agent_id: agentId,
+          anonymous_id: anonymousId,
+          contact_id: contactId,
+          stitch_method: 'form',
+          confidence: 'high',
+        },
+        { onConflict: 'workspace_id,agent_id,anonymous_id' },
+      )
 
-    // 23505 = unique_violation (already stitched) — safe to ignore
-    if (imError && !imError.code?.includes('23505')) {
-      console.error('[resolveEmail] identity_map insert error:', imError)
+    if (imError) {
+      console.error('[resolveEmail] identity_map upsert error:', imError)
     }
 
     // Set identified_at if not already set
