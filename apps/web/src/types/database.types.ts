@@ -419,6 +419,17 @@ export type Database = {
           score_delta: number; occurred_at: string; anonymous_id: string
         }>
       }
+      get_contacts_list: {
+        Args: { p_agent_id: string }
+        Returns: Array<{
+          id: string; first_name: string | null; last_name: string | null
+          email: string | null; phone: string | null; score: number
+          score_change_7d: number; last_seen_at: string | null
+          property_address: string | null; suburb: string | null
+          crm_source: string | null; session_count: number
+          last_event_type: string | null; last_page_title: string | null
+        }>
+      }
       resolve_campaign_token: {
         Args: { p_workspace_id: string; p_agent_id: string; p_token: string; p_anonymous_id: string }
         Returns: string | null
