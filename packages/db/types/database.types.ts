@@ -106,6 +106,9 @@ export type Database = {
           last_seen_at: string | null
           metadata: Json
           created_at: string
+          property_address: string | null
+          suburb: string | null
+          notes: string | null
         }
         Insert: {
           id?: string
@@ -121,6 +124,9 @@ export type Database = {
           last_seen_at?: string | null
           metadata?: Json
           created_at?: string
+          property_address?: string | null
+          suburb?: string | null
+          notes?: string | null
         }
         Update: {
           id?: string
@@ -136,6 +142,9 @@ export type Database = {
           last_seen_at?: string | null
           metadata?: Json
           created_at?: string
+          property_address?: string | null
+          suburb?: string | null
+          notes?: string | null
         }
       }
       sessions: {

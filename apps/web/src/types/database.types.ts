@@ -103,6 +103,7 @@ export type Database = {
           identified_at: string | null; last_seen_at: string | null
           unsubscribed_at: string | null
           metadata: Json; created_at: string
+          property_address: string | null; suburb: string | null; notes: string | null
         }
         Insert: {
           id?: string; agent_id: string; email?: string | null; phone?: string | null
@@ -111,6 +112,7 @@ export type Database = {
           identified_at?: string | null; last_seen_at?: string | null
           unsubscribed_at?: string | null
           metadata?: Json; created_at?: string
+          property_address?: string | null; suburb?: string | null; notes?: string | null
         }
         Update: {
           id?: string; agent_id?: string; email?: string | null; phone?: string | null
@@ -119,6 +121,7 @@ export type Database = {
           identified_at?: string | null; last_seen_at?: string | null
           unsubscribed_at?: string | null
           metadata?: Json; created_at?: string
+          property_address?: string | null; suburb?: string | null; notes?: string | null
         }
         Relationships: [
           { foreignKeyName: 'contacts_agent_id_fkey'; columns: ['agent_id']; isOneToOne: false; referencedRelation: 'agents'; referencedColumns: ['id'] }
