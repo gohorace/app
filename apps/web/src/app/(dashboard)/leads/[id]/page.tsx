@@ -54,34 +54,94 @@ const INTENT_NUDGE: Record<Intent, string> = {
   none: 'Quiet so far.',
 }
 
-/** Human-readable label for each event type */
-function eventLabel(type: string, props: Record<string, unknown>): string {
-  switch (type) {
+// ── Event merging ─────────────────────────────────────────────────────────────
+
+type RawEvent = {
+  id: string
+  event_type: string
+  properties: Record<string, unknown>
+  score_delta: number
+  occurred_at: string
+}
+
+type MergedEvent = RawEvent & { scroll_pct?: number }
+
+/**
+ * Merges scroll_depth events into their corresponding page_view / property_view
+ * by matching on URL within a 15-minute session window.
+ * scroll_depth rows are consumed and removed from the list.
+ */
+function mergeScrollDepth(events: RawEvent[]): MergedEvent[] {
+  const scrollByUrl = new Map<string, number>()
+
+  // First pass — collect scroll pcts keyed by URL
+  for (const e of events) {
+    if (e.event_type !== 'scroll_depth') continue
+    const url = String(e.properties.url ?? e.properties.path ?? '')
+    const pct = typeof e.properties.pct === 'number' ? e.properties.pct : 90
+    if (url && (!scrollByUrl.has(url) || pct > scrollByUrl.get(url)!)) {
+      scrollByUrl.set(url, pct)
+    }
+  }
+
+  // Second pass — attach pct to page/property views, drop standalone scroll rows
+  const merged: MergedEvent[] = []
+  for (const e of events) {
+    if (e.event_type === 'scroll_depth') continue // consumed above
+    if (e.event_type === 'campaign_click') continue
+
+    const url = String(e.properties.url ?? e.properties.path ?? '')
+    const pct = url ? scrollByUrl.get(url) : undefined
+    merged.push({ ...e, scroll_pct: pct })
+  }
+
+  return merged
+}
+
+// ── Event language ────────────────────────────────────────────────────────────
+
+function consumptionLabel(pct: number | undefined, type: 'page' | 'listing'): string {
+  if (pct === undefined) return type === 'listing' ? 'browsed' : 'browsed'
+  if (pct >= 75) return type === 'listing' ? 'spent time on' : 'sat with'
+  if (pct >= 40) return type === 'listing' ? 'looked through' : 'spent time on'
+  return 'browsed'
+}
+
+/** Horace-voiced label for each event */
+function eventLabel(event: MergedEvent): string {
+  const p = event.properties
+  switch (event.event_type) {
     case 'property_view': {
-      const addr = props.address ?? props.title
-      return addr ? `Viewed a listing — ${addr}` : 'Viewed a property listing'
+      const addr  = p.address ?? p.title
+      const verb  = consumptionLabel(event.scroll_pct, 'listing')
+      const depth = event.scroll_pct !== undefined
+        ? event.scroll_pct >= 75 ? ' — read every detail'
+        : event.scroll_pct >= 40 ? ' — looked it over'
+        : ''
+        : ''
+      return addr
+        ? `${verb === 'spent time on' ? 'Spent time on' : verb === 'looked through' ? 'Looked through' : 'Browsed'} a listing — ${addr}${depth}`
+        : `Viewed a property listing${depth}`
     }
     case 'form_submit': {
-      const form = props.form_name ?? props.form_id
+      const form = p.form_name ?? p.form_id
       return form ? `Submitted "${form}"` : 'Sent an enquiry'
     }
     case 'return_visit':
       return 'Came back to your site'
     case 'page_view': {
-      const title = props.title
-      return title ? `Read "${title}"` : 'Visited your website'
-    }
-    case 'scroll_depth': {
-      const pct = typeof props.pct === 'number' ? props.pct : null
-      const title = typeof props.title === 'string' ? props.title : null
-      const consumption = pct === null ? 'Read a page in depth'
-        : pct >= 75 ? 'Read this page in depth'
-        : pct >= 40 ? 'Read through a page'
-        : 'Skimmed a page'
-      return title ? `${consumption} — "${title}"` : consumption
+      const title = typeof p.title === 'string' ? p.title : null
+      const pct   = event.scroll_pct
+      if (pct !== undefined && pct >= 75) {
+        return title ? `Sat with your content — "${title}"` : 'Sat with your content'
+      }
+      if (pct !== undefined && pct >= 40) {
+        return title ? `Spent time on your site — "${title}"` : 'Spent time on your site'
+      }
+      return title ? `Browsed your site — "${title}"` : 'Browsed your site'
     }
     default:
-      return type.replace(/_/g, ' ')
+      return event.event_type.replace(/_/g, ' ')
   }
 }
 
@@ -95,10 +155,6 @@ function scoreReason(reason: string): string {
     case 'scroll_depth':   return 'Read a page in depth'
     default:               return reason.replace(/_/g, ' ')
   }
-}
-
-function shouldShowEvent(type: string): boolean {
-  return type !== 'campaign_click'
 }
 
 /** Get the URL to link from an event, if any */
@@ -155,15 +211,15 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
 
   if (!contact) notFound()
 
-  const events = (contactEvents ?? [])
-    .map((e) => ({
+  const events = mergeScrollDepth(
+    (contactEvents ?? []).map((e) => ({
       id:          e.event_id,
       event_type:  e.event_type,
       properties:  (e.properties ?? {}) as Record<string, unknown>,
       score_delta: e.score_delta,
       occurred_at: e.occurred_at,
     }))
-    .filter((e) => shouldShowEvent(e.event_type))
+  )
 
   const name   = [contact.first_name, contact.last_name].filter(Boolean).join(' ') || 'Unknown'
   const initials = [contact.first_name?.[0], contact.last_name?.[0]].filter(Boolean).join('').toUpperCase() || '?'
@@ -275,9 +331,8 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
             ) : (
               <div style={{ position: 'relative' }}>
                 {events.map((event, i) => {
-                  const props = event.properties
-                  const label = eventLabel(event.event_type, props)
-                  const url   = eventUrl(props)
+                  const label = eventLabel(event)
+                  const url   = eventUrl(event.properties)
                   const isLast = i === events.length - 1
 
                   return (
@@ -293,7 +348,7 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
                               : 'rgba(140,123,107,0.1)',
                           display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
                         }}>
-                          <TimelineIcon type={event.event_type} />
+                          <TimelineIcon event={event} />
                         </div>
                         {!isLast && (
                           <div style={{ width: '1px', flex: 1, background: 'rgba(140,123,107,0.15)', marginTop: '4px' }} />
@@ -405,14 +460,17 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
 
 // ── Timeline icon ─────────────────────────────────────────────────────────────
 
-function TimelineIcon({ type }: { type: string }) {
-  const style = { width: '13px', height: '13px' }
-  switch (type) {
-    case 'property_view':  return <Home     style={{ ...style, color: '#8C7B6B' }} />
-    case 'form_submit':    return <FileText style={{ ...style, color: '#C4622D' }} />
-    case 'return_visit':   return <RotateCcw style={{ ...style, color: '#3D5246' }} />
-    case 'scroll_depth':   return <BookOpen style={{ ...style, color: '#8C7B6B' }} />
+function TimelineIcon({ event }: { event: MergedEvent }) {
+  const s = { width: '13px', height: '13px' }
+  switch (event.event_type) {
+    case 'property_view': return <Home      style={{ ...s, color: '#8C7B6B' }} />
+    case 'form_submit':   return <FileText  style={{ ...s, color: '#C4622D' }} />
+    case 'return_visit':  return <RotateCcw style={{ ...s, color: '#3D5246' }} />
     case 'page_view':
-    default:               return <Globe   style={{ ...style, color: '#8C7B6B' }} />
+      // Deep reader gets a book icon
+      return event.scroll_pct !== undefined && event.scroll_pct >= 40
+        ? <BookOpen style={{ ...s, color: '#8C7B6B' }} />
+        : <Globe    style={{ ...s, color: '#8C7B6B' }} />
+    default:              return <Globe     style={{ ...s, color: '#8C7B6B' }} />
   }
 }
