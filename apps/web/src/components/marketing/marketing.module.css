@@ -1,0 +1,169 @@
+/* ── Shared marketing chrome — nav, footer, buttons ── */
+
+/* ── NAV ── */
+.nav {
+  position: sticky;
+  top: 0;
+  z-index: 200;
+  background: rgba(245,240,232,0.9);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.navInner {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 0 48px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.logoLockup {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+}
+
+.logoDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--color-terracotta);
+  flex-shrink: 0;
+}
+
+.wordmark {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 22px;
+  letter-spacing: -0.02em;
+  color: var(--color-ink);
+}
+
+.navLinks {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.navLinks a {
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--color-stone);
+  text-decoration: none;
+  transition: color 180ms var(--ease-out);
+}
+
+.navLinks a:hover,
+.navLinks a.active { color: var(--color-ink); }
+
+/* ── BUTTONS ── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  text-decoration: none;
+  transition: all 180ms var(--ease-out);
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.btnPrimary {
+  background: var(--color-terracotta);
+  color: var(--color-cream);
+}
+.btnPrimary:hover {
+  background: #B05626;
+  box-shadow: 0 4px 12px rgba(196,98,45,0.28);
+}
+
+.btnCream {
+  background: var(--color-cream);
+  color: var(--color-ink);
+}
+.btnCream:hover { background: #fff; }
+
+.btnLg {
+  padding: 14px 28px;
+  font-size: 15px;
+  border-radius: 10px;
+}
+
+/* ── FOOTER ── */
+.footer {
+  background: var(--color-charcoal);
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+
+.footerInner {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 40px 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.footerLogo .wordmark {
+  color: rgba(245,240,232,0.7);
+  font-size: 18px;
+}
+
+.footerLinks {
+  display: flex;
+  gap: 32px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.footerLinks a {
+  font-size: 13px;
+  color: rgba(140,123,107,0.7);
+  text-decoration: none;
+  transition: color 180ms var(--ease-out);
+}
+
+.footerLinks a:hover { color: rgba(245,240,232,0.7); }
+
+.footerSig {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 12px;
+  color: rgba(140,123,107,0.5);
+}
+
+/* ── RESPONSIVE ── */
+@media (max-width: 900px) {
+  .navLinks { display: none; }
+  .navInner { padding: 0 24px; }
+
+  .footerInner {
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    padding: 32px 24px;
+    text-align: center;
+  }
+
+  .footerLinks { gap: 24px; }
+
+  .btnLg {
+    padding: 12px 18px;
+    font-size: 14px;
+  }
+}

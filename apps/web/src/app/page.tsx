@@ -5,6 +5,8 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { Eye, TrendingUp, Shield, ChevronDown } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { MarketingNav } from '@/components/marketing/MarketingNav'
+import { MarketingFooter } from '@/components/marketing/MarketingFooter'
 import styles from './page.module.css'
 
 const faqs = [
@@ -121,23 +123,7 @@ export default function MarketingHomePage() {
   return (
     <div style={{ background: 'var(--color-parchment)', color: 'var(--color-ink)', minHeight: '100vh' }}>
 
-      {/* ── NAV ── */}
-      <nav className={styles.nav}>
-        <div className={styles.navInner}>
-          <Link href="/" className={styles.logoLockup}>
-            <div className={styles.logoDot} />
-            <span className={styles.wordmark}>Horace</span>
-          </Link>
-          <ul className={styles.navLinks}>
-            <li><a href="#why">How it works</a></li>
-            <li><a href="#faq">FAQ</a></li>
-            <li><a href="#" style={{ color: 'var(--color-stone)' }}>Pricing</a></li>
-          </ul>
-          <Link href={ctaHref} className={`${styles.btn} ${styles.btnPrimary}`}>
-            {isLoggedIn ? 'Dashboard' : 'Get started'}
-          </Link>
-        </div>
-      </nav>
+      <MarketingNav />
 
       {/* ── HERO ── */}
       <section>
@@ -317,21 +303,7 @@ export default function MarketingHomePage() {
         </div>
       </section>
 
-      {/* ── FOOTER ── */}
-      <footer className={styles.footer}>
-        <div className={styles.footerInner}>
-          <Link href="/" className={`${styles.logoLockup} ${styles.footerLogo}`}>
-            <div className={styles.logoDot} />
-            <span className={styles.wordmark}>Horace</span>
-          </Link>
-          <ul className={styles.footerLinks}>
-            <li><a href="#">Privacy</a></li>
-            <li><a href="#">Data</a></li>
-            <li><a href="#">Contact</a></li>
-          </ul>
-          <span className={styles.footerSig}>Seize the moment — Horace</span>
-        </div>
-      </footer>
+      <MarketingFooter />
 
     </div>
   )

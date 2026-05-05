@@ -41,6 +41,10 @@ export async function middleware(request: NextRequest) {
   // (middleware-level redirect strips search params).
   const isPublicRoute =
     pathname === '/' ||
+    pathname.startsWith('/pricing') ||
+    pathname.startsWith('/data') ||
+    pathname.startsWith('/privacy') ||
+    pathname.startsWith('/contact') ||
     pathname.startsWith('/login') ||
     pathname.startsWith('/signup') ||
     pathname.startsWith('/api/t') ||
