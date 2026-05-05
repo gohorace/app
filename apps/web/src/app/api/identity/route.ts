@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
     return new Response('Bad request', { status: 400, headers: CORS_HEADERS })
   }
 
-  const { k: snippetKey, aid: anonymousId, email, meta } = parsed.data
+  const { k: snippetKey, aid: anonymousId, sid: sessionId, email, meta } = parsed.data
 
   const supabase = createAdminClient()
 
@@ -58,12 +58,13 @@ export async function POST(request: NextRequest) {
 
   const workspaceId = workspace.id
 
-  // Upsert session — creates it if the tracker hasn't flushed yet (race condition)
+  // Upsert session — creates it if the tracker hasn't flushed yet (race condition).
+  // Uses tracker_session_id as conflict target so each 30-min visit gets its own row.
   const { data: session, error: sessionErr } = await supabase
     .from('sessions')
     .upsert(
-      { workspace_id: workspaceId, anonymous_id: anonymousId, last_seen_at: new Date().toISOString() },
-      { onConflict: 'workspace_id,anonymous_id' },
+      { workspace_id: workspaceId, anonymous_id: anonymousId, tracker_session_id: sessionId, last_seen_at: new Date().toISOString() },
+      { onConflict: 'workspace_id,tracker_session_id' },
     )
     .select('id')
     .single()
