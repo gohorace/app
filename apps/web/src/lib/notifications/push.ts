@@ -1,6 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 
-const DEDUP_MINUTES = 60
+const DEDUP_MINUTES = 5
 
 export type AlertType = 'alert_score_threshold' | 'alert_form_submit' | 'alert_return_visit'
 
@@ -96,9 +96,10 @@ export async function sendScoreThresholdAlert(
   if (await isRecentlySent(agentId, contactId, 'alert_score_threshold')) return
 
   const score = scoreAfter
+  const firstName = contactName.split(' ')[0]
   await pushToAgent(agentId, {
-    title: 'Hot prospect',
-    body: `${contactName} just hit a score of ${score}`,
+    title: "Something's stirring.",
+    body: `${firstName} just crossed your threshold. Might be worth a call.`,
     url: `/leads/${contactId}`,
     tag: `score-${contactId}`,
   })
@@ -114,9 +115,10 @@ export async function sendFormSubmitAlert(
 ): Promise<void> {
   if (await isRecentlySent(agentId, contactId, 'alert_form_submit')) return
 
+  const firstName = contactName.split(' ')[0]
   await pushToAgent(agentId, {
-    title: 'Form submitted',
-    body: `${contactName} submitted${formName ? ` "${formName}"` : ' a form'} on your website`,
+    title: 'They raised their hand.',
+    body: `${firstName} just submitted${formName ? ` "${formName}"` : ' a form'}. Worth a follow-up now.`,
     url: `/leads/${contactId}`,
     tag: `form-${contactId}`,
   })
@@ -131,9 +133,10 @@ export async function sendReturnVisitAlert(
 ): Promise<void> {
   if (await isRecentlySent(agentId, contactId, 'alert_return_visit')) return
 
+  const firstName = contactName.split(' ')[0]
   await pushToAgent(agentId, {
-    title: 'Back on your site',
-    body: `${contactName} is browsing your website right now`,
+    title: "Something's stirring.",
+    body: `${firstName}'s back on your site. Might be worth a call.`,
     url: `/leads/${contactId}`,
     tag: `return-${contactId}`,
   })

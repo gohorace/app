@@ -152,7 +152,8 @@ export async function scoreEventsForContact(
         ? ((formEvent.properties as Record<string, unknown>).form_name as string | null) ?? null
         : null
 
-    Promise.all([
+    // Await — fire-and-forget is killed by Vercel before the push fetch completes
+    await Promise.all([
       // Threshold mode: only fire when score crosses the configured threshold
       // All mode: fire for any scoring activity (dedup prevents spam)
       sendScoreThresholdAlert(agentId, contactId, contactName, scoreAfter, scoreBefore),
