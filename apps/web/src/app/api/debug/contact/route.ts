@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
   // Try inserting identity_map with the most recent session's anonymous_id
   const mostRecentSession = recentSessions?.[0]
   let realInsertTest: unknown = 'no recent session found'
-  if (mostRecentSession && agent) {
+  if (mostRecentSession && agent && agent.workspace_id) {
     const { error: realInsertError } = await admin.from('identity_map').insert({
       workspace_id: agent.workspace_id,
       agent_id: agent.id,
