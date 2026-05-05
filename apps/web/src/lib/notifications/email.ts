@@ -2,6 +2,80 @@ import type { LeadWithInsight } from '@/lib/ai/briefing'
 
 export type { LeadWithInsight }
 
+export type AlertEmailType = 'return_visit' | 'form_submit' | 'score_threshold'
+
+export function buildAlertEmail(
+  type: AlertEmailType,
+  contactName: string,
+  contactId: string,
+  appUrl: string,
+  extra?: { score?: number; formName?: string | null },
+): { subject: string; html: string } {
+  const profileUrl = `${appUrl}/leads/${contactId}`
+  const firstName = contactName.split(' ')[0]
+
+  const content: Record<AlertEmailType, { subject: string; heading: string; body: string; cta: string }> = {
+    return_visit: {
+      subject: `${firstName} is back on your site`,
+      heading: `${contactName} just returned`,
+      body: `They're browsing your site right now. This might be a good time to reach out while you're top of mind.`,
+      cta: 'View their activity',
+    },
+    form_submit: {
+      subject: `${firstName} submitted a form`,
+      heading: `${contactName} raised their hand`,
+      body: `They just submitted${extra?.formName ? ` "${extra.formName}"` : ' a form'} on your website. Worth a follow-up now while the lead is warm.`,
+      cta: 'View contact',
+    },
+    score_threshold: {
+      subject: `${firstName} just crossed your intent threshold`,
+      heading: `Hot prospect — score ${extra?.score ?? ''}`,
+      body: `${contactName} has been actively engaging with your site and just crossed your alert threshold. Now's the time to act.`,
+      cta: 'View contact',
+    },
+  }
+
+  const { subject, heading, body, cta } = content[type]
+
+  const html = `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#F5F2EC;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#F5F2EC;padding:40px 20px;">
+    <tr><td align="center">
+      <table width="560" cellpadding="0" cellspacing="0" style="background:#FDFAF5;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+
+        <tr>
+          <td style="background:#2E2823;padding:20px 32px;">
+            <p style="margin:0;color:#F5F2EC;font-size:17px;font-weight:700;letter-spacing:-0.01em;">Horace</p>
+          </td>
+        </tr>
+
+        <tr>
+          <td style="padding:32px;">
+            <p style="margin:0 0 8px;color:#1A1612;font-size:22px;font-weight:700;letter-spacing:-0.02em;">${heading}</p>
+            <p style="margin:0 0 24px;color:#6B5E54;font-size:15px;line-height:1.6;">${body}</p>
+            <a href="${profileUrl}" style="display:inline-block;background:#C4622D;color:#fff;text-decoration:none;font-size:14px;font-weight:600;padding:10px 22px;border-radius:6px;">${cta} →</a>
+          </td>
+        </tr>
+
+        <tr>
+          <td style="padding:16px 32px;border-top:1px solid #EDE8E0;">
+            <p style="margin:0;color:#9B8E86;font-size:12px;">
+              <a href="${appUrl}/settings/notifications" style="color:#9B8E86;">Manage alert preferences</a>
+            </p>
+          </td>
+        </tr>
+
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`
+
+  return { subject, html }
+}
+
 export function buildWeeklyBriefingEmail(
   agentName: string,
   leads: LeadWithInsight[],
