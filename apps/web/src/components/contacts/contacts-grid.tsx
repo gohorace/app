@@ -190,8 +190,8 @@ export function ContactsGrid({ contacts, initialQ = '' }: Props) {
                 { label: 'Suburb',    key: 'suburb'   as const },
                 { label: 'Signal',    key: 'intent'   as const },
                 { label: 'Last page', key: 'lastPage' as const },
-                { label: 'Sessions',  key: 'sessions' as const, mono: true },
-                { label: 'Last seen', key: 'lastSeen' as const, mono: true },
+                { label: 'Sessions',  key: 'sessions' as const },
+                { label: 'Last seen', key: 'lastSeen' as const },
               ].map(col => (
                 <div key={col.label} style={{
                   flex: COL_FLEX[col.key],
@@ -322,14 +322,14 @@ export function ContactsGrid({ contacts, initialQ = '' }: Props) {
                   </div>
 
                   {/* Sessions */}
-                  <div style={{ flex: COL_FLEX.sessions, minWidth: COL_MIN.sessions, paddingRight: '12px', textAlign: 'right' }}>
+                  <div style={{ flex: COL_FLEX.sessions, minWidth: COL_MIN.sessions, paddingRight: '12px' }}>
                     <span style={{ fontSize: '12.5px', color: contact.session_count > 0 ? '#1A1612' : 'rgba(140,123,107,0.4)', fontFamily: 'var(--font-mono)' }}>
                       {contact.session_count > 0 ? contact.session_count : '—'}
                     </span>
                   </div>
 
                   {/* Last seen */}
-                  <div style={{ flex: COL_FLEX.lastSeen, minWidth: COL_MIN.lastSeen, textAlign: 'right' }}>
+                  <div style={{ flex: COL_FLEX.lastSeen, minWidth: COL_MIN.lastSeen }}>
                     <span style={{ fontSize: '12px', color: '#8C7B6B', fontFamily: 'var(--font-mono)' }}>
                       {contact.last_seen_at
                         ? formatDistanceToNow(new Date(contact.last_seen_at), { addSuffix: false })
