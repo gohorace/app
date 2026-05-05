@@ -1,12 +1,12 @@
 {
   "name": "Horace",
   "short_name": "Horace",
-  "description": "Your real estate signal engine",
+  "description": "Your market, always watching.",
   "start_url": "/dashboard",
   "display": "standalone",
-  "background_color": "#f9fafb",
-  "theme_color": "#111827",
-  "orientation": "portrait-primary",
+  "background_color": "#1A1612",
+  "theme_color": "#1A1612",
+  "orientation": "portrait",
   "icons": [
     {
       "src": "/icon-192.png",

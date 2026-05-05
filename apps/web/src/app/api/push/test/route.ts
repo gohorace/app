@@ -44,8 +44,8 @@ export async function POST() {
   webpush.setVapidDetails(vapidEmail, vapidPublic, vapidPrivate)
 
   const payload = JSON.stringify({
-    title: 'Horace is working',
-    body: 'Push notifications are set up correctly.',
+    title: 'Horace is watching.',
+    body: 'Push notifications are set up correctly. Seize the moment.',
     url: '/dashboard',
     tag: 'horace-test',
   })

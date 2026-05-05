@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { Sidebar } from '@/components/dashboard/sidebar'
+import { MobileNav } from '@/components/dashboard/mobile-nav'
 
 export const dynamic = 'force-dynamic'
 
@@ -38,8 +39,22 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
-      <Sidebar orgName={workspaceName} />
-      <main className="flex-1 overflow-y-auto p-0">{children}</main>
+      {/* Desktop sidebar — hidden on mobile */}
+      <div className="hidden md:flex">
+        <Sidebar orgName={workspaceName} />
+      </div>
+
+      {/* Main content — bottom padding on mobile to clear tab bar */}
+      <main className="flex-1 overflow-y-auto p-0 pb-[env(safe-area-inset-bottom)] md:pb-0">
+        <div className="pb-20 md:pb-0">
+          {children}
+        </div>
+      </main>
+
+      {/* Mobile bottom tab bar — hidden on desktop */}
+      <div className="md:hidden">
+        <MobileNav />
+      </div>
     </div>
   )
 }

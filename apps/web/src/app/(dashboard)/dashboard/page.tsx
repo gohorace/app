@@ -5,6 +5,7 @@ import { formatDistanceToNow } from 'date-fns'
 import { Bell } from 'lucide-react'
 import { ClaudeButton } from '@/components/ui/claude-button'
 import { SignalFilters } from '@/components/dashboard/signal-filters'
+import { DailySummaryCard } from '@/components/dashboard/daily-summary-card'
 
 // ── Intent helpers ────────────────────────────────────────────────────────────
 
@@ -107,12 +108,17 @@ export default async function DashboardPage({
     reasonsByContact[h.contact_id].push(h.reason)
   }
 
-  // Count for summary
-  const { count: totalHigh } = await admin
-    .from('contacts')
-    .select('*', { count: 'exact', head: true })
-    .eq('agent_id', agentId)
-    .gte('score', 50)
+  // Counts for summary card
+  const [
+    { count: totalHigh },
+    { count: totalActive },
+    { count: recentEvents },
+  ] = await Promise.all([
+    admin.from('contacts').select('*', { count: 'exact', head: true }).eq('agent_id', agentId).gte('score', 50),
+    admin.from('contacts').select('*', { count: 'exact', head: true }).eq('agent_id', agentId).gte('score', 5),
+    admin.from('score_history').select('*', { count: 'exact', head: true }).eq('agent_id', agentId)
+      .gte('occurred_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()),
+  ])
 
   const signals = (contacts ?? []).map(c => {
     const name    = [c.first_name, c.last_name].filter(Boolean).join(' ') || c.email || 'Unknown'
@@ -122,10 +128,22 @@ export default async function DashboardPage({
     return { ...c, name, intent, nudge: getNudge(c.score, topEvent), tags: getTags(reasons) }
   })
 
+  const topContactName = signals.find(s => s.intent === 'high')?.first_name ?? null
+
   return (
-    <div className="p-8 space-y-5 max-w-3xl">
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4">
+    <div className="p-4 md:p-8 space-y-4 md:space-y-5 max-w-3xl">
+      {/* Daily summary card — mobile only */}
+      <div className="md:hidden">
+        <DailySummaryCard
+          highCount={totalHigh ?? 0}
+          totalSignals={totalActive ?? 0}
+          recentEvents={recentEvents ?? 0}
+          topContactName={topContactName}
+        />
+      </div>
+
+      {/* Header — desktop */}
+      <div className="hidden md:flex items-start justify-between gap-4">
         <div>
           <h1 className="font-display font-semibold tracking-tight" style={{ fontSize: '26px', color: '#1A1612' }}>
             Signals
@@ -137,6 +155,18 @@ export default async function DashboardPage({
         <ClaudeButton
           prompt={`I'm a real estate agent using Horace. I have ${totalHigh ?? 0} high-intent contacts right now. My top signals are: ${signals.slice(0, 3).map(s => `${s.name} (score ${s.score}, ${INTENT_LABEL[s.intent as Intent]})`).join(', ')}. Who should I focus on and what should I say?`}
           label="Review with Claude"
+        />
+      </div>
+
+      {/* Mobile header — minimal */}
+      <div className="md:hidden flex items-center justify-between">
+        <h2 style={{ fontSize: '17px', fontWeight: 600, color: '#1A1612', fontFamily: 'var(--font-body)' }}>
+          Signals
+        </h2>
+        <ClaudeButton
+          prompt={`I'm a real estate agent using Horace. I have ${totalHigh ?? 0} high-intent contacts. Top signals: ${signals.slice(0, 3).map(s => `${s.name} (score ${s.score})`).join(', ')}. Who should I focus on?`}
+          label="Ask Claude"
+          size="sm"
         />
       </div>
 
