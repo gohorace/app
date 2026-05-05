@@ -130,18 +130,21 @@ export type Database = {
       sessions: {
         Row: {
           id: string; workspace_id: string; anonymous_id: string
+          tracker_session_id: string
           first_seen_at: string; last_seen_at: string; campaign_token: string | null
           utm_source: string | null; utm_medium: string | null; utm_campaign: string | null
           utm_content: string | null; referrer: string | null; ip_country: string | null; user_agent: string | null
         }
         Insert: {
           id?: string; workspace_id: string; anonymous_id: string
+          tracker_session_id: string
           first_seen_at?: string; last_seen_at?: string; campaign_token?: string | null
           utm_source?: string | null; utm_medium?: string | null; utm_campaign?: string | null
           utm_content?: string | null; referrer?: string | null; ip_country?: string | null; user_agent?: string | null
         }
         Update: {
           id?: string; workspace_id?: string; anonymous_id?: string
+          tracker_session_id?: string
           first_seen_at?: string; last_seen_at?: string; campaign_token?: string | null
           utm_source?: string | null; utm_medium?: string | null; utm_campaign?: string | null
           utm_content?: string | null; referrer?: string | null; ip_country?: string | null; user_agent?: string | null

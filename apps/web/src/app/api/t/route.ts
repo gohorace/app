@@ -66,22 +66,25 @@ export async function POST(request: NextRequest) {
 
   const workspaceId = workspace.id
 
-  // 2. Upsert session — create if new, update last_seen_at if existing
+  // 2. Upsert session — one row per tracker session (30-min window identified by `sid`).
+  //    Conflict target is (workspace_id, tracker_session_id) so each distinct visit
+  //    gets its own row; session_count in the contacts list reflects real visit count.
   const sessionUpsert: TablesInsert<'sessions'> = {
-    workspace_id: workspaceId,
-    anonymous_id: anonymousId,
-    last_seen_at: new Date().toISOString(),
-    ...(sessionMeta?.utm_source && { utm_source: sessionMeta.utm_source }),
-    ...(sessionMeta?.utm_medium && { utm_medium: sessionMeta.utm_medium }),
+    workspace_id:       workspaceId,
+    anonymous_id:       anonymousId,
+    tracker_session_id: sessionId,
+    last_seen_at:       new Date().toISOString(),
+    ...(sessionMeta?.utm_source   && { utm_source:   sessionMeta.utm_source }),
+    ...(sessionMeta?.utm_medium   && { utm_medium:   sessionMeta.utm_medium }),
     ...(sessionMeta?.utm_campaign && { utm_campaign: sessionMeta.utm_campaign }),
-    ...(sessionMeta?.utm_content && { utm_content: sessionMeta.utm_content }),
-    ...(sessionMeta?.referrer && { referrer: sessionMeta.referrer }),
-    ...(sessionMeta?.ua && { user_agent: sessionMeta.ua }),
+    ...(sessionMeta?.utm_content  && { utm_content:  sessionMeta.utm_content }),
+    ...(sessionMeta?.referrer     && { referrer:     sessionMeta.referrer }),
+    ...(sessionMeta?.ua           && { user_agent:   sessionMeta.ua }),
   }
 
   const { data: session, error: sessionErr } = await supabase
     .from('sessions')
-    .upsert(sessionUpsert, { onConflict: 'workspace_id,anonymous_id' })
+    .upsert(sessionUpsert, { onConflict: 'workspace_id,tracker_session_id' })
     .select('id')
     .single()
 
