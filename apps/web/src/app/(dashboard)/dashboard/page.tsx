@@ -3,7 +3,6 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import Link from 'next/link'
 import { formatDistanceToNow } from 'date-fns'
 import { Bell } from 'lucide-react'
-import { ClaudeButton } from '@/components/ui/claude-button'
 import { SignalFilters } from '@/components/dashboard/signal-filters'
 import { DailySummaryCard } from '@/components/dashboard/daily-summary-card'
 
@@ -143,31 +142,20 @@ export default async function DashboardPage({
       </div>
 
       {/* Header — desktop */}
-      <div className="hidden md:flex items-start justify-between gap-4">
-        <div>
-          <h1 className="font-display font-semibold tracking-tight" style={{ fontSize: '26px', color: '#1A1612' }}>
-            Signals
-          </h1>
-          <p style={{ fontSize: '13px', color: '#8C7B6B', marginTop: '2px' }}>
-            What Horace picked up this week.
-          </p>
-        </div>
-        <ClaudeButton
-          prompt={`I'm a real estate agent using Horace. I have ${totalHigh ?? 0} high-intent contacts right now. My top signals are: ${signals.slice(0, 3).map(s => `${s.name} (score ${s.score}, ${INTENT_LABEL[s.intent as Intent]})`).join(', ')}. Who should I focus on and what should I say?`}
-          label="Review with Claude"
-        />
+      <div className="hidden md:block">
+        <h1 className="font-display font-semibold tracking-tight" style={{ fontSize: '26px', color: '#1A1612' }}>
+          Signals
+        </h1>
+        <p style={{ fontSize: '13px', color: '#8C7B6B', marginTop: '2px' }}>
+          What Horace picked up this week.
+        </p>
       </div>
 
       {/* Mobile header — minimal */}
-      <div className="md:hidden flex items-center justify-between">
+      <div className="md:hidden">
         <h2 style={{ fontSize: '17px', fontWeight: 600, color: '#1A1612', fontFamily: 'var(--font-body)' }}>
           Signals
         </h2>
-        <ClaudeButton
-          prompt={`I'm a real estate agent using Horace. I have ${totalHigh ?? 0} high-intent contacts. Top signals: ${signals.slice(0, 3).map(s => `${s.name} (score ${s.score})`).join(', ')}. Who should I focus on?`}
-          label="Ask Claude"
-          size="sm"
-        />
       </div>
 
       {/* Filter pills */}

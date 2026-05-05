@@ -2,7 +2,6 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import Link from 'next/link'
 import { formatDistanceToNow } from 'date-fns'
-import { ClaudeButton } from '@/components/ui/claude-button'
 import { AddContactDialog } from '@/components/contacts/add-contact-dialog'
 
 type Intent = 'high' | 'mid' | 'low' | 'none'
@@ -64,14 +63,7 @@ export default async function LeadsPage({
             Everyone Horace is watching for you.
           </p>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <ClaudeButton
-            prompt={`I'm a real estate agent. I have ${leads?.length ?? 0} contacts tracked in Horace. Top contacts: ${(leads ?? []).slice(0, 5).map(l => `${[l.first_name, l.last_name].filter(Boolean).join(' ') || l.email} (score: ${l.score})`).join(', ')}. Who should I focus on?`}
-            label="Ask Claude"
-            size="sm"
-          />
-          <AddContactDialog />
-        </div>
+        <AddContactDialog />
       </div>
 
       {/* Search */}
