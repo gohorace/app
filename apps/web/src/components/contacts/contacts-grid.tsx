@@ -77,14 +77,22 @@ interface Props {
   initialQ?:  string
 }
 
-const COL_WIDTHS = {
-  name:     240,
-  email:    200,
-  suburb:   120,
-  intent:   110,
-  lastPage: 180,
-  sessions: 70,
-  lastSeen: 90,
+// Flex proportions — columns scale to fill available width.
+// sessions and lastSeen have minWidth so they don't collapse on narrow screens.
+const COL_FLEX = {
+  name:     3,
+  email:    2.5,
+  suburb:   1.5,
+  intent:   1.5,
+  lastPage: 2.5,
+  sessions: 1,
+  lastSeen: 1,
+}
+const COL_MIN: Partial<Record<keyof typeof COL_FLEX, string>> = {
+  name:     '120px',
+  email:    '120px',
+  sessions: '60px',
+  lastSeen: '70px',
 }
 
 export function ContactsGrid({ contacts, initialQ = '' }: Props) {
@@ -165,7 +173,7 @@ export function ContactsGrid({ contacts, initialQ = '' }: Props) {
 
         {/* Grid */}
         <div style={{ flex: 1, overflow: 'auto', minWidth: 0 }}>
-          <div style={{ minWidth: Object.values(COL_WIDTHS).reduce((a, b) => a + b, 0) + 48 }}>
+          <div style={{ width: '100%' }}>
 
             {/* Column headers */}
             <div style={{
@@ -177,22 +185,24 @@ export function ContactsGrid({ contacts, initialQ = '' }: Props) {
               position: 'sticky', top: 0, zIndex: 2,
             }}>
               {[
-                { label: 'Name',      w: COL_WIDTHS.name },
-                { label: 'Email',     w: COL_WIDTHS.email },
-                { label: 'Suburb',    w: COL_WIDTHS.suburb },
-                { label: 'Signal',    w: COL_WIDTHS.intent },
-                { label: 'Last page', w: COL_WIDTHS.lastPage },
-                { label: 'Sessions', w: COL_WIDTHS.sessions, mono: true },
-                { label: 'Last seen', w: COL_WIDTHS.lastSeen, mono: true },
+                { label: 'Name',      key: 'name'     as const },
+                { label: 'Email',     key: 'email'    as const },
+                { label: 'Suburb',    key: 'suburb'   as const },
+                { label: 'Signal',    key: 'intent'   as const },
+                { label: 'Last page', key: 'lastPage' as const },
+                { label: 'Sessions',  key: 'sessions' as const, mono: true },
+                { label: 'Last seen', key: 'lastSeen' as const, mono: true },
               ].map(col => (
                 <div key={col.label} style={{
-                  width: col.w, flexShrink: 0,
+                  flex: COL_FLEX[col.key],
+                  minWidth: COL_MIN[col.key] ?? 0,
                   fontSize: '10px', fontWeight: 600,
                   letterSpacing: '0.08em', textTransform: 'uppercase',
                   color: '#8C7B6B',
                   fontFamily: col.mono ? 'var(--font-mono)' : 'var(--font-body)',
                   paddingRight: '12px',
                   display: 'flex', alignItems: 'center',
+                  overflow: 'hidden',
                 }}>
                   {col.label}
                 </div>
@@ -245,7 +255,7 @@ export function ContactsGrid({ contacts, initialQ = '' }: Props) {
                   className="grid-row"
                 >
                   {/* Name */}
-                  <div style={{ width: COL_WIDTHS.name, flexShrink: 0, display: 'flex', alignItems: 'center', gap: '9px', paddingRight: '12px', minWidth: 0 }}>
+                  <div style={{ flex: COL_FLEX.name, minWidth: COL_MIN.name, display: 'flex', alignItems: 'center', gap: '9px', paddingRight: '12px', overflow: 'hidden' }}>
                     <div style={{
                       width: '26px', height: '26px', borderRadius: '50%', flexShrink: 0,
                       background: INTENT_BG[intent], color: INTENT_FG[intent],
@@ -267,14 +277,14 @@ export function ContactsGrid({ contacts, initialQ = '' }: Props) {
                   </div>
 
                   {/* Email */}
-                  <div style={{ width: COL_WIDTHS.email, flexShrink: 0, paddingRight: '12px', overflow: 'hidden' }}>
+                  <div style={{ flex: COL_FLEX.email, minWidth: COL_MIN.email, paddingRight: '12px', overflow: 'hidden' }}>
                     <span style={{ fontSize: '12.5px', color: '#5A4D40', fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>
                       {contact.email ?? '—'}
                     </span>
                   </div>
 
                   {/* Suburb */}
-                  <div style={{ width: COL_WIDTHS.suburb, flexShrink: 0, paddingRight: '12px' }}>
+                  <div style={{ flex: COL_FLEX.suburb, minWidth: 0, paddingRight: '12px', overflow: 'hidden' }}>
                     {contact.suburb ? (
                       <span style={{
                         display: 'inline-flex', alignItems: 'center', gap: '4px',
@@ -291,7 +301,7 @@ export function ContactsGrid({ contacts, initialQ = '' }: Props) {
                   </div>
 
                   {/* Intent */}
-                  <div style={{ width: COL_WIDTHS.intent, flexShrink: 0, paddingRight: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <div style={{ flex: COL_FLEX.intent, minWidth: 0, paddingRight: '12px', display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden' }}>
                     <span style={{
                       display: 'inline-flex', alignItems: 'center', gap: '5px',
                       padding: '2px 8px', borderRadius: '4px',
@@ -305,21 +315,21 @@ export function ContactsGrid({ contacts, initialQ = '' }: Props) {
                   </div>
 
                   {/* Last page */}
-                  <div style={{ width: COL_WIDTHS.lastPage, flexShrink: 0, paddingRight: '12px', overflow: 'hidden' }}>
+                  <div style={{ flex: COL_FLEX.lastPage, minWidth: 0, paddingRight: '12px', overflow: 'hidden' }}>
                     <span style={{ fontSize: '12.5px', color: contact.last_event_type ? '#1A1612' : 'rgba(140,123,107,0.4)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>
                       {lastPageLabel(contact.last_event_type, contact.last_page_title)}
                     </span>
                   </div>
 
                   {/* Sessions */}
-                  <div style={{ width: COL_WIDTHS.sessions, flexShrink: 0, paddingRight: '12px', textAlign: 'right' }}>
+                  <div style={{ flex: COL_FLEX.sessions, minWidth: COL_MIN.sessions, paddingRight: '12px', textAlign: 'right' }}>
                     <span style={{ fontSize: '12.5px', color: contact.session_count > 0 ? '#1A1612' : 'rgba(140,123,107,0.4)', fontFamily: 'var(--font-mono)' }}>
                       {contact.session_count > 0 ? contact.session_count : '—'}
                     </span>
                   </div>
 
                   {/* Last seen */}
-                  <div style={{ width: COL_WIDTHS.lastSeen, flexShrink: 0, textAlign: 'right' }}>
+                  <div style={{ flex: COL_FLEX.lastSeen, minWidth: COL_MIN.lastSeen, textAlign: 'right' }}>
                     <span style={{ fontSize: '12px', color: '#8C7B6B', fontFamily: 'var(--font-mono)' }}>
                       {contact.last_seen_at
                         ? formatDistanceToNow(new Date(contact.last_seen_at), { addSuffix: false })
