@@ -94,6 +94,19 @@ export async function POST(request: NextRequest) {
   let contactId: string | null = null
   let agentId: string | null = null
 
+  // 3. Resolve anonymous_id → contact via identity_map
+  const { data: identity } = await supabase
+    .from('identity_map')
+    .select('contact_id, agent_id')
+    .eq('workspace_id', workspaceId)
+    .eq('anonymous_id', anonymousId)
+    .maybeSingle()
+
+  if (identity) {
+    contactId = identity.contact_id
+    agentId   = identity.agent_id
+  }
+
   // 4. Map incoming events to DB rows
   const eventRows = events
     .filter((e) => isValidEventType(e.t))
