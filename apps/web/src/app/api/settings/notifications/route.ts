@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
 
   if (error) {
     console.error('Settings update error:', error)
-    return NextResponse.json({ error: 'Failed to save settings' }, { status: 500 })
+    return NextResponse.json({ error: error.message ?? 'Failed to save settings' }, { status: 500 })
   }
 
   return NextResponse.json({ ok: true })
