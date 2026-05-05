@@ -12,62 +12,76 @@ export async function GET(request: NextRequest) {
 
   const admin = createAdminClient()
 
-  const [
-    { data: contact },
-    { data: identityMap },
-    { data: rpcResult, error: rpcError },
-  ] = await Promise.all([
-    admin.from('contacts').select('id, email, first_name, last_name, score, crm_source').eq('id', contactId).maybeSingle(),
-    admin.from('identity_map').select('*').eq('contact_id', contactId),
-    admin.rpc('get_contact_events', { p_contact_id: contactId }),
-  ])
+  const { data: contact } = await admin
+    .from('contacts')
+    .select('id, email, first_name, last_name, score, crm_source, agent_id, identified_at, last_seen_at')
+    .eq('id', contactId)
+    .maybeSingle()
 
-  // Get the agent and workspace for this contact so we can test the insert
-  const { data: contactFull } = await admin.from('contacts').select('agent_id').eq('id', contactId).maybeSingle()
-  const { data: agent } = contactFull?.agent_id
-    ? await admin.from('agents').select('id, workspace_id').eq('id', contactFull.agent_id).maybeSingle()
+  const { data: agent } = contact?.agent_id
+    ? await admin.from('agents').select('id, workspace_id').eq('id', contact.agent_id).maybeSingle()
     : { data: null }
 
-  // Probe the identity_map columns in production
-  const { data: imColumns } = await admin
+  // All identity_map rows for this contact
+  const { data: identityMap, error: imReadError } = await admin
     .from('identity_map')
     .select('*')
-    .limit(1)
+    .eq('contact_id', contactId)
 
-  // Attempt a test insert with a fake anonymous_id to surface the exact error
-  const testAnonId = 'debug-test-' + Date.now()
-  const { error: insertError } = await admin.from('identity_map').insert({
-    workspace_id: agent?.workspace_id ?? 'unknown',
-    agent_id: agent?.id ?? 'unknown',
-    anonymous_id: testAnonId,
-    contact_id: contactId,
-    stitch_method: 'form',
-    confidence: 'high',
-  })
-
-  // Clean up test row if it was inserted
-  if (!insertError) {
-    await admin.from('identity_map').delete().eq('anonymous_id', testAnonId)
-  }
-
-  const anonymousIds = (identityMap ?? []).map((r: Record<string, unknown>) => r.anonymous_id as string)
-  const { data: sessions } = anonymousIds.length
-    ? await admin.from('sessions').select('id, anonymous_id, workspace_id, last_seen_at').in('anonymous_id', anonymousIds)
+  // Recent sessions in this workspace (last 2 hours) to find the anonymous_id
+  const since = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
+  const { data: recentSessions } = agent?.workspace_id
+    ? await admin.from('sessions').select('id, anonymous_id, last_seen_at')
+        .eq('workspace_id', agent.workspace_id)
+        .gte('last_seen_at', since)
+        .order('last_seen_at', { ascending: false })
+        .limit(10)
     : { data: [] }
 
-  const sessionIds = (sessions ?? []).map((s: Record<string, unknown>) => s.id as string)
+  // Try inserting identity_map with the most recent session's anonymous_id
+  const mostRecentSession = recentSessions?.[0]
+  let realInsertTest: unknown = 'no recent session found'
+  if (mostRecentSession && agent) {
+    const { error: realInsertError } = await admin.from('identity_map').insert({
+      workspace_id: agent.workspace_id,
+      agent_id: agent.id,
+      anonymous_id: mostRecentSession.anonymous_id + '-debug',
+      contact_id: contactId,
+      stitch_method: 'form',
+      confidence: 'high',
+    })
+    if (!realInsertError) {
+      await admin.from('identity_map').delete()
+        .eq('anonymous_id', mostRecentSession.anonymous_id + '-debug')
+      realInsertTest = 'success'
+    } else {
+      realInsertTest = { error: realInsertError.message, code: realInsertError.code, details: realInsertError.details, hint: realInsertError.hint }
+    }
+  }
+
+  // Score history
+  const { data: scoreHistory } = await admin
+    .from('score_history')
+    .select('delta, reason, occurred_at')
+    .eq('contact_id', contactId)
+    .order('occurred_at', { ascending: false })
+    .limit(5)
+
+  // Events via the known session IDs
+  const sessionIds = (recentSessions ?? []).map(s => s.id)
   const { data: events } = sessionIds.length
-    ? await admin.from('events').select('id, event_type, session_id, occurred_at').in('session_id', sessionIds).order('occurred_at', { ascending: false }).limit(20)
+    ? await admin.from('events').select('id, event_type, session_id, occurred_at')
+        .in('session_id', sessionIds).order('occurred_at', { ascending: false }).limit(20)
     : { data: [] }
 
   return NextResponse.json({
     contact,
+    agent,
     identityMap,
-    imColumnsSample: imColumns,
-    insertTest: insertError ? { error: insertError.message, code: insertError.code, details: insertError.details } : 'success',
-    sessions,
+    imReadError,
+    recentSessions,
+    realInsertTest,
+    scoreHistory,
     events,
-    rpcResult,
-    rpcError,
   })
 }
