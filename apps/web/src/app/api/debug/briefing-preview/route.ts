@@ -62,6 +62,7 @@ export async function GET(request: NextRequest) {
       email: c.email,
       score: c.score,
       score_change: 0,
+      event_count: 0,
       last_seen_at: null,
     }))
   }
