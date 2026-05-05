@@ -24,9 +24,14 @@ export async function middleware(request: NextRequest) {
   )
 
   // Refresh session — required for Server Components to stay in sync
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  // Wrapped in try/catch so a misconfigured Supabase URL doesn't crash every route.
+  let user = null
+  try {
+    const { data } = await supabase.auth.getUser()
+    user = data.user
+  } catch {
+    // Auth unavailable — treat as unauthenticated; public routes still render.
+  }
 
   const { pathname } = request.nextUrl
 
@@ -35,6 +40,7 @@ export async function middleware(request: NextRequest) {
   // error or redirect to /login with the full query string preserved
   // (middleware-level redirect strips search params).
   const isPublicRoute =
+    pathname === '/' ||
     pathname.startsWith('/login') ||
     pathname.startsWith('/signup') ||
     pathname.startsWith('/api/t') ||
@@ -54,8 +60,8 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  // Redirect logged-in users away from login (but not signup — they may need to create an org)
-  if (user && pathname === '/login') {
+  // Redirect logged-in users away from login and the marketing home to the dashboard
+  if (user && (pathname === '/login' || pathname === '/')) {
     const url = request.nextUrl.clone()
     url.pathname = '/dashboard'
     return NextResponse.redirect(url)
