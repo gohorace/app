@@ -256,7 +256,7 @@ export function ContactsGrid({ contacts, initialQ = '', agentId }: Props) {
                   fontSize: '10px', fontWeight: 600,
                   letterSpacing: '0.08em', textTransform: 'uppercase',
                   color: '#8C7B6B',
-                  fontFamily: col.mono ? 'var(--font-mono)' : 'var(--font-body)',
+                  fontFamily: 'var(--font-body)',
                   paddingRight: '12px',
                   display: 'flex', alignItems: 'center',
                   overflow: 'hidden',
