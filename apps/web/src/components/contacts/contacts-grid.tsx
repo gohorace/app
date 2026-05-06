@@ -98,11 +98,19 @@ const COL_FLEX = {
   lastSeen: 1,
 }
 const COL_MIN: Partial<Record<keyof typeof COL_FLEX, string>> = {
-  name:     '120px',
-  email:    '120px',
-  sessions: '60px',
-  lastSeen: '70px',
+  name:     '160px',
+  email:    '160px',
+  suburb:   '110px',
+  intent:   '110px',
+  lastPage: '160px',
+  sessions: '70px',
+  lastSeen: '90px',
 }
+
+// Sum of COL_MIN values + horizontal padding (16px × 2). Forces the table
+// to keep a usable width on narrow viewports — the parent container scrolls
+// horizontally instead of compressing columns into unreadable slivers.
+const TABLE_MIN_WIDTH = '892px'
 
 export function ContactsGrid({ contacts, initialQ = '', agentId }: Props) {
   const [search,     setSearch]     = useState(initialQ)
@@ -228,9 +236,12 @@ export function ContactsGrid({ contacts, initialQ = '', agentId }: Props) {
       {/* Main area: grid + optional drawer */}
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
 
-        {/* Grid */}
-        <div style={{ flex: 1, overflow: 'auto', minWidth: 0 }}>
-          <div style={{ width: '100%' }}>
+        {/* Grid — horizontally scrolls when viewport is narrower than TABLE_MIN_WIDTH */}
+        <div style={{
+          flex: 1, overflow: 'auto', minWidth: 0,
+          WebkitOverflowScrolling: 'touch',
+        }}>
+          <div style={{ width: '100%', minWidth: TABLE_MIN_WIDTH }}>
 
             {/* Column headers */}
             <div style={{
@@ -260,6 +271,7 @@ export function ContactsGrid({ contacts, initialQ = '', agentId }: Props) {
                   paddingRight: '12px',
                   display: 'flex', alignItems: 'center',
                   overflow: 'hidden',
+                  whiteSpace: 'nowrap',
                 }}>
                   {col.label}
                 </div>
