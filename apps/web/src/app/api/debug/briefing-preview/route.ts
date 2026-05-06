@@ -107,7 +107,17 @@ export async function GET(request: NextRequest) {
 
   const { subject, html } = buildDailyBriefingEmail(agentName, leadsWithInsights, narrative, appUrl)
 
-  // Send
+  // ?render=1 — return HTML directly in the browser (no email needed)
+  const render = request.nextUrl.searchParams.get('render')
+  if (render === '1') {
+    return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } })
+  }
+
+  // Send via Resend
+  if (!resendKey || resendKey === 'your-resend-key') {
+    return NextResponse.json({ error: 'Resend not configured' }, { status: 500 })
+  }
+
   const { Resend } = await import('resend')
   const resend = new Resend(resendKey)
 
