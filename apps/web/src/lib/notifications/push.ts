@@ -101,7 +101,7 @@ async function emailAgent(
   const resend = new Resend(resendKey)
 
   await resend.emails.send({
-    from: 'Horace <alerts@gohorace.com>',
+    from: process.env.RESEND_FROM_EMAIL ?? 'Horace <alerts@gohorace.com>',
     to: recipients,
     subject,
     html,

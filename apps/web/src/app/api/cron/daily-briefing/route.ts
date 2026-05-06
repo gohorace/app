@@ -19,19 +19,24 @@ export async function GET(request: NextRequest) {
   const admin = createAdminClient()
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? ''
 
-  // Find agents whose local time is currently their configured send hour
+  // Find agents who have configured at least one recipient (briefing_emails or agent_email)
   const { data: agentSettings } = await admin
     .from('agent_settings')
-    .select('agent_id, agent_email, timezone, daily_briefing_hour, agents(first_name, last_name, email)')
-    .not('agent_email', 'is', null)
+    .select('agent_id, agent_email, briefing_emails, timezone, daily_briefing_hour, agents(first_name, last_name, email)')
 
   if (!agentSettings || agentSettings.length === 0) {
     return NextResponse.json({ ok: true, sent: 0 })
   }
 
-  // Filter to agents whose local hour matches their configured send hour
+  // Filter to agents who have recipients and whose local hour matches their configured send hour
   const nowUtcMs = Date.now()
   const eligibleAgents = agentSettings.filter((s) => {
+    // Must have at least one recipient configured
+    const hasRecipients =
+      (Array.isArray(s.briefing_emails) && s.briefing_emails.length > 0) ||
+      !!s.agent_email
+    if (!hasRecipients) return false
+
     try {
       const localHour = new Date(nowUtcMs).toLocaleString('en-AU', {
         timeZone: s.timezone ?? 'Australia/Sydney',
@@ -110,9 +115,16 @@ export async function GET(request: NextRequest) {
 
       const { subject, html } = buildDailyBriefingEmail(agentName, leadsWithInsights, narrative, appUrl)
 
+      // Prefer briefing_emails list, fall back to agent_email
+      const recipients: string[] = Array.isArray(settings.briefing_emails) && settings.briefing_emails.length > 0
+        ? settings.briefing_emails
+        : settings.agent_email ? [settings.agent_email] : []
+
+      if (recipients.length === 0) continue
+
       await resend.emails.send({
-        from: process.env.RESEND_FROM_EMAIL ?? 'briefing@horace.app',
-        to: settings.agent_email!,
+        from: process.env.RESEND_FROM_EMAIL ?? 'Horace <briefing@gohorace.com>',
+        to: recipients,
         subject,
         html,
       })

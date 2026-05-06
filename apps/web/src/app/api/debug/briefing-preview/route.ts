@@ -112,7 +112,7 @@ export async function GET(request: NextRequest) {
   const resend = new Resend(resendKey)
 
   const { error } = await resend.emails.send({
-    from: process.env.RESEND_FROM_EMAIL ?? 'briefing@horace.app',
+    from: process.env.RESEND_FROM_EMAIL ?? 'Horace <briefing@gohorace.com>',
     to,
     subject: `[Preview] ${subject}`,
     html,
