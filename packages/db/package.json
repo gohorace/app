@@ -1,9 +1,0 @@
-{
-  "name": "@rei/db",
-  "version": "0.0.0",
-  "private": true,
-  "exports": {
-    "./types": "./types/database.types.ts"
-  },
-  "types": "./types/database.types.ts"
-}
