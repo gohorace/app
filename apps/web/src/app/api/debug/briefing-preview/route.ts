@@ -18,12 +18,12 @@ export async function GET(request: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const to = request.nextUrl.searchParams.get('to')
-  if (!to) return NextResponse.json({ error: 'Missing ?to= param' }, { status: 400 })
+  const render = request.nextUrl.searchParams.get('render')
+
+  // ?to= only required when actually sending
+  if (!render && !to) return NextResponse.json({ error: 'Missing ?to= param' }, { status: 400 })
 
   const resendKey = process.env.RESEND_API_KEY
-  if (!resendKey || resendKey === 'your-resend-key') {
-    return NextResponse.json({ error: 'Resend not configured' }, { status: 500 })
-  }
 
   const admin = createAdminClient()
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://horace.app'
@@ -108,7 +108,6 @@ export async function GET(request: NextRequest) {
   const { subject, html } = buildDailyBriefingEmail(agentName, leadsWithInsights, narrative, appUrl)
 
   // ?render=1 — return HTML directly in the browser (no email needed)
-  const render = request.nextUrl.searchParams.get('render')
   if (render === '1') {
     return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } })
   }
