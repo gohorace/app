@@ -13,7 +13,7 @@ self.addEventListener('push', (event) => {
   event.waitUntil(
     self.registration.showNotification(title, {
       body,
-      icon: '/icon-192.png',
+      icon: '/horace-notif-icon.png',
       badge: '/icon-192.png',
       tag: tag ?? 'horace-alert',
       renotify: true,
