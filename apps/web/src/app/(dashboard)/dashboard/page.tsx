@@ -107,16 +107,18 @@ export default async function DashboardPage({
     reasonsByContact[h.contact_id].push(h.reason)
   }
 
-  // Counts for summary card
+  // Counts for summary card + setup detection
   const [
     { count: totalHigh },
     { count: totalActive },
     { count: recentEvents },
+    { count: totalContacts },
   ] = await Promise.all([
     admin.from('contacts').select('*', { count: 'exact', head: true }).eq('agent_id', agentId).gte('score', 50),
     admin.from('contacts').select('*', { count: 'exact', head: true }).eq('agent_id', agentId).gte('score', 5),
     admin.from('score_history').select('*', { count: 'exact', head: true }).eq('agent_id', agentId)
       .gte('occurred_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()),
+    admin.from('contacts').select('*', { count: 'exact', head: true }).eq('agent_id', agentId),
   ])
 
   const signals = (contacts ?? []).map(c => {
@@ -164,18 +166,74 @@ export default async function DashboardPage({
 
       {/* Signal cards */}
       {signals.length === 0 ? (
-        <div className="text-center py-16" style={{ color: '#8C7B6B' }}>
-          <Bell className="w-8 h-8 mx-auto mb-3 opacity-30" />
-          <p className="text-sm font-medium" style={{ color: '#1A1612' }}>
-            Horace is watching. Nothing worth your attention yet.
-          </p>
-          <p className="text-xs mt-2" style={{ color: '#8C7B6B' }}>
-            <Link href="/import" className="hover:underline">Import your contacts</Link>
-            {' '}or{' '}
-            <Link href="/settings/snippet" className="hover:underline">install the tracking snippet</Link>
-            {' '}to get started.
-          </p>
-        </div>
+        (totalContacts ?? 0) === 0 ? (
+          // ── Setup state: no contacts yet ────────────────────────────────────
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', paddingTop: '8px' }}>
+            <div style={{ marginBottom: '4px' }}>
+              <p style={{ fontSize: '15px', fontWeight: 600, color: '#1A1612' }}>Get Horace working in two steps</p>
+              <p style={{ fontSize: '13px', color: '#8C7B6B', marginTop: '2px' }}>Once you&rsquo;re set up, this is where your hottest prospects will appear.</p>
+            </div>
+
+            {/* Step 1 — Snippet */}
+            <Link href="/settings/snippet" style={{
+              display: 'flex', alignItems: 'flex-start', gap: '14px',
+              background: '#FAF7F2', border: '1px solid rgba(140,123,107,0.2)',
+              borderRadius: '8px', padding: '16px 18px',
+              boxShadow: '0 1px 3px rgba(26,22,18,0.06)', textDecoration: 'none',
+            }} className="signal-card group">
+              <div style={{
+                width: '32px', height: '32px', borderRadius: '8px', flexShrink: 0,
+                background: 'rgba(196,98,45,0.1)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '14px', fontWeight: 700, color: '#C4622D',
+              }}>1</div>
+              <div>
+                <p style={{ fontSize: '14px', fontWeight: 600, color: '#1A1612', margin: 0 }}>Install the tracking snippet</p>
+                <p style={{ fontSize: '12.5px', color: '#8C7B6B', marginTop: '3px', lineHeight: 1.55 }}>
+                  One script tag on your website. Horace starts capturing visitor behaviour immediately.
+                </p>
+                <p style={{ fontSize: '12px', fontWeight: 600, color: '#C4622D', marginTop: '8px' }}>Get your snippet →</p>
+              </div>
+            </Link>
+
+            {/* Step 2 — Import */}
+            <Link href="/import" style={{
+              display: 'flex', alignItems: 'flex-start', gap: '14px',
+              background: '#FAF7F2', border: '1px solid rgba(140,123,107,0.2)',
+              borderRadius: '8px', padding: '16px 18px',
+              boxShadow: '0 1px 3px rgba(26,22,18,0.06)', textDecoration: 'none',
+            }} className="signal-card group">
+              <div style={{
+                width: '32px', height: '32px', borderRadius: '8px', flexShrink: 0,
+                background: 'rgba(181,146,42,0.1)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '14px', fontWeight: 700, color: '#8A6A00',
+              }}>2</div>
+              <div>
+                <p style={{ fontSize: '14px', fontWeight: 600, color: '#1A1612', margin: 0 }}>Import your contacts</p>
+                <p style={{ fontSize: '12.5px', color: '#8C7B6B', marginTop: '3px', lineHeight: 1.55 }}>
+                  Upload a CSV from your CRM. Horace matches contacts to site activity automatically.
+                </p>
+                <p style={{ fontSize: '12px', fontWeight: 600, color: '#8A6A00', marginTop: '8px' }}>Import contacts →</p>
+              </div>
+            </Link>
+
+            <p style={{ fontSize: '11.5px', color: 'rgba(140,123,107,0.6)', textAlign: 'center', paddingTop: '4px' }}>
+              Your first daily brief arrives tonight. Signals appear here as contacts engage.
+            </p>
+          </div>
+        ) : (
+          // ── Quiet state: contacts exist but no signals in current filter ───
+          <div className="text-center py-16">
+            <Bell className="w-8 h-8 mx-auto mb-3 opacity-20" />
+            <p className="text-sm font-medium" style={{ color: '#1A1612' }}>
+              Horace is watching. Nothing worth your attention yet.
+            </p>
+            <p className="text-xs mt-2" style={{ color: '#8C7B6B' }}>
+              Signals appear here as your contacts engage with your site.
+            </p>
+          </div>
+        )
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           {signals.map(signal => (

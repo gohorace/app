@@ -13,6 +13,7 @@ const STEPS = [
   { id: 'snippet', label: 'Install snippet', icon: Code2 },
   { id: 'import',  label: 'Import contacts', icon: Users },
   { id: 'alerts',  label: 'Enable alerts',   icon: Bell },
+  { id: 'done',    label: 'All set',          icon: CheckCircle2 },
 ]
 
 interface Props {
@@ -29,7 +30,7 @@ export function OnboardingWizard({ snippetKey, appUrl }: Props) {
   const [alertsError, setAlertsError] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
-  const progress = ((step) / (STEPS.length - 1)) * 100
+  const progress = (Math.min(step, STEPS.length - 1) / (STEPS.length - 1)) * 100
 
   const snippetCode = `<!-- Horace -->
 <script>
@@ -75,6 +76,7 @@ export function OnboardingWizard({ snippetKey, appUrl }: Props) {
       }
       await savePushSubscription(sub)
       setAlertsGranted(true)
+      setTimeout(() => setStep(3), 1200)
     } catch {
       setAlertsError('Something went wrong. You can enable alerts later in Settings.')
     }
@@ -213,22 +215,67 @@ export function OnboardingWizard({ snippetKey, appUrl }: Props) {
             {alertsError && (
               <p className="text-sm text-muted-foreground text-center">{alertsError}</p>
             )}
-            <Button
-              variant="ghost"
-              className="w-full text-muted-foreground"
-              onClick={() => { window.location.href = '/dashboard' }}
-            >
-              {alertsGranted ? 'Go to dashboard →' : 'Skip for now'}
-            </Button>
+            {!alertsGranted && (
+              <Button
+                variant="ghost"
+                className="w-full text-muted-foreground"
+                onClick={() => setStep(3)}
+              >
+                Skip for now
+              </Button>
+            )}
           </CardContent>
         </Card>
       )}
 
-      {/* Bottom hint for Claude setup */}
-      {step === 2 && (
-        <p className="text-xs text-center text-muted-foreground px-4">
-          Next: open Claude and add your Horace connector to start querying your prospects.
-        </p>
+      {/* Step 4: Completion */}
+      {step === 3 && (
+        <Card>
+          <CardContent className="pt-8 pb-6 flex flex-col items-center text-center gap-4">
+            <div style={{
+              width: '56px', height: '56px', borderRadius: '50%',
+              background: 'rgba(196,98,45,0.1)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#C4622D' }} />
+            </div>
+
+            <div className="space-y-1.5">
+              <h2 style={{ fontSize: '22px', fontWeight: 700, color: '#1A1612', letterSpacing: '-0.015em', fontFamily: 'var(--font-display)' }}>
+                You&rsquo;re all set.
+              </h2>
+              <p style={{ fontSize: '14px', color: '#8C7B6B', lineHeight: 1.65, maxWidth: '320px' }}>
+                Horace is now watching your site. You&rsquo;ll get your first brief tonight, and a real-time alert the moment a known contact returns.
+              </p>
+            </div>
+
+            <div style={{
+              width: '100%', background: 'rgba(140,123,107,0.07)',
+              borderRadius: '8px', padding: '14px 18px',
+              display: 'flex', flexDirection: 'column', gap: '8px',
+              textAlign: 'left',
+            }}>
+              {[
+                { dot: '#C4622D', text: 'Real-time alerts when high-intent contacts visit' },
+                { dot: '#B5922A', text: 'Daily brief with your top prospects and recommended actions' },
+                { dot: '#3D5246', text: 'Intent scores that update as contacts engage' },
+              ].map(({ dot, text }) => (
+                <div key={text} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: dot, flexShrink: 0 }} />
+                  <span style={{ fontSize: '12.5px', color: '#2E2823' }}>{text}</span>
+                </div>
+              ))}
+            </div>
+
+            <Button
+              className="w-full mt-1"
+              style={{ background: '#C4622D', color: '#FAF7F2' }}
+              onClick={() => { window.location.href = '/dashboard' }}
+            >
+              Open Horace →
+            </Button>
+          </CardContent>
+        </Card>
       )}
     </div>
   )
