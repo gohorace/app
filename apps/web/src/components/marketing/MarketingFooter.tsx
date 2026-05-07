@@ -13,7 +13,7 @@ export function MarketingFooter() {
           <li><Link href="/pricing">Pricing</Link></li>
           <li><Link href="/privacy">Privacy</Link></li>
           <li><Link href="/data">Data</Link></li>
-          <li><a href="mailto:hello@horace.com">Contact</a></li>
+          <li><a href="mailto:team@gohorace.com">Contact</a></li>
         </ul>
         <span className={styles.footerSig}>Seize the moment — Horace</span>
       </div>

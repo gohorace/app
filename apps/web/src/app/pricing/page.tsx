@@ -76,7 +76,7 @@ const tiers = [
     unit: { monthly: '', annual: '' },
     note: { monthly: '10+ agents · custom terms', annual: '10+ agents · custom terms' },
     cta: 'Talk to us',
-    ctaHref: 'mailto:hello@horace.com',
+    ctaHref: 'mailto:team@gohorace.com',
     includesLabel: 'Everything in Office, plus',
     features: [
       'Custom contract terms',

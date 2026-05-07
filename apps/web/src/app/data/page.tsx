@@ -52,7 +52,7 @@ export default function DataPage() {
 
           <p className={styles.dataContact}>
             Any questions about how your data is handled? Ask us directly —{' '}
-            <a href="mailto:hello@horace.com">hello@horace.com</a>
+            <a href="mailto:team@gohorace.com">team@gohorace.com</a>
           </p>
 
           <p className={styles.sig}>Seize the moment — Horace</p>

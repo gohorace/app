@@ -21,7 +21,7 @@ export default function PrivacyPage() {
         </header>
 
         <article className={styles.body}>
-          <p>Horace is operated by [Company Name] (ABN [number]). We follow the Australian Privacy Principles under the <em>Privacy Act 1988</em> (Cth). This page explains, in plain language, what we collect, why we collect it, and what we do with it.</p>
+          <p>We follow the Australian Privacy Principles under the <em>Privacy Act 1988</em> (Cth). This page explains, in plain language, what we collect, why we collect it, and what we do with it.</p>
           <p>If you&apos;d rather just read the short version, our <a href="/data">Data page</a> covers the commitments that matter most.</p>
 
           <nav className={styles.toc} aria-label="On this page">
@@ -89,7 +89,7 @@ export default function PrivacyPage() {
             <li>Withdraw consent for us to use it</li>
             <li>Make a complaint about how we&apos;ve handled it</li>
           </ul>
-          <p>Email <a href="mailto:hello@horace.com"><strong>hello@horace.com</strong></a> and we&apos;ll respond within 30 days.</p>
+          <p>Email <a href="mailto:team@gohorace.com"><strong>team@gohorace.com</strong></a> and we&apos;ll respond within 30 days.</p>
           <p>If you&apos;re not happy with our response, you can take it to the Office of the Australian Information Commissioner — <a href="https://oaic.gov.au"><strong>oaic.gov.au</strong></a> or <strong>1300 363 992</strong>.</p>
 
           <hr />
@@ -112,7 +112,7 @@ export default function PrivacyPage() {
           <hr />
 
           <h2 id="contact">Contact</h2>
-          <p>Privacy questions, requests, or complaints — <a href="mailto:hello@horace.com"><strong>hello@horace.com</strong></a>.</p>
+          <p>Privacy questions, requests, or complaints — <a href="mailto:team@gohorace.com"><strong>team@gohorace.com</strong></a>.</p>
 
           <p className={styles.sig}>Seize the moment — Horace</p>
         </article>
