@@ -56,8 +56,9 @@ const tiers = [
     price: { monthly: '$79', annual: '$66' },
     unit: { monthly: '/mo', annual: '/mo' },
     note: { monthly: 'per agent · 3 agents min', annual: 'per agent · billed annually' },
-    cta: 'Start free trial',
-    ctaHref: '/login',
+    cta: 'Coming soon',
+    ctaHref: '#',
+    comingSoon: true as const,
     includesLabel: 'Everything in Pro, plus',
     features: [
       'Multiple websites',
@@ -127,43 +128,48 @@ export default function PricingPage() {
     repositionPill(p)
   }
 
-  const [checkoutLoading, setCheckoutLoading] = useState(false)
+  const [trialLoading, setTrialLoading] = useState(false)
 
-  async function startCheckout(plan: 'pro', overridePeriod?: Period) {
+  async function startTrial(plan: 'pro', overridePeriod?: Period) {
     const targetPeriod = overridePeriod ?? period
     if (!isLoggedIn) {
       const redirectTo = `/pricing?plan=${plan}&period=${targetPeriod}`
       window.location.href = `/signup?redirectTo=${encodeURIComponent(redirectTo)}`
       return
     }
-    setCheckoutLoading(true)
+    setTrialLoading(true)
     try {
-      const res = await fetch('/api/billing/checkout', {
+      const res = await fetch('/api/billing/start-trial', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ plan: `${plan}_${targetPeriod === 'annual' ? 'annual' : 'monthly'}` }),
       })
       const data = await res.json()
-      if (!res.ok || !data.url) {
-        console.error('Checkout failed:', data)
-        alert(data.error ?? 'Could not start checkout')
-        setCheckoutLoading(false)
+      if (!res.ok) {
+        // Already-active subscription is fine — just send them to dashboard
+        if (res.status === 409) {
+          window.location.href = '/dashboard?billing=already-active'
+          return
+        }
+        console.error('Start trial failed:', data)
+        alert(data.error ?? 'Could not start trial')
+        setTrialLoading(false)
         return
       }
-      window.location.href = data.url
+      window.location.href = '/dashboard?billing=trial-started'
     } catch (err) {
       console.error(err)
-      setCheckoutLoading(false)
+      setTrialLoading(false)
     }
   }
 
-  // Auto-fire checkout when arriving with ?plan=pro intent (post-signup/login)
+  // Auto-start trial when arriving with ?plan=pro intent (post-signup/login)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const planParam = params.get('plan')
     const periodParam = params.get('period') as Period | null
-    if (isLoggedIn && planParam === 'pro' && !checkoutLoading) {
-      startCheckout('pro', periodParam === 'annual' ? 'annual' : 'monthly')
+    if (isLoggedIn && planParam === 'pro' && !trialLoading) {
+      startTrial('pro', periodParam === 'annual' ? 'annual' : 'monthly')
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoggedIn])
@@ -221,11 +227,19 @@ export default function PricingPage() {
                   <button
                     type="button"
                     className={styles.tierCta}
-                    disabled={checkoutLoading}
-                    onClick={() => startCheckout('pro')}
+                    disabled={trialLoading}
+                    onClick={() => startTrial('pro')}
                   >
-                    {checkoutLoading ? 'Loading…' : tier.cta}
+                    {trialLoading ? 'Loading…' : tier.cta}
                   </button>
+                ) : 'comingSoon' in tier && tier.comingSoon ? (
+                  <span
+                    className={styles.tierCta}
+                    aria-disabled="true"
+                    style={{ cursor: 'not-allowed', opacity: 0.55 }}
+                  >
+                    {tier.cta}
+                  </span>
                 ) : (
                   <a href={tier.ctaHref} className={styles.tierCta}>{tier.cta}</a>
                 )}
@@ -304,7 +318,7 @@ export default function PricingPage() {
               </div>
               <div>
                 <div className={styles.worthItemTitle}>Free trial on Pro and Office.</div>
-                <div className={styles.worthItemBody}>14 days. Card on file. Cancel anytime before it ends and you won't be charged.</div>
+                <div className={styles.worthItemBody}>14 days. No card needed. Drops to Free if you don't add a card by day 14 — you keep your data either way.</div>
               </div>
               <div>
                 <div className={styles.worthItemTitle}>Pricing in AUD.</div>

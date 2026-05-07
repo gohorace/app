@@ -9,6 +9,7 @@ import {
   Code,
   BarChart2,
   Key,
+  CreditCard,
   LogOut,
   ChevronLeft,
   ChevronRight,
@@ -33,10 +34,11 @@ const MAIN_NAV: NavItem[] = [
 ]
 
 const SETTINGS_NAV: NavItem[] = [
-  { href: '/settings/notifications', label: 'Alerts & briefing',  icon: Bell      },
-  { href: '/settings/snippet',       label: 'Install snippet',     icon: Code      },
-  { href: '/settings/scoring',       label: 'Scoring rules',       icon: BarChart2 },
-  { href: '/settings/api-tokens',    label: 'API & integrations',  icon: Key       },
+  { href: '/settings/notifications', label: 'Alerts & briefing',  icon: Bell       },
+  { href: '/settings/snippet',       label: 'Install snippet',     icon: Code       },
+  { href: '/settings/scoring',       label: 'Scoring rules',       icon: BarChart2  },
+  { href: '/settings/billing',       label: 'Plan & billing',      icon: CreditCard },
+  { href: '/settings/api-tokens',    label: 'API & integrations',  icon: Key        },
 ]
 
 // ── Sidebar ───────────────────────────────────────────────────────────────────
