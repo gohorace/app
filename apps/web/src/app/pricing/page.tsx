@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
-import { useSearchParams } from 'next/navigation'
 import { Check } from 'lucide-react'
 import { MarketingNav } from '@/components/marketing/MarketingNav'
 import { MarketingFooter } from '@/components/marketing/MarketingFooter'
@@ -129,7 +128,6 @@ export default function PricingPage() {
   }
 
   const [checkoutLoading, setCheckoutLoading] = useState(false)
-  const searchParams = useSearchParams()
 
   async function startCheckout(plan: 'pro', overridePeriod?: Period) {
     const targetPeriod = overridePeriod ?? period
@@ -161,8 +159,9 @@ export default function PricingPage() {
 
   // Auto-fire checkout when arriving with ?plan=pro intent (post-signup/login)
   useEffect(() => {
-    const planParam = searchParams.get('plan')
-    const periodParam = searchParams.get('period') as Period | null
+    const params = new URLSearchParams(window.location.search)
+    const planParam = params.get('plan')
+    const periodParam = params.get('period') as Period | null
     if (isLoggedIn && planParam === 'pro' && !checkoutLoading) {
       startCheckout('pro', periodParam === 'annual' ? 'annual' : 'monthly')
     }

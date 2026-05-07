@@ -1,3 +1,4 @@
+import { Suspense } from 'react'
 import { SignupForm } from '@/components/auth/signup-form'
 import Link from 'next/link'
 
@@ -10,7 +11,9 @@ export default function SignupPage() {
           Start tracking and scoring your real estate leads
         </p>
       </div>
-      <SignupForm />
+      <Suspense fallback={null}>
+        <SignupForm />
+      </Suspense>
       <p className="text-center text-sm text-muted-foreground">
         Already have an account?{' '}
         <Link href="/login" className="font-medium text-primary underline-offset-4 hover:underline">
