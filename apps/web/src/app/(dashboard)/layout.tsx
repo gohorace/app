@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { Sidebar } from '@/components/dashboard/sidebar'
 import { MobileNav } from '@/components/dashboard/mobile-nav'
+import { requireActiveSubscription } from '@/lib/billing/gate'
 
 export const dynamic = 'force-dynamic'
 
@@ -28,12 +29,14 @@ export default async function DashboardLayout({ children }: { children: React.Re
     redirect('/signup')
   }
 
-  // Get workspace name
+  // Get workspace name + subscription state
   const { data: workspace } = await supabase
     .from('workspaces')
-    .select('name, snippet_key')
+    .select('name, snippet_key, subscription_status')
     .eq('id', agent.workspace_id)
     .maybeSingle()
+
+  requireActiveSubscription(workspace?.subscription_status)
 
   const workspaceName = workspace?.name ?? 'My Agency'
 

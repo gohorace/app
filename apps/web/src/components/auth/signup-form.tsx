@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -8,6 +9,8 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent } from '@/components/ui/card'
 
 export function SignupForm() {
+  const searchParams = useSearchParams()
+  const redirectTo = searchParams.get('redirectTo') ?? '/onboarding'
   const [alreadyAuthed, setAlreadyAuthed] = useState(false)
   const [name, setName] = useState('')
   const [agencyName, setAgencyName] = useState('')
@@ -69,7 +72,7 @@ export function SignupForm() {
       return
     }
 
-    window.location.href = '/onboarding'
+    window.location.href = redirectTo
   }
 
   return (

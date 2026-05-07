@@ -10,14 +10,20 @@ export type Database = {
         Row: {
           id: string; name: string; slug: string; snippet_key: string; plan: string
           default_agent_id: string | null; created_at: string
+          stripe_customer_id: string | null; stripe_subscription_id: string | null
+          subscription_status: string; current_period_end: string | null
         }
         Insert: {
           id?: string; name: string; slug: string; snippet_key?: string; plan?: string
           default_agent_id?: string | null; created_at?: string
+          stripe_customer_id?: string | null; stripe_subscription_id?: string | null
+          subscription_status?: string; current_period_end?: string | null
         }
         Update: {
           id?: string; name?: string; slug?: string; snippet_key?: string; plan?: string
           default_agent_id?: string | null; created_at?: string
+          stripe_customer_id?: string | null; stripe_subscription_id?: string | null
+          subscription_status?: string; current_period_end?: string | null
         }
         Relationships: []
       }

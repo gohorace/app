@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import { Check } from 'lucide-react'
 import { MarketingNav } from '@/components/marketing/MarketingNav'
 import { MarketingFooter } from '@/components/marketing/MarketingFooter'
@@ -39,6 +40,7 @@ const tiers = [
     note: { monthly: 'Billed monthly', annual: '$990 billed annually — two months free' },
     cta: 'Start free trial',
     ctaHref: '/login',
+    plan: 'pro' as const,
     includesLabel: 'Everything in Free, plus',
     features: [
       'Lead identification — know when a contact returns',
@@ -126,6 +128,47 @@ export default function PricingPage() {
     repositionPill(p)
   }
 
+  const [checkoutLoading, setCheckoutLoading] = useState(false)
+  const searchParams = useSearchParams()
+
+  async function startCheckout(plan: 'pro', overridePeriod?: Period) {
+    const targetPeriod = overridePeriod ?? period
+    if (!isLoggedIn) {
+      const redirectTo = `/pricing?plan=${plan}&period=${targetPeriod}`
+      window.location.href = `/signup?redirectTo=${encodeURIComponent(redirectTo)}`
+      return
+    }
+    setCheckoutLoading(true)
+    try {
+      const res = await fetch('/api/billing/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plan: `${plan}_${targetPeriod === 'annual' ? 'annual' : 'monthly'}` }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.url) {
+        console.error('Checkout failed:', data)
+        alert(data.error ?? 'Could not start checkout')
+        setCheckoutLoading(false)
+        return
+      }
+      window.location.href = data.url
+    } catch (err) {
+      console.error(err)
+      setCheckoutLoading(false)
+    }
+  }
+
+  // Auto-fire checkout when arriving with ?plan=pro intent (post-signup/login)
+  useEffect(() => {
+    const planParam = searchParams.get('plan')
+    const periodParam = searchParams.get('period') as Period | null
+    if (isLoggedIn && planParam === 'pro' && !checkoutLoading) {
+      startCheckout('pro', periodParam === 'annual' ? 'annual' : 'monthly')
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoggedIn])
+
   return (
     <div className={styles.page}>
       <MarketingNav />
@@ -175,7 +218,18 @@ export default function PricingPage() {
                   {tier.unit[period] && <span className={styles.unit}>{tier.unit[period]}</span>}
                 </div>
                 <div className={styles.priceNote}>{tier.note[period]}</div>
-                <a href={tier.ctaHref} className={styles.tierCta}>{tier.cta}</a>
+                {'plan' in tier && tier.plan === 'pro' ? (
+                  <button
+                    type="button"
+                    className={styles.tierCta}
+                    disabled={checkoutLoading}
+                    onClick={() => startCheckout('pro')}
+                  >
+                    {checkoutLoading ? 'Loading…' : tier.cta}
+                  </button>
+                ) : (
+                  <a href={tier.ctaHref} className={styles.tierCta}>{tier.cta}</a>
+                )}
                 <div className={styles.includesLabel}>{tier.includesLabel}</div>
                 <ul className={styles.features}>
                   {tier.features.map((f) => (
@@ -251,7 +305,7 @@ export default function PricingPage() {
               </div>
               <div>
                 <div className={styles.worthItemTitle}>Free trial on Pro and Office.</div>
-                <div className={styles.worthItemBody}>14 days. No card needed.</div>
+                <div className={styles.worthItemBody}>14 days. Card on file. Cancel anytime before it ends and you won't be charged.</div>
               </div>
               <div>
                 <div className={styles.worthItemTitle}>Pricing in AUD.</div>
