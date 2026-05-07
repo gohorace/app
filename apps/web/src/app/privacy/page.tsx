@@ -35,6 +35,7 @@ export default function PrivacyPage() {
               <li><a href="#your-rights">Your rights</a></li>
               <li><a href="#cookies">Cookies</a></li>
               <li><a href="#visitors">Your website&apos;s visitors</a></li>
+              <li><a href="#suggested-clause">Suggested clause for your site</a></li>
               <li><a href="#changes">Changes to this policy</a></li>
               <li><a href="#contact">Contact</a></li>
             </ol>
@@ -102,7 +103,19 @@ export default function PrivacyPage() {
 
           <h2 id="visitors">Visitors to your website</h2>
           <p>When you install Horace on your site, you&apos;re responsible for letting your visitors know — through your own privacy policy and, where required, a cookie notice.</p>
-          <p>We&apos;ve written a <a href="#">suggested clause</a> you can drop into your existing policy.</p>
+          <p>We&apos;ve written a <a href="#suggested-clause">suggested clause</a> below that you can drop into your existing policy.</p>
+
+          <hr />
+
+          <h2 id="suggested-clause">Suggested clause for your site</h2>
+          <p>The text below is a starting point. Adapt it to match your site, your business name, and your contact details — and, if you&apos;re unsure, run it past your own legal adviser. We can&apos;t give legal advice or guarantee this wording is right for your particular setup.</p>
+          <blockquote>
+            <p><strong>Website analytics</strong></p>
+            <p>This website uses Horace (<a href="https://www.gohorace.com">gohorace.com</a>), a website analytics service, to help us understand how visitors interact with our site. Horace records the pages you view, how long you spend on each, when you return, the source that referred you, your approximate location based on IP address, and basic device and browser information.</p>
+            <p>If you submit a form on this site — for example, an appraisal request or general enquiry — Horace links your contact details to your prior browsing of our pages so we can follow up appropriately.</p>
+            <p>Horace doesn&apos;t sell your information, share it with third parties for advertising, or use it to train artificial-intelligence models. Horace processes this data on our behalf under their privacy policy at <a href="https://www.gohorace.com/privacy">gohorace.com/privacy</a>.</p>
+            <p>You can request access to, correction of, or deletion of your information at any time by contacting us at <em>[your contact email]</em>.</p>
+          </blockquote>
 
           <hr />
 
