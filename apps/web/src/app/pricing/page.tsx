@@ -13,34 +13,16 @@ type Period = 'monthly' | 'annual'
 
 const tiers = [
   {
-    name: 'Free',
-    tag: 'Get a feel for what Horace sees.',
-    price: { monthly: '$0', annual: '$0' },
-    unit: { monthly: 'forever', annual: 'forever' },
-    note: { monthly: 'No card required', annual: 'No card required' },
-    cta: 'Get started',
-    ctaHref: '/login',
-    includesLabel: "What's included",
-    features: [
-      'Visitor behaviour signals',
-      'Property interest tracking',
-      'Weekly digest',
-      '1 website',
-    ],
-    goodFor: 'Solo agents testing the waters.',
-    featured: false,
-  },
-  {
     name: 'Pro',
     tag: 'The full picture.',
     badge: 'Most popular',
-    price: { monthly: '$99', annual: '$82.50' },
+    price: { monthly: '$149', annual: '$125' },
     unit: { monthly: '/month', annual: '/month' },
-    note: { monthly: 'Billed monthly', annual: '$990 billed annually — two months free' },
+    note: { monthly: 'Billed monthly', annual: '$1500 billed annually — save $288' },
     cta: 'Start free trial',
     ctaHref: '/login',
     plan: 'pro' as const,
-    includesLabel: 'Everything in Free, plus',
+    includesLabel: "What's included",
     features: [
       'Lead identification — know when a contact returns',
       'Real-time nudges, not just weekly',
@@ -53,7 +35,7 @@ const tiers = [
   {
     name: 'Office',
     tag: 'For teams working the same patch.',
-    price: { monthly: '$79', annual: '$66' },
+    price: { monthly: '$119', annual: '$99' },
     unit: { monthly: '/mo', annual: '/mo' },
     note: { monthly: 'per agent · 3 agents min', annual: 'per agent · billed annually' },
     cta: 'Coming soon',
@@ -183,7 +165,7 @@ export default function PricingPage() {
         <header className={styles.hero}>
           <div className={styles.eyebrow}>Pricing</div>
           <h1>Simple. Honest. <em>No lock-in.</em></h1>
-          <p className={styles.lede}>Start free. Upgrade when Horace earns it.</p>
+          <p className={styles.lede}>Start with a 14-day trial. Upgrade when Horace earns it.</p>
 
           <div className={styles.billingToggle} ref={toggleRef}>
             <span
@@ -265,7 +247,6 @@ export default function PricingPage() {
             <thead>
               <tr>
                 <th></th>
-                <th className={styles.center}>Free</th>
                 <th className={`${styles.center} ${styles.featuredCol}`}>Pro</th>
                 <th className={styles.center}>Office</th>
                 <th className={styles.center}>Enterprise</th>
@@ -273,25 +254,25 @@ export default function PricingPage() {
             </thead>
             <tbody>
               {[
-                ['Visitor behaviour signals',  '●','●','●','●'],
-                ['Property interest tracking', '●','●','●','●'],
-                ['Weekly digest',              '●','●','●','●'],
-                ['Lead identification',        '–','●','●','●'],
-                ['Real-time nudges',           '–','●','●','●'],
-                ['Signal history',             '7 days','12 months','12 months','Custom'],
-                ['Websites',                   '1','1','Multiple','Multiple'],
-                ['Shared team intelligence',   '–','–','●','●'],
-                ['Lead routing',               '–','–','●','●'],
-                ['Onboarding support',         'Self-serve','Self-serve','Guided','Dedicated'],
-                ['SSO & security review',      '–','–','–','●'],
-              ].map(([label, free, pro, office, enterprise]) => (
+                ['Visitor behaviour signals',  '●','●','●'],
+                ['Property interest tracking', '●','●','●'],
+                ['Weekly digest',              '●','●','●'],
+                ['Lead identification',        '●','●','●'],
+                ['Real-time nudges',           '●','●','●'],
+                ['Signal history',             '12 months','12 months','Custom'],
+                ['Websites',                   '1','Multiple','Multiple'],
+                ['Shared team intelligence',   '–','●','●'],
+                ['Lead routing',               '–','●','●'],
+                ['Onboarding support',         'Self-serve','Guided','Dedicated'],
+                ['SSO & security review',      '–','–','●'],
+              ].map(([label, pro, office, enterprise]) => (
                 <tr key={label as string}>
                   <td>{label}</td>
-                  {[free, pro, office, enterprise].map((val, i) => (
+                  {[pro, office, enterprise].map((val, i) => (
                     <td key={i} className={styles.center}>
                       {val === '●' ? <span className={styles.check}>●</span>
                        : val === '–' ? <span className={styles.dash}>—</span>
-                       : <span style={{ color: ['7 days','Self-serve','1'].includes(val as string) ? 'var(--color-stone)' : 'var(--color-ink)', fontWeight: ['7 days','Self-serve','1'].includes(val as string) ? 400 : 500 }}>{val}</span>}
+                       : <span style={{ color: ['Self-serve','1'].includes(val as string) ? 'var(--color-stone)' : 'var(--color-ink)', fontWeight: ['Self-serve','1'].includes(val as string) ? 400 : 500 }}>{val}</span>}
                     </td>
                   ))}
                 </tr>
@@ -317,8 +298,8 @@ export default function PricingPage() {
                 <div className={styles.worthItemBody}>Cancel anytime. Take your intelligence with you when you go.</div>
               </div>
               <div>
-                <div className={styles.worthItemTitle}>Free trial on Pro and Office.</div>
-                <div className={styles.worthItemBody}>14 days. No card needed. Drops to Free if you don't add a card by day 14 — you keep your data either way.</div>
+                <div className={styles.worthItemTitle}>Free trial on Pro.</div>
+                <div className={styles.worthItemBody}>14 days. No card needed. Add a card before day 14 to keep going — no card, no charge, your trial just ends. Your data is preserved either way.</div>
               </div>
               <div>
                 <div className={styles.worthItemTitle}>Pricing in AUD.</div>
@@ -332,7 +313,7 @@ export default function PricingPage() {
         <section className={styles.finalCta}>
           <div className={styles.finalCtaInner}>
             <h2>Ready when you are.</h2>
-            <p>Start free. Upgrade when Horace earns it.</p>
+            <p>Start with a 14-day trial. Upgrade when Horace earns it.</p>
             <Link href={ctaHref} className={`${navStyles.btn} ${navStyles.btnCream} ${navStyles.btnLg}`}>
               Get started →
             </Link>

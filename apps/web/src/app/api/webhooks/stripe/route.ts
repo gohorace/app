@@ -51,8 +51,7 @@ export async function POST(req: NextRequest) {
             .from('workspaces')
             .update({
               stripe_subscription_id: null,
-              subscription_status: 'active',
-              plan: 'free',
+              subscription_status: 'canceled',
               current_period_end: null,
             })
             .eq('id', workspaceId)

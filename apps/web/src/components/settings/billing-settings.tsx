@@ -12,7 +12,7 @@ interface BillingSettingsProps {
 }
 
 const PLAN_LABEL: Record<string, string> = {
-  free: 'Free',
+  free: 'Free (legacy)',
   pro_monthly: 'Pro · Monthly',
   pro_annual: 'Pro · Annual',
 }
@@ -50,6 +50,8 @@ export function BillingSettings({
   const periodEnd = formatDate(currentPeriodEnd)
   const isPro = plan === 'pro_monthly' || plan === 'pro_annual'
   const isTrialing = subscriptionStatus === 'trialing'
+  const isLegacyFree = plan === 'free'
+  const isCanceled = subscriptionStatus === 'canceled'
 
   async function openPortal() {
     setLoading(true)
@@ -108,8 +110,21 @@ export function BillingSettings({
       {isTrialing && (
         <div className="text-sm bg-muted/50 border rounded-md p-3">
           You&apos;re on a 14-day Pro trial. Add a card before {periodEnd ?? 'the trial ends'} to
-          keep Pro features. If you don&apos;t, your workspace drops back to Free — you keep all
-          your data.
+          keep Pro features. If you don&apos;t, your workspace will be locked at the end of the
+          trial. Your data stays — add a card any time to reactivate.
+        </div>
+      )}
+
+      {isLegacyFree && !isTrialing && (
+        <div className="text-sm bg-muted/50 border rounded-md p-3">
+          You&apos;re on the legacy free plan. Free is no longer offered for new workspaces —
+          start a 14-day Pro trial to keep going.
+        </div>
+      )}
+
+      {isCanceled && (
+        <div className="text-sm bg-muted/50 border rounded-md p-3">
+          Trial ended — add a card to reactivate. Your data is preserved.
         </div>
       )}
 
