@@ -249,6 +249,10 @@ END;
 $$;
 
 -- ─── Extend get_contacts_list ─────────────────────────────────────────────────
+-- DROP first because we're adding columns to RETURNS TABLE; CREATE OR REPLACE
+-- cannot change the return shape.
+
+DROP FUNCTION IF EXISTS get_contacts_list(uuid);
 
 CREATE OR REPLACE FUNCTION get_contacts_list(p_agent_id uuid)
 RETURNS TABLE (
