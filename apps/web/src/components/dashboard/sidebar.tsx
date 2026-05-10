@@ -10,6 +10,7 @@ import {
   BarChart2,
   Key,
   CreditCard,
+  Inbox,
   LogOut,
   ChevronLeft,
   ChevronRight,
@@ -35,6 +36,7 @@ const MAIN_NAV: NavItem[] = [
 
 const SETTINGS_NAV: NavItem[] = [
   { href: '/settings/notifications', label: 'Alerts & briefing',  icon: Bell       },
+  { href: '/settings/portal',        label: 'Portal address',      icon: Inbox      },
   { href: '/settings/snippet',       label: 'Install snippet',     icon: Code       },
   { href: '/settings/scoring',       label: 'Scoring rules',       icon: BarChart2  },
   { href: '/settings/billing',       label: 'Plan & billing',      icon: CreditCard },
