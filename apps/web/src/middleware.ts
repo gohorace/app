@@ -57,6 +57,7 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/api/mcp') ||
     pathname.startsWith('/r/') ||
     pathname.startsWith('/u/') ||
+    pathname.startsWith('/install/') ||
     pathname.startsWith('/oauth/') ||
     pathname.startsWith('/.well-known/')
 

@@ -14,9 +14,11 @@ export function SignupForm() {
   const redirectTo = searchParams.get('redirectTo') ?? '/onboarding'
 
   const [alreadyAuthed, setAlreadyAuthed] = useState(false)
-  const [name, setName] = useState('')
+  const [firstName, setFirstName] = useState('')
+  const [lastName, setLastName] = useState('')
   const [agencyName, setAgencyName] = useState('')
   const [email, setEmail] = useState('')
+  const [mobile, setMobile] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
@@ -25,6 +27,14 @@ export function SignupForm() {
       if (data.user) setAlreadyAuthed(true)
     })
   }, [])
+
+  const ready = alreadyAuthed
+    ? agencyName.trim().length > 0
+    : firstName.trim().length > 0 &&
+      lastName.trim().length > 0 &&
+      email.trim().length > 0 &&
+      agencyName.trim().length > 0 &&
+      mobile.trim().length > 0
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -55,18 +65,23 @@ export function SignupForm() {
       return
     }
 
-    // New signup: stash agency name + full name in user_metadata. The
-    // /onboarding page consumes pending_agency_name to auto-create the
-    // workspace once the user clicks the magic link and gets a session.
+    // New signup: stash full profile in user_metadata. The /onboarding page
+    // consumes pending_* keys to auto-create the workspace + agent once the
+    // user clicks the magic link.
     const callback = new URL('/auth/callback', window.location.origin)
     callback.searchParams.set('redirectTo', redirectTo)
+
+    const fullName = `${firstName.trim()} ${lastName.trim()}`.trim()
 
     const { error: otpError } = await supabase.auth.signInWithOtp({
       email,
       options: {
         data: {
-          full_name: name,
-          pending_agency_name: agencyName,
+          full_name: fullName,
+          pending_first_name: firstName.trim(),
+          pending_last_name: lastName.trim(),
+          pending_agency_name: agencyName.trim(),
+          pending_mobile: mobile.trim(),
         },
         emailRedirectTo: callback.toString(),
         shouldCreateUser: true,
@@ -87,20 +102,33 @@ export function SignupForm() {
       <CardContent className="pt-6">
         <form onSubmit={handleSubmit} className="space-y-4">
           {!alreadyAuthed && (
-            <div className="space-y-2">
-              <Label htmlFor="name">Your name</Label>
-              <Input
-                id="name"
-                placeholder="Jane Smith"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                required
-                autoComplete="name"
-              />
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="firstName">First name</Label>
+                <Input
+                  id="firstName"
+                  placeholder="Jane"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  required
+                  autoComplete="given-name"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="lastName">Last name</Label>
+                <Input
+                  id="lastName"
+                  placeholder="Smith"
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  required
+                  autoComplete="family-name"
+                />
+              </div>
             </div>
           )}
           <div className="space-y-2">
-            <Label htmlFor="agency">Agency / Business name</Label>
+            <Label htmlFor="agency">Agency name</Label>
             <Input
               id="agency"
               placeholder="Smith Real Estate"
@@ -110,24 +138,41 @@ export function SignupForm() {
             />
           </div>
           {!alreadyAuthed && (
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="agent@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                autoComplete="email"
-              />
-              <p className="text-xs text-muted-foreground">
-                We’ll email you a sign-in link to confirm your address. No password needed.
-              </p>
-            </div>
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="email">Work email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="agent@example.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  autoComplete="email"
+                />
+                <p className="text-xs text-muted-foreground">
+                  We&apos;ll email you a sign-in link to confirm your address. No password needed.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="mobile">Mobile</Label>
+                <Input
+                  id="mobile"
+                  type="tel"
+                  placeholder="0412 345 678"
+                  value={mobile}
+                  onChange={(e) => setMobile(e.target.value)}
+                  required
+                  autoComplete="tel"
+                />
+                <p className="text-xs text-muted-foreground">
+                  For push alerts when a signal is worth your attention.
+                </p>
+              </div>
+            </>
           )}
           {error && <p className="text-sm text-destructive">{error}</p>}
-          <Button type="submit" className="w-full" disabled={loading}>
+          <Button type="submit" className="w-full" disabled={loading || !ready}>
             {loading
               ? 'Setting up…'
               : alreadyAuthed

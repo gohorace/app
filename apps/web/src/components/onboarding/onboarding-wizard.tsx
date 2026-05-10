@@ -1,235 +1,131 @@
 'use client'
 
-import { useState, useRef } from 'react'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Progress } from '@/components/ui/progress'
-import { Badge } from '@/components/ui/badge'
-import { CopyButton } from '@/components/ui/copy-button'
-import { CheckCircle2, Code2, Users, Bell } from 'lucide-react'
-import { requestPushPermission, savePushSubscription } from '@/components/push-manager'
+import { useState, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
+import type { OnboardingStep } from '@/lib/onboarding/state'
+import { Rail } from './rail'
+import { StepScript } from './step-script'
+import { StepContacts } from './step-contacts'
+import { StepNotify } from './step-notify'
+import { StepReveal } from './step-reveal'
+import styles from './onboarding.module.css'
 
-const STEPS = [
-  { id: 'snippet', label: 'Install snippet', icon: Code2 },
-  { id: 'import',  label: 'Import contacts', icon: Users },
-  { id: 'alerts',  label: 'Enable alerts',   icon: Bell },
-]
+type WizardStep = Exclude<OnboardingStep, 'profile'>
 
-interface Props {
-  snippetKey: string
-  appUrl: string
+const STAGE_COPY: Record<WizardStep, { title: string; body: string }> = {
+  script: {
+    title: 'One line. Then Horace listens.',
+    body: 'Paste a small snippet on your site — or send it to your developer. The moment it lands, Horace starts reading visitor behaviour.',
+  },
+  contacts: {
+    title: 'Names you already know.',
+    body: 'Bring in your address book. The instant a known name lands on your site, Horace tells you — no guesswork.',
+  },
+  notify: {
+    title: 'A whisper, never a shout.',
+    body: 'Browser alerts only when a signal is genuinely worth your attention. Two or three a week, max.',
+  },
+  done: {
+    title: 'You’re live.',
+    body: 'Sample signals show what Horace looks like when it’s humming. The first real visit lights up the moment it lands.',
+  },
 }
 
-export function OnboardingWizard({ snippetKey, appUrl }: Props) {
-  const [step, setStep] = useState(0)
-  const [importDone, setImportDone] = useState(false)
-  const [importError, setImportError] = useState<string | null>(null)
-  const [importing, setImporting] = useState(false)
-  const [alertsGranted, setAlertsGranted] = useState(false)
-  const [alertsError, setAlertsError] = useState<string | null>(null)
-  const fileRef = useRef<HTMLInputElement>(null)
+interface Props {
+  agentId: string
+  snippetKey: string
+  appUrl: string
+  firstName: string | null
+  lastCompletedStep: OnboardingStep | null
+}
 
-  const progress = ((step) / (STEPS.length - 1)) * 100
+function resumeStep(last: OnboardingStep | null): WizardStep {
+  if (!last || last === 'profile') return 'script'
+  if (last === 'done') return 'done'
+  if (last === 'script') return 'contacts'
+  if (last === 'contacts') return 'notify'
+  if (last === 'notify') return 'done'
+  return 'script'
+}
 
-  const snippetCode = `<!-- Horace -->
-<script>
-  window.RIQ = {
-    key: '${snippetKey}',
-    apiUrl: '${appUrl}/api',
-    propertyPattern: '/property/'
-  };
-</script>
-<script src="${appUrl}/tracker.min.js" defer></script>`
+export function OnboardingWizard({
+  agentId: _agentId,
+  snippetKey,
+  appUrl,
+  firstName,
+  lastCompletedStep,
+}: Props) {
+  const router = useRouter()
+  const [step, setStep] = useState<WizardStep>(resumeStep(lastCompletedStep))
+  const [completed, setCompleted] = useState<Set<WizardStep>>(() => {
+    const s = new Set<WizardStep>()
+    if (lastCompletedStep === 'script' || lastCompletedStep === 'contacts' || lastCompletedStep === 'notify' || lastCompletedStep === 'done') s.add('script')
+    if (lastCompletedStep === 'contacts' || lastCompletedStep === 'notify' || lastCompletedStep === 'done') s.add('contacts')
+    if (lastCompletedStep === 'notify' || lastCompletedStep === 'done') s.add('notify')
+    if (lastCompletedStep === 'done') s.add('done')
+    return s
+  })
 
-  async function handleImport(e: React.FormEvent) {
-    e.preventDefault()
-    const file = fileRef.current?.files?.[0]
-    if (!file) return
+  const advance = useCallback(async (current: WizardStep, next: WizardStep) => {
+    await fetch('/api/onboarding/step', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ step: current }),
+    })
+    setCompleted((prev) => new Set(prev).add(current))
+    setStep(next)
+  }, [])
 
-    setImporting(true)
-    setImportError(null)
-
-    const formData = new FormData()
-    formData.append('file', file)
-
-    const res = await fetch('/api/import', { method: 'POST', body: formData })
-    const data = await res.json()
-
-    if (!res.ok) {
-      setImportError(data.error ?? 'Import failed')
-      setImporting(false)
-      return
-    }
-
-    setImportDone(true)
-    setImporting(false)
-  }
-
-  async function handleEnableAlerts() {
-    setAlertsError(null)
-    try {
-      const sub = await requestPushPermission()
-      if (!sub) {
-        setAlertsError('Permission denied. You can enable alerts later in Settings.')
-        return
-      }
-      await savePushSubscription(sub)
-      setAlertsGranted(true)
-    } catch {
-      setAlertsError('Something went wrong. You can enable alerts later in Settings.')
-    }
-  }
+  const finish = useCallback(async () => {
+    await fetch('/api/onboarding/step', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ step: 'done' }),
+    })
+    router.push('/dashboard')
+  }, [router])
 
   return (
-    <div className="space-y-6">
-      {/* Step indicators */}
-      <div className="space-y-3">
-        <Progress value={progress} className="h-1.5" />
-        <div className="flex justify-between">
-          {STEPS.map((s, i) => {
-            const Icon = s.icon
-            const done = i < step
-            const active = i === step
-            return (
-              <div key={s.id} className="flex flex-col items-center gap-1">
-                <div className={`rounded-full p-1.5 transition-colors ${
-                  done   ? 'bg-green-100 text-green-600' :
-                  active ? 'bg-primary/10 text-primary' :
-                           'bg-muted text-muted-foreground'
-                }`}>
-                  {done ? <CheckCircle2 className="w-4 h-4" /> : <Icon className="w-4 h-4" />}
-                </div>
-                <span className={`text-xs ${active ? 'font-medium text-foreground' : 'text-muted-foreground'}`}>
-                  {s.label}
-                </span>
-              </div>
-            )
-          })}
-        </div>
-      </div>
+    <div className={styles.shell}>
+      <Rail current={step} completed={completed} stage={STAGE_COPY[step]} />
 
-      {/* Step 1: Install snippet */}
-      {step === 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Install the tracking snippet</CardTitle>
-            <CardDescription>
-              Paste this before the closing <code className="text-xs bg-muted px-1 rounded">&lt;/body&gt;</code> tag on every page of your website.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="relative">
-              <pre className="bg-muted rounded-lg p-4 text-xs overflow-x-auto whitespace-pre-wrap break-all pr-12">
-                <code>{snippetCode}</code>
-              </pre>
-              <div className="absolute top-2 right-2">
-                <CopyButton text={snippetCode} />
-              </div>
-            </div>
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Badge variant="outline">Snippet key</Badge>
-              <code className="text-xs bg-muted px-2 py-1 rounded font-mono">{snippetKey}</code>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Using WordPress?{' '}
-              <a href="/settings/snippet" className="underline">See installation guide →</a>
-            </p>
-            <Button className="w-full" onClick={() => setStep(1)}>
-              Snippet installed — continue
-            </Button>
-          </CardContent>
-        </Card>
-      )}
+      <main id="onboarding-main" className={styles.pane} aria-label="Onboarding">
+        {step === 'script' && (
+          <StepScript
+            snippetKey={snippetKey}
+            appUrl={appUrl}
+            firstName={firstName}
+            stepNumber={1}
+            totalSteps={4}
+            onNext={() => advance('script', 'contacts')}
+          />
+        )}
 
-      {/* Step 2: Import contacts */}
-      {step === 1 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Import your contacts</CardTitle>
-            <CardDescription>
-              Upload a CSV export from your CRM. We'll match contacts to website activity automatically.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {importDone ? (
-              <div className="flex flex-col items-center gap-3 py-4 text-center">
-                <CheckCircle2 className="w-10 h-10 text-green-500" />
-                <p className="font-medium">Contacts imported</p>
-                <p className="text-sm text-muted-foreground">Horace will start matching them to website activity.</p>
-              </div>
-            ) : (
-              <form onSubmit={handleImport} className="space-y-4">
-                <label className="block">
-                  <span className="sr-only">Choose CSV file</span>
-                  <input
-                    ref={fileRef}
-                    type="file"
-                    accept=".csv"
-                    required
-                    className="block w-full text-sm text-muted-foreground
-                      file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0
-                      file:text-sm file:font-medium file:bg-primary file:text-primary-foreground
-                      hover:file:bg-primary/90 cursor-pointer"
-                  />
-                </label>
-                {importError && <p className="text-sm text-destructive">{importError}</p>}
-                <Button type="submit" className="w-full" disabled={importing}>
-                  {importing ? 'Importing…' : 'Upload CSV'}
-                </Button>
-              </form>
-            )}
-            <Button
-              variant="ghost"
-              className="w-full text-muted-foreground"
-              onClick={() => setStep(2)}
-            >
-              {importDone ? 'Continue →' : 'Skip for now'}
-            </Button>
-          </CardContent>
-        </Card>
-      )}
+        {step === 'contacts' && (
+          <StepContacts
+            stepNumber={2}
+            totalSteps={4}
+            onNext={() => advance('contacts', 'notify')}
+            onBack={() => setStep('script')}
+          />
+        )}
 
-      {/* Step 3: Enable push alerts */}
-      {step === 2 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Enable prospect alerts</CardTitle>
-            <CardDescription>
-              Get a push notification the moment a hot prospect submits a form, returns to your site, or hits a high score.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {alertsGranted ? (
-              <div className="flex flex-col items-center gap-3 py-4 text-center">
-                <CheckCircle2 className="w-10 h-10 text-green-500" />
-                <p className="font-medium">Alerts enabled</p>
-                <p className="text-sm text-muted-foreground">You'll be notified the moment something important happens.</p>
-              </div>
-            ) : (
-              <Button className="w-full" onClick={handleEnableAlerts}>
-                Allow alerts
-              </Button>
-            )}
-            {alertsError && (
-              <p className="text-sm text-muted-foreground text-center">{alertsError}</p>
-            )}
-            <Button
-              variant="ghost"
-              className="w-full text-muted-foreground"
-              onClick={() => { window.location.href = '/dashboard' }}
-            >
-              {alertsGranted ? 'Go to dashboard →' : 'Skip for now'}
-            </Button>
-          </CardContent>
-        </Card>
-      )}
+        {step === 'notify' && (
+          <StepNotify
+            stepNumber={3}
+            totalSteps={4}
+            onNext={() => advance('notify', 'done')}
+            onBack={() => setStep('contacts')}
+          />
+        )}
 
-      {/* Bottom hint for Claude setup */}
-      {step === 2 && (
-        <p className="text-xs text-center text-muted-foreground px-4">
-          Next: open Claude and add your Horace connector to start querying your prospects.
-        </p>
-      )}
+        {step === 'done' && (
+          <StepReveal
+            firstName={firstName}
+            onFinish={finish}
+          />
+        )}
+      </main>
     </div>
   )
 }

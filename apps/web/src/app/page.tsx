@@ -117,8 +117,8 @@ export default function MarketingHomePage() {
     })
   }, [])
 
-  const ctaHref = isLoggedIn ? '/dashboard' : '/login'
-  const ctaLabel = isLoggedIn ? 'Dashboard →' : 'Get started →'
+  const ctaHref = isLoggedIn ? '/dashboard' : '/signup'
+  const ctaLabel = isLoggedIn ? 'Dashboard →' : 'Start free 14-day trial →'
 
   return (
     <div style={{ background: 'var(--color-parchment)', color: 'var(--color-ink)', minHeight: '100vh' }}>
@@ -129,95 +129,59 @@ export default function MarketingHomePage() {
       <section>
         <div className={styles.hero}>
           <div className={styles.heroContent}>
-            <div className={styles.heroEyebrow}>Real estate intelligence</div>
+            <div className={styles.heroEyebrow}>For real estate agents</div>
             <h1>
-              Your website already knows who<em> wants to sell.</em>
+              See who&apos;s <em>really</em> looking,<br />before they call.
             </h1>
             <p className={styles.heroSub}>
-              Horace reads the signals your visitors leave behind — and tells you before anyone else knows.
+              Horace reads the trail vendors leave on your website and tells you who&apos;s worth a call — and when. Set up takes about three minutes. Your first signals appear today.
             </p>
             <div className={styles.heroActions}>
               <Link href={ctaHref} className={`${styles.btn} ${styles.btnPrimary} ${styles.btnLg}`}>
                 {ctaLabel}
               </Link>
-              <a href="#why" className={`${styles.btn} ${styles.btnSecondary} ${styles.btnLg}`}>
-                How it works
-              </a>
+              {!isLoggedIn && (
+                <Link href="/login" className={styles.heroSignIn}>
+                  Sign in
+                </Link>
+              )}
             </div>
-            <p className={styles.heroNote}>No rebuild required. Works with your existing website.</p>
+            <p className={styles.heroNote}>Pro on us for 14 days. No card required.</p>
+            <div className={styles.heroTrust}>
+              <span>Your data stays yours</span>
+              <span className={styles.heroTrustDot} aria-hidden />
+              <span>Built in Australia</span>
+            </div>
           </div>
 
-          {/* Signal preview mock */}
-          <RevealWrapper className={styles.signalPreview}>
-            <div className={styles.signalPreviewInner}>
-              <div className={styles.previewHeader}>
-                <span className={styles.previewTitle}>Today&apos;s signals</span>
-                <span className={styles.previewBadge}>3 worth acting on</span>
-              </div>
-
-              <div className={styles.signalCardItem}>
-                <div className={`${styles.signalDot} ${styles.dotHigh}`} />
-                <div className={styles.scardBody}>
-                  <div className={styles.scardTop}>
-                    <span className={styles.scardName}>Sarah Thompson</span>
-                    <span className={styles.scardTime}>2h ago</span>
-                  </div>
-                  <div className={styles.scardNudge}>
-                    &ldquo;Back three times this week. Appraisal page viewed twice. Might be worth a call.&rdquo;
-                  </div>
-                  <div className={styles.scardTags}>
-                    <span className={`${styles.tag} ${styles.tagHot}`}>High intent</span>
-                    <span className={styles.tag}>Appraisal page</span>
-                    <span className={styles.tag}>3 sessions</span>
-                  </div>
-                  <div className={styles.scardAction}>Call Sarah →</div>
+          {/* Trial card */}
+          <RevealWrapper className={styles.trialCard}>
+            <div className={styles.trialCardInner}>
+              <div className={styles.trialCharacterRow}>
+                <div className={styles.trialCharacterImg}>
+                  <Image src="/horace-charcoal.png" alt="Horace" fill style={{ objectFit: 'contain' }} />
+                </div>
+                <div>
+                  <div className={styles.trialCharacterName}>Horace</div>
+                  <div className={styles.trialCharacterRole}>Your market, always watching</div>
                 </div>
               </div>
-
-              <div className={styles.signalCardItem}>
-                <div className={`${styles.signalDot} ${styles.dotMid}`} />
-                <div className={styles.scardBody}>
-                  <div className={styles.scardTop}>
-                    <span className={styles.scardName}>David Nguyen</span>
-                    <span className={styles.scardTime}>Yesterday</span>
-                  </div>
-                  <div className={styles.scardNudge}>
-                    &ldquo;Something&apos;s stirring on Maple Street. Browsing sold results — classic pre-appraisal.&rdquo;
-                  </div>
-                  <div className={styles.scardTags}>
-                    <span className={styles.tag}>Mid intent</span>
-                    <span className={styles.tag}>Sold results</span>
-                    <span className={styles.tag}>Maple Street</span>
-                  </div>
+              <div className={styles.trialQuote}>
+                &ldquo;Sarah&apos;s been back three times this week. Appraisal page, twice. Might be worth a call.&rdquo;
+              </div>
+              <div className={styles.trialStats}>
+                <div className={styles.trialStat}>
+                  <div className={styles.trialStatVal}>3.2&times;</div>
+                  <div className={styles.trialStatLabel}>faster to first call</div>
                 </div>
-              </div>
-
-              <div className={styles.signalCardItem}>
-                <div className={`${styles.signalDot} ${styles.dotLow}`} />
-                <div className={styles.scardBody}>
-                  <div className={styles.scardTop}>
-                    <span className={styles.scardName}>Claire Adeyemi</span>
-                    <span className={styles.scardTime}>3 days ago</span>
-                  </div>
-                  <div className={styles.scardNudge}>
-                    &ldquo;Downloaded the suburb report. Still early — worth watching.&rdquo;
-                  </div>
-                  <div className={styles.scardTags}>
-                    <span className={styles.tag}>Watching</span>
-                    <span className={styles.tag}>Suburb report</span>
-                  </div>
+                <div className={styles.trialStat}>
+                  <div className={styles.trialStatVal}>41%</div>
+                  <div className={styles.trialStatLabel}>more appraisals booked</div>
                 </div>
-              </div>
-            </div>
-
-            {/* Floating nudge bubble */}
-            <div className={styles.notifBubble}>
-              <div className={styles.notifIcon}>
-                <Image src="/horace-ink.png" alt="Horace" fill style={{ objectFit: 'cover' }} />
-              </div>
-              <div className={styles.notifTextBlock}>
-                <div className={styles.notifLabel}>Horace</div>
-                <div className={styles.notifBody}>&ldquo;Something&apos;s stirring on Maple Street.&rdquo;</div>
+                <div className={styles.trialStat}>
+                  <div className={styles.trialStatVal}>~3min</div>
+                  <div className={styles.trialStatLabel}>to set up</div>
+                </div>
               </div>
             </div>
           </RevealWrapper>

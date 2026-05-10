@@ -49,18 +49,21 @@ export type Database = {
           first_name: string | null; last_name: string | null
           email: string | null; phone: string | null
           rex_agent_id: string | null; created_at: string
+          last_completed_step: 'profile' | 'script' | 'contacts' | 'notify' | 'done' | null
         }
         Insert: {
           id?: string; workspace_id?: string | null; user_id: string
           first_name?: string | null; last_name?: string | null
           email?: string | null; phone?: string | null
           rex_agent_id?: string | null; created_at?: string
+          last_completed_step?: 'profile' | 'script' | 'contacts' | 'notify' | 'done' | null
         }
         Update: {
           id?: string; workspace_id?: string | null; user_id?: string
           first_name?: string | null; last_name?: string | null
           email?: string | null; phone?: string | null
           rex_agent_id?: string | null; created_at?: string
+          last_completed_step?: 'profile' | 'script' | 'contacts' | 'notify' | 'done' | null
         }
         Relationships: [
           { foreignKeyName: 'agents_workspace_id_fkey'; columns: ['workspace_id']; isOneToOne: false; referencedRelation: 'workspaces'; referencedColumns: ['id'] }
