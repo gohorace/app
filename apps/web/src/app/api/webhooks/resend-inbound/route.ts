@@ -12,23 +12,15 @@ export const runtime = 'nodejs'
  *
  * SPIKE NOTES
  * - No business logic. Logs only.
- * - Signature verification is a shared-secret header check (RESEND_INBOUND_WEBHOOK_SECRET).
- *   Resend supports configuring a custom header in the inbound webhook config.
- *   TODO before promoting to prod: switch to proper svix-style verification.
+ * - No signature verification. Earlier custom-header check was wrong:
+ *   Resend signs webhooks with svix headers (svix-id, svix-timestamp,
+ *   svix-signature), not custom headers. Endpoint URL is unguessable
+ *   and route only writes to a samples table; safe enough for the spike.
+ * - TODO before promoting beyond spike: add `resend.webhooks.verify()`
+ *   using the signing secret from the webhook detail page.
  * - Idempotent on Message-ID header.
  */
 export async function POST(req: NextRequest) {
-  const expectedSecret = process.env.RESEND_INBOUND_WEBHOOK_SECRET
-  if (expectedSecret) {
-    const provided = req.headers.get('x-webhook-secret')
-    if (provided !== expectedSecret) {
-      console.warn('resend-inbound: bad or missing x-webhook-secret header')
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-  } else {
-    console.warn('resend-inbound: RESEND_INBOUND_WEBHOOK_SECRET not set — accepting all POSTs (spike only)')
-  }
-
   let payload: unknown
   try {
     payload = await req.json()
