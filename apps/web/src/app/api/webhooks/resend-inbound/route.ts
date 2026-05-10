@@ -12,13 +12,14 @@ export const runtime = 'nodejs'
  *
  * SPIKE NOTES
  * - No business logic. Logs only.
- * - No signature verification. Earlier custom-header check was wrong:
- *   Resend signs webhooks with svix headers (svix-id, svix-timestamp,
- *   svix-signature), not custom headers. Endpoint URL is unguessable
- *   and route only writes to a samples table; safe enough for the spike.
- * - TODO before promoting beyond spike: add `resend.webhooks.verify()`
- *   using the signing secret from the webhook detail page.
- * - Idempotent on Message-ID header.
+ * - No signature verification (spike). TODO: add `resend.webhooks.verify()`
+ *   before this code path goes near production.
+ * - Resend's webhook is metadata-only by design. We do a follow-up
+ *   GET /emails/receiving/{id} to fetch text/html/headers and store
+ *   both webhook + fetched body in `parsed` as { webhook, fetched }.
+ * - Upsert merges on Message-ID so replaying the webhook (e.g. via
+ *   Resend's Replay button) updates the existing row with newly
+ *   fetched body content.
  */
 export async function POST(req: NextRequest) {
   let payload: unknown
@@ -29,9 +30,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  // Defensive extraction — Resend's inbound payload shape is:
-  //   { type: 'email.received' | 'email.inbound', data: { from, to, subject, text, html, headers, raw, ... } }
-  // but field names may vary. Store the whole thing in `parsed` and pull common fields out.
+  // Webhook payload shape: { type: 'email.received', data: { from, to, subject, email_id, message_id, ... } }
+  // The `data.email_id` is Resend's internal ID, used to fetch the body separately.
   const data = (payload as { data?: Record<string, unknown> })?.data ?? (payload as Record<string, unknown>)
 
   const fromAddress = pickString(data, ['from', 'sender', 'from_address'])
@@ -41,7 +41,12 @@ export async function POST(req: NextRequest) {
     pickString(data, ['message_id', 'messageId']) ??
     extractHeader(data, 'message-id') ??
     extractHeader(data, 'Message-ID')
-  const rawMime = pickString(data, ['raw', 'raw_mime', 'mime'])
+  const emailId = pickString(data, ['email_id', 'emailId', 'id'])
+
+  // Fetch full body (text/html/headers/reply_to) via Resend's Received Emails API.
+  // Webhook is metadata-only by design — body must be fetched separately.
+  // https://resend.com/docs/api-reference/emails/retrieve-received-email
+  const fetchedEmail = await fetchReceivedEmail(emailId)
 
   const sourcePortal = guessSourcePortal(fromAddress)
 
@@ -55,10 +60,10 @@ export async function POST(req: NextRequest) {
         subject,
         message_id: messageId,
         source_portal: sourcePortal,
-        parsed: payload as Json,
-        raw_mime: rawMime,
+        parsed: { webhook: payload, fetched: fetchedEmail } as Json,
+        raw_mime: null,
       },
-      { onConflict: 'message_id', ignoreDuplicates: true },
+      { onConflict: 'message_id' },
     )
 
   if (error) {
@@ -71,10 +76,43 @@ export async function POST(req: NextRequest) {
     to: toAddress,
     subject,
     source_portal: sourcePortal,
-    has_raw: !!rawMime,
+    fetched_body: !!fetchedEmail,
   })
 
   return NextResponse.json({ received: true })
+}
+
+/**
+ * Fetch a received email's full content from Resend.
+ * Returns null on missing key / missing id / fetch failure — webhook
+ * still captures metadata in that case.
+ */
+async function fetchReceivedEmail(emailId: string | null): Promise<Json> {
+  const resendKey = process.env.RESEND_API_KEY
+  if (!emailId) {
+    console.warn('resend-inbound: no email_id in payload — skipping body fetch')
+    return null
+  }
+  if (!resendKey) {
+    console.warn('resend-inbound: RESEND_API_KEY not set — skipping body fetch')
+    return null
+  }
+
+  try {
+    const res = await fetch(`https://api.resend.com/emails/receiving/${emailId}`, {
+      headers: { Authorization: `Bearer ${resendKey}` },
+      signal: AbortSignal.timeout(8000),
+    })
+    if (!res.ok) {
+      const body = await res.text().catch(() => '')
+      console.warn(`resend-inbound: body fetch returned ${res.status}: ${body.slice(0, 200)}`)
+      return null
+    }
+    return (await res.json()) as Json
+  } catch (err) {
+    console.error('resend-inbound: body fetch failed', err)
+    return null
+  }
 }
 
 function pickString(obj: Record<string, unknown> | undefined, keys: string[]): string | null {
