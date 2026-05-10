@@ -8,8 +8,9 @@ export const runtime = 'nodejs'
  * GET /api/debug/inbound-samples
  *
  * Returns the most recent inbound email captures for the HOR-28 spike.
- * Auth: any logged-in user. Optionally tighten via DEBUG_ALLOWED_USER_IDS
- * (comma-separated user UUIDs) — if set, the caller must be in the list.
+ * Auth: any logged-in user. (Earlier optional DEBUG_ALLOWED_USER_IDS
+ * allowlist removed — Vercel sensitive-env-var state proved confusing
+ * during the spike. Re-add proper auth before this goes near prod.)
  *
  * Query params:
  *   ?limit=50              max rows (default 50, cap 200)
@@ -20,11 +21,6 @@ export async function GET(req: NextRequest) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const allowed = process.env.DEBUG_ALLOWED_USER_IDS?.split(',').map(s => s.trim()).filter(Boolean)
-  if (allowed && allowed.length > 0 && !allowed.includes(user.id)) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
 
   const params = req.nextUrl.searchParams
   const rawLimit = Number(params.get('limit') ?? '50')
