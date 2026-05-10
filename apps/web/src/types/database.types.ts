@@ -436,6 +436,30 @@ export type Database = {
         }
         Relationships: []
       }
+      inbound_email_samples: {
+        Row: {
+          id: string; received_at: string
+          to_address: string | null; from_address: string | null
+          subject: string | null; message_id: string | null
+          source_portal: string | null
+          parsed: Json | null; raw_mime: string | null
+        }
+        Insert: {
+          id?: string; received_at?: string
+          to_address?: string | null; from_address?: string | null
+          subject?: string | null; message_id?: string | null
+          source_portal?: string | null
+          parsed?: Json | null; raw_mime?: string | null
+        }
+        Update: {
+          id?: string; received_at?: string
+          to_address?: string | null; from_address?: string | null
+          subject?: string | null; message_id?: string | null
+          source_portal?: string | null
+          parsed?: Json | null; raw_mime?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
