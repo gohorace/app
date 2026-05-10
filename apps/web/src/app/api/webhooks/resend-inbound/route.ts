@@ -88,13 +88,15 @@ export async function POST(req: NextRequest) {
  * still captures metadata in that case.
  */
 async function fetchReceivedEmail(emailId: string | null): Promise<Json> {
-  const resendKey = process.env.RESEND_API_KEY
+  // Prefer a dedicated receiving-scoped key; fall back to the main API key.
+  // Keeps RESEND_API_KEY as least-privilege (send-only) for outbound.
+  const resendKey = process.env.RESEND_RECEIVING_API_KEY ?? process.env.RESEND_API_KEY
   if (!emailId) {
     console.warn('resend-inbound: no email_id in payload — skipping body fetch')
     return null
   }
   if (!resendKey) {
-    console.warn('resend-inbound: RESEND_API_KEY not set — skipping body fetch')
+    console.warn('resend-inbound: no Resend API key set — skipping body fetch')
     return null
   }
 
