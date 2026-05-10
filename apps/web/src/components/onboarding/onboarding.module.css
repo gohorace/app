@@ -167,6 +167,13 @@
   flex-direction: column;
 }
 
+.fullPane {
+  padding: 64px 32px;
+  max-width: 1100px;
+  margin: 0 auto;
+  width: 100%;
+}
+
 .paneMeta {
   display: flex;
   align-items: center;

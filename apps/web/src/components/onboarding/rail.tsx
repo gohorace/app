@@ -1,32 +1,32 @@
 'use client'
 
-import { Code2, Users, Bell, Sparkles, Check } from 'lucide-react'
-import type { OnboardingStep } from '@/lib/onboarding/state'
+import { User, Code2, Users, Bell, Check } from 'lucide-react'
 import styles from './onboarding.module.css'
 
+export type RailStepId = 'profile' | 'script' | 'contacts' | 'notify'
+
 interface RailStep {
-  id: Exclude<OnboardingStep, 'profile'>
+  id: RailStepId
   short: string
-  title: string
 }
 
 const RAIL_STEPS: RailStep[] = [
-  { id: 'script',   short: 'Tracking script', title: 'Install tracking' },
-  { id: 'contacts', short: 'Your contacts',   title: 'Bring your people' },
-  { id: 'notify',   short: 'Browser alerts',  title: 'Turn on alerts' },
-  { id: 'done',     short: 'First signal',    title: 'See your dashboard' },
+  { id: 'profile',  short: 'Your details' },
+  { id: 'script',   short: 'Tracking script' },
+  { id: 'contacts', short: 'Your contacts' },
+  { id: 'notify',   short: 'Browser alerts' },
 ]
 
-const ICONS: Record<RailStep['id'], React.ComponentType<{ className?: string }>> = {
+const ICONS: Record<RailStepId, React.ComponentType<{ className?: string }>> = {
+  profile:  User,
   script:   Code2,
   contacts: Users,
   notify:   Bell,
-  done:     Sparkles,
 }
 
 interface RailProps {
-  current: RailStep['id']
-  completed: Set<RailStep['id']>
+  current: RailStepId
+  completed: Set<RailStepId>
   stage: { title: string; body: string }
 }
 

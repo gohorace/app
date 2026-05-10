@@ -3,16 +3,16 @@
 import { useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import type { OnboardingStep } from '@/lib/onboarding/state'
-import { Rail } from './rail'
+import { Rail, type RailStepId } from './rail'
 import { StepScript } from './step-script'
 import { StepContacts } from './step-contacts'
 import { StepNotify } from './step-notify'
 import { StepReveal } from './step-reveal'
 import styles from './onboarding.module.css'
 
-type WizardStep = Exclude<OnboardingStep, 'profile'>
+type WizardStep = 'script' | 'contacts' | 'notify' | 'done'
 
-const STAGE_COPY: Record<WizardStep, { title: string; body: string }> = {
+const STAGE_COPY: Record<Exclude<WizardStep, 'done'>, { title: string; body: string }> = {
   script: {
     title: 'One line. Then Horace listens.',
     body: 'Paste a small snippet on your site — or send it to your developer. The moment it lands, Horace starts reading visitor behaviour.',
@@ -24,10 +24,6 @@ const STAGE_COPY: Record<WizardStep, { title: string; body: string }> = {
   notify: {
     title: 'A whisper, never a shout.',
     body: 'Browser alerts only when a signal is genuinely worth your attention. Two or three a week, max.',
-  },
-  done: {
-    title: 'You’re live.',
-    body: 'Sample signals show what Horace looks like when it’s humming. The first real visit lights up the moment it lands.',
   },
 }
 
@@ -57,22 +53,28 @@ export function OnboardingWizard({
 }: Props) {
   const router = useRouter()
   const [step, setStep] = useState<WizardStep>(resumeStep(lastCompletedStep))
-  const [completed, setCompleted] = useState<Set<WizardStep>>(() => {
-    const s = new Set<WizardStep>()
+  // Profile is always done by the time the post-auth wizard renders (signup
+  // captured it before the magic-link click). Rail uses RailStepId, which
+  // includes profile, so we track completed steps in that namespace.
+  const [completed, setCompleted] = useState<Set<RailStepId>>(() => {
+    const s = new Set<RailStepId>(['profile'])
     if (lastCompletedStep === 'script' || lastCompletedStep === 'contacts' || lastCompletedStep === 'notify' || lastCompletedStep === 'done') s.add('script')
     if (lastCompletedStep === 'contacts' || lastCompletedStep === 'notify' || lastCompletedStep === 'done') s.add('contacts')
     if (lastCompletedStep === 'notify' || lastCompletedStep === 'done') s.add('notify')
-    if (lastCompletedStep === 'done') s.add('done')
     return s
   })
 
-  const advance = useCallback(async (current: WizardStep, next: WizardStep) => {
+  const advance = useCallback(async (current: Exclude<WizardStep, 'done'>, next: WizardStep) => {
     await fetch('/api/onboarding/step', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ step: current }),
     })
-    setCompleted((prev) => new Set(prev).add(current))
+    setCompleted((prev) => {
+      const s = new Set(prev)
+      s.add(current as RailStepId)
+      return s
+    })
     setStep(next)
   }, [])
 
@@ -85,9 +87,18 @@ export function OnboardingWizard({
     router.push('/dashboard')
   }, [router])
 
+  if (step === 'done') {
+    // Reveal is full-screen per the design — no rail, no shell.
+    return (
+      <main id="onboarding-main" className={styles.fullPane} aria-label="Reveal">
+        <StepReveal firstName={firstName} onFinish={finish} />
+      </main>
+    )
+  }
+
   return (
     <div className={styles.shell}>
-      <Rail current={step} completed={completed} stage={STAGE_COPY[step]} />
+      <Rail current={step as RailStepId} completed={completed} stage={STAGE_COPY[step]} />
 
       <main id="onboarding-main" className={styles.pane} aria-label="Onboarding">
         {step === 'script' && (
@@ -95,7 +106,7 @@ export function OnboardingWizard({
             snippetKey={snippetKey}
             appUrl={appUrl}
             firstName={firstName}
-            stepNumber={1}
+            stepNumber={2}
             totalSteps={4}
             onNext={() => advance('script', 'contacts')}
           />
@@ -103,7 +114,7 @@ export function OnboardingWizard({
 
         {step === 'contacts' && (
           <StepContacts
-            stepNumber={2}
+            stepNumber={3}
             totalSteps={4}
             onNext={() => advance('contacts', 'notify')}
             onBack={() => setStep('script')}
@@ -112,17 +123,10 @@ export function OnboardingWizard({
 
         {step === 'notify' && (
           <StepNotify
-            stepNumber={3}
+            stepNumber={4}
             totalSteps={4}
             onNext={() => advance('notify', 'done')}
             onBack={() => setStep('contacts')}
-          />
-        )}
-
-        {step === 'done' && (
-          <StepReveal
-            firstName={firstName}
-            onFinish={finish}
           />
         )}
       </main>
