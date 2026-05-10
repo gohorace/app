@@ -463,6 +463,80 @@ export type Database = {
         }
         Relationships: []
       }
+      agent_inbound_addresses: {
+        Row: {
+          id: string; agent_id: string; local_part: string
+          is_active: boolean; created_at: string
+        }
+        Insert: {
+          id?: string; agent_id: string; local_part: string
+          is_active?: boolean; created_at?: string
+        }
+        Update: {
+          id?: string; agent_id?: string; local_part?: string
+          is_active?: boolean; created_at?: string
+        }
+        Relationships: [
+          { foreignKeyName: 'agent_inbound_addresses_agent_id_fkey'; columns: ['agent_id']; isOneToOne: false; referencedRelation: 'agents'; referencedColumns: ['id'] }
+        ]
+      }
+      inbound_emails: {
+        Row: {
+          id: string; agent_id: string | null; received_at: string
+          source_portal: string | null; message_id: string | null
+          webhook_payload: Json; fetched_payload: Json | null
+          parse_status: 'pending_body' | 'parsed' | 'parse_failed' | 'no_match'
+          parse_error: string | null
+        }
+        Insert: {
+          id?: string; agent_id?: string | null; received_at?: string
+          source_portal?: string | null; message_id?: string | null
+          webhook_payload: Json; fetched_payload?: Json | null
+          parse_status?: 'pending_body' | 'parsed' | 'parse_failed' | 'no_match'
+          parse_error?: string | null
+        }
+        Update: {
+          id?: string; agent_id?: string | null; received_at?: string
+          source_portal?: string | null; message_id?: string | null
+          webhook_payload?: Json; fetched_payload?: Json | null
+          parse_status?: 'pending_body' | 'parsed' | 'parse_failed' | 'no_match'
+          parse_error?: string | null
+        }
+        Relationships: [
+          { foreignKeyName: 'inbound_emails_agent_id_fkey'; columns: ['agent_id']; isOneToOne: false; referencedRelation: 'agents'; referencedColumns: ['id'] }
+        ]
+      }
+      enquiries: {
+        Row: {
+          id: string; inbound_email_id: string; agent_id: string; contact_id: string | null
+          listing_external_id: string | null; listing_address: string | null
+          listing_url: string | null; listing_agent_name: string | null
+          enquirer_name: string | null; enquirer_email: string | null; enquirer_phone: string | null
+          message: string | null; intent: string | null; requested_actions: string[]
+          parsed_at: string
+        }
+        Insert: {
+          id?: string; inbound_email_id: string; agent_id: string; contact_id?: string | null
+          listing_external_id?: string | null; listing_address?: string | null
+          listing_url?: string | null; listing_agent_name?: string | null
+          enquirer_name?: string | null; enquirer_email?: string | null; enquirer_phone?: string | null
+          message?: string | null; intent?: string | null; requested_actions?: string[]
+          parsed_at?: string
+        }
+        Update: {
+          id?: string; inbound_email_id?: string; agent_id?: string; contact_id?: string | null
+          listing_external_id?: string | null; listing_address?: string | null
+          listing_url?: string | null; listing_agent_name?: string | null
+          enquirer_name?: string | null; enquirer_email?: string | null; enquirer_phone?: string | null
+          message?: string | null; intent?: string | null; requested_actions?: string[]
+          parsed_at?: string
+        }
+        Relationships: [
+          { foreignKeyName: 'enquiries_inbound_email_id_fkey'; columns: ['inbound_email_id']; isOneToOne: true; referencedRelation: 'inbound_emails'; referencedColumns: ['id'] },
+          { foreignKeyName: 'enquiries_agent_id_fkey'; columns: ['agent_id']; isOneToOne: false; referencedRelation: 'agents'; referencedColumns: ['id'] },
+          { foreignKeyName: 'enquiries_contact_id_fkey'; columns: ['contact_id']; isOneToOne: false; referencedRelation: 'contacts'; referencedColumns: ['id'] }
+        ]
+      }
     }
     Views: {
       [_ in never]: never
