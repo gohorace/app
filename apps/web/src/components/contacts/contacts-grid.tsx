@@ -1,8 +1,9 @@
 'use client'
 
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
+import Link from 'next/link'
 import { formatDistanceToNow } from 'date-fns'
-import { Search } from 'lucide-react'
+import { Search, Link2, Check, MoreHorizontal, Upload, X, AlertTriangle } from 'lucide-react'
 import { ContactDrawer } from './contact-drawer'
 import { createClient } from '@/lib/supabase/client'
 
@@ -32,6 +33,10 @@ export type ContactRow = {
   session_count:    number
   last_event_type:  string | null
   last_page_title:  string | null
+  tracked_link_token:           string | null
+  tracked_link_last_clicked_at: string | null
+  tracked_link_destination_url: string | null
+  is_stitched:                  boolean
 }
 
 // ── Intent ────────────────────────────────────────────────────────────────────
@@ -81,9 +86,10 @@ function lastPageLabel(eventType: string | null, title: string | null): string {
 // ── ContactsGrid ──────────────────────────────────────────────────────────────
 
 interface Props {
-  contacts:   ContactRow[]
-  initialQ?:  string
-  agentId:    string
+  contacts:        ContactRow[]
+  initialQ?:       string
+  agentId:         string
+  defaultLinkUrl?: string | null
 }
 
 // Flex proportions — columns scale to fill available width.
@@ -96,6 +102,7 @@ const COL_FLEX = {
   lastPage: 2.5,
   sessions: 1,
   lastSeen: 1,
+  link:     1.2,
 }
 const COL_MIN: Partial<Record<keyof typeof COL_FLEX, string>> = {
   name:     '160px',
@@ -105,14 +112,15 @@ const COL_MIN: Partial<Record<keyof typeof COL_FLEX, string>> = {
   lastPage: '160px',
   sessions: '70px',
   lastSeen: '90px',
+  link:     '110px',
 }
 
 // Sum of COL_MIN values + horizontal padding (16px × 2). Forces the table
 // to keep a usable width on narrow viewports — the parent container scrolls
 // horizontally instead of compressing columns into unreadable slivers.
-const TABLE_MIN_WIDTH = '892px'
+const TABLE_MIN_WIDTH = '1002px'
 
-export function ContactsGrid({ contacts, initialQ = '', agentId }: Props) {
+export function ContactsGrid({ contacts, initialQ = '', agentId, defaultLinkUrl = null }: Props) {
   const [search,     setSearch]     = useState(initialQ)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [onlineIds,  setOnlineIds]  = useState<Set<string>>(() => {
@@ -122,6 +130,12 @@ export function ContactsGrid({ contacts, initialQ = '', agentId }: Props) {
   const latestSeenRef = useRef<Map<string, string>>(new Map(
     (Array.isArray(contacts) ? contacts : []).map(c => [c.id, c.last_seen_at ?? ''])
   ))
+
+  // Optimistic per-contact destination overrides so the modal save reflects
+  // immediately without a server round-trip.
+  const [destOverrides, setDestOverrides] = useState<Map<string, string | null>>(new Map())
+  const [copiedId,  setCopiedId]  = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
 
   // Supabase Realtime — watch for last_seen_at updates on this agent's contacts
   useEffect(() => {
@@ -209,27 +223,44 @@ export function ContactsGrid({ contacts, initialQ = '', agentId }: Props) {
           </span>
         </div>
 
-        {/* Search */}
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: '6px',
-          padding: '5px 10px',
-          background: 'rgba(140,123,107,0.08)',
-          border: '1px solid transparent',
-          borderRadius: '6px', width: '220px',
-        }}
-          className="contacts-search"
-        >
-          <Search style={{ width: '13px', height: '13px', color: '#8C7B6B', flexShrink: 0 }} />
-          <input
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Search contacts…"
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {/* Search */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '6px',
+            padding: '5px 10px',
+            background: 'rgba(140,123,107,0.08)',
+            border: '1px solid transparent',
+            borderRadius: '6px', width: '220px',
+          }}
+            className="contacts-search"
+          >
+            <Search style={{ width: '13px', height: '13px', color: '#8C7B6B', flexShrink: 0 }} />
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search contacts…"
+              style={{
+                flex: 1, background: 'transparent', border: 'none', outline: 'none',
+                fontFamily: 'var(--font-body)', fontSize: '13px', color: '#1A1612',
+                minWidth: 0,
+              }}
+            />
+          </div>
+
+          {/* Import contacts */}
+          <Link
+            href="/import"
             style={{
-              flex: 1, background: 'transparent', border: 'none', outline: 'none',
-              fontFamily: 'var(--font-body)', fontSize: '13px', color: '#1A1612',
-              minWidth: 0,
+              display: 'inline-flex', alignItems: 'center', gap: '5px',
+              padding: '6px 10px', borderRadius: '6px',
+              background: 'rgba(196,98,45,0.1)', color: '#A5511E',
+              fontSize: '12.5px', fontWeight: 600, textDecoration: 'none',
+              border: '1px solid rgba(196,98,45,0.2)',
             }}
-          />
+          >
+            <Upload style={{ width: '12px', height: '12px' }} />
+            Import
+          </Link>
         </div>
       </div>
 
@@ -260,6 +291,7 @@ export function ContactsGrid({ contacts, initialQ = '', agentId }: Props) {
                 { label: 'Last page', key: 'lastPage' as const },
                 { label: 'Sessions',  key: 'sessions' as const },
                 { label: 'Last seen', key: 'lastSeen' as const },
+                { label: 'Link',      key: 'link'     as const },
               ].map(col => (
                 <div key={col.label} style={{
                   flex: COL_FLEX[col.key],
@@ -289,9 +321,23 @@ export function ContactsGrid({ contacts, initialQ = '', agentId }: Props) {
                       : 'No contacts found.'}
                 </p>
                 {!search && safeContacts.length === 0 && (
-                  <p style={{ fontSize: '13px', color: '#8C7B6B' }}>
-                    Import your contacts to get started.
-                  </p>
+                  <>
+                    <p style={{ fontSize: '13px', color: '#8C7B6B', marginBottom: '20px' }}>
+                      Import your contacts so Horace can recognise them when they visit your site.
+                    </p>
+                    <Link
+                      href="/import"
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: '6px',
+                        padding: '8px 14px', borderRadius: '8px',
+                        background: '#C4622D', color: '#FAF7F2',
+                        fontSize: '13px', fontWeight: 600, textDecoration: 'none',
+                      }}
+                    >
+                      <Upload style={{ width: '14px', height: '14px' }} />
+                      Import contacts
+                    </Link>
+                  </>
                 )}
               </div>
             )}
@@ -343,6 +389,20 @@ export function ContactsGrid({ contacts, initialQ = '', agentId }: Props) {
                           border: '1.5px solid #FAF7F2',
                           animation: 'online-pulse 2s ease-in-out infinite',
                         }} />
+                      )}
+                      {!isOnline && contact.is_stitched && (
+                        <span
+                          title="Stitched — visits identified"
+                          style={{
+                            position: 'absolute', bottom: '-2px', right: '-2px',
+                            width: '11px', height: '11px', borderRadius: '50%',
+                            background: '#3D5246',
+                            border: '1.5px solid #FAF7F2',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          }}
+                        >
+                          <Check style={{ width: '7px', height: '7px', color: '#FAF7F2', strokeWidth: 4 }} />
+                        </span>
                       )}
                     </div>
                     <div style={{ minWidth: 0 }}>
@@ -417,6 +477,26 @@ export function ContactsGrid({ contacts, initialQ = '', agentId }: Props) {
                         : '—'}
                     </span>
                   </div>
+
+                  {/* Tracked link */}
+                  <div
+                    style={{ flex: COL_FLEX.link, minWidth: COL_MIN.link, paddingRight: '4px' }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <TrackedLinkCell
+                      token={contact.tracked_link_token}
+                      lastClickedAt={contact.tracked_link_last_clicked_at}
+                      copied={copiedId === contact.id}
+                      onCopy={async () => {
+                        if (!contact.tracked_link_token) return
+                        const url = `${window.location.origin}/c/${contact.tracked_link_token}`
+                        try { await navigator.clipboard.writeText(url) } catch {}
+                        setCopiedId(contact.id)
+                        setTimeout(() => setCopiedId(prev => prev === contact.id ? null : prev), 1500)
+                      }}
+                      onEdit={() => setEditingId(contact.id)}
+                    />
+                  </div>
                 </div>
               )
             })}
@@ -451,6 +531,289 @@ export function ContactsGrid({ contacts, initialQ = '', agentId }: Props) {
             ? `${filtered.length} result${filtered.length !== 1 ? 's' : ''}`
             : `${safeContacts.length} contact${safeContacts.length !== 1 ? 's' : ''}`}
         </span>
+      </div>
+
+      {/* Destination override modal */}
+      {editingId && (() => {
+        const editing = safeContacts.find(c => c.id === editingId)
+        if (!editing) return null
+        const override = destOverrides.has(editing.id)
+          ? destOverrides.get(editing.id) ?? null
+          : editing.tracked_link_destination_url
+        return (
+          <DestinationModal
+            contactId={editing.id}
+            contactName={[editing.first_name, editing.last_name].filter(Boolean).join(' ') || editing.email || 'this contact'}
+            currentDestination={override}
+            defaultUrl={defaultLinkUrl}
+            onClose={() => setEditingId(null)}
+            onSaved={(value) => {
+              setDestOverrides(prev => {
+                const next = new Map(prev)
+                next.set(editing.id, value)
+                return next
+              })
+              setEditingId(null)
+            }}
+          />
+        )
+      })()}
+    </div>
+  )
+}
+
+// ── Tracked-link cell ─────────────────────────────────────────────────────────
+
+interface TrackedLinkCellProps {
+  token:         string | null
+  lastClickedAt: string | null
+  copied:        boolean
+  onCopy:        () => void
+  onEdit:        () => void
+}
+
+function TrackedLinkCell({ token, lastClickedAt, copied, onCopy, onEdit }: TrackedLinkCellProps) {
+  if (!token) {
+    return <span style={{ fontSize: '11px', color: 'rgba(140,123,107,0.4)' }}>—</span>
+  }
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+      <button
+        type="button"
+        onClick={onCopy}
+        title={copied ? 'Copied!' : 'Copy tracked link'}
+        style={{
+          display: 'inline-flex', alignItems: 'center', gap: '4px',
+          padding: '4px 8px', borderRadius: '5px',
+          background: copied ? 'rgba(61,82,70,0.12)' : 'rgba(140,123,107,0.08)',
+          border: '1px solid transparent',
+          color: copied ? '#3D5246' : '#5A4D40',
+          fontSize: '11px', fontWeight: 600,
+          cursor: 'pointer',
+          transition: 'background 120ms',
+        }}
+      >
+        {copied ? (
+          <>
+            <Check style={{ width: '11px', height: '11px' }} />
+            Copied
+          </>
+        ) : (
+          <>
+            <Link2 style={{ width: '11px', height: '11px' }} />
+            Copy
+          </>
+        )}
+      </button>
+      <button
+        type="button"
+        onClick={onEdit}
+        title="Edit destination"
+        style={{
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          width: '24px', height: '24px', borderRadius: '5px',
+          background: 'transparent', border: '1px solid transparent',
+          color: '#8C7B6B', cursor: 'pointer',
+        }}
+      >
+        <MoreHorizontal style={{ width: '12px', height: '12px' }} />
+      </button>
+      {lastClickedAt && (
+        <span
+          title={`Clicked ${formatDistanceToNow(new Date(lastClickedAt), { addSuffix: true })}`}
+          style={{ fontSize: '10.5px', color: '#8C7B6B', whiteSpace: 'nowrap', marginLeft: '2px' }}
+        >
+          {formatDistanceToNow(new Date(lastClickedAt), { addSuffix: false })}
+        </span>
+      )}
+    </div>
+  )
+}
+
+// ── Destination override modal ────────────────────────────────────────────────
+
+interface DestinationModalProps {
+  contactId:          string
+  contactName:        string
+  currentDestination: string | null
+  defaultUrl:         string | null
+  onClose:            () => void
+  onSaved:            (value: string | null) => void
+}
+
+function getHost(raw: string | null): string | null {
+  if (!raw) return null
+  try { return new URL(raw).host.toLowerCase() } catch { return null }
+}
+
+function DestinationModal({
+  contactId,
+  contactName,
+  currentDestination,
+  defaultUrl,
+  onClose,
+  onSaved,
+}: DestinationModalProps) {
+  const [value, setValue]   = useState(currentDestination ?? '')
+  const [saving, setSaving] = useState(false)
+  const [error, setError]   = useState<string | null>(null)
+
+  const defaultHost = getHost(defaultUrl)
+  const currentHost = getHost(value || defaultUrl)
+  const offSite     = !!value && !!defaultHost && !!currentHost && currentHost !== defaultHost
+
+  async function save(clear = false) {
+    setSaving(true)
+    setError(null)
+    const payload = clear
+      ? null
+      : value.trim() === '' ? null : value.trim()
+
+    try {
+      const res = await fetch(`/api/contacts/${contactId}/tracked-link`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ destination_url: payload }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data.error ?? 'Failed to save')
+        setSaving(false)
+        return
+      }
+      onSaved(data.destination_url ?? null)
+    } catch {
+      setError('Network error — try again')
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 50,
+        background: 'rgba(26,22,18,0.4)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: '16px',
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: '100%', maxWidth: '460px',
+          background: '#FAF7F2', borderRadius: '12px',
+          border: '1px solid rgba(140,123,107,0.2)',
+          boxShadow: '0 20px 60px rgba(26,22,18,0.25)',
+          overflow: 'hidden',
+        }}
+      >
+        <div style={{
+          padding: '16px 20px',
+          borderBottom: '1px solid rgba(140,123,107,0.12)',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        }}>
+          <div>
+            <p style={{ fontSize: '14px', fontWeight: 600, color: '#1A1612', margin: 0 }}>
+              Tracked link destination
+            </p>
+            <p style={{ fontSize: '11.5px', color: '#8C7B6B', margin: '2px 0 0' }}>
+              for {contactName}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              padding: '4px', borderRadius: '6px', background: 'transparent',
+              border: '1px solid transparent', color: '#8C7B6B', cursor: 'pointer',
+            }}
+          >
+            <X style={{ width: '15px', height: '15px' }} />
+          </button>
+        </div>
+
+        <div style={{ padding: '18px 20px' }}>
+          <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 600, color: '#5A4D40', marginBottom: '6px' }}>
+            Destination URL
+          </label>
+          <input
+            type="url"
+            inputMode="url"
+            placeholder={defaultUrl ?? 'https://yourdomain.com'}
+            autoCapitalize="off"
+            autoCorrect="off"
+            spellCheck={false}
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            style={{
+              width: '100%', padding: '8px 10px',
+              fontSize: '13px', fontFamily: 'var(--font-mono)',
+              border: '1px solid rgba(140,123,107,0.3)',
+              borderRadius: '6px',
+              background: '#FFFFFF', color: '#1A1612',
+              outline: 'none',
+            }}
+          />
+          <p style={{ fontSize: '11px', color: '#8C7B6B', marginTop: '6px' }}>
+            {value.trim() === ''
+              ? defaultUrl
+                ? <>Leave blank to use default: <span style={{ fontFamily: 'var(--font-mono)' }}>{defaultUrl}</span></>
+                : <>No default site URL set yet — <Link href="/settings/tracked-links" style={{ color: '#A5511E' }}>configure one</Link>.</>
+              : 'This URL will receive the click and is where stitching happens.'}
+          </p>
+
+          {offSite && (
+            <div style={{
+              marginTop: '10px',
+              display: 'flex', gap: '8px', alignItems: 'flex-start',
+              padding: '10px',
+              background: 'rgba(196,98,45,0.08)',
+              border: '1px solid rgba(196,98,45,0.2)',
+              borderRadius: '6px',
+            }}>
+              <AlertTriangle style={{ width: '14px', height: '14px', color: '#A5511E', flexShrink: 0, marginTop: '1px' }} />
+              <p style={{ fontSize: '11.5px', color: '#5A4D40', margin: 0, lineHeight: 1.4 }}>
+                This URL is outside your tracked site ({defaultHost}). Clicks will redirect there but won&apos;t stitch the contact — the tracker has to be installed on the destination domain.
+              </p>
+            </div>
+          )}
+
+          {error && (
+            <p style={{ fontSize: '11.5px', color: '#A5511E', marginTop: '10px' }}>{error}</p>
+          )}
+
+          <div style={{ display: 'flex', gap: '8px', marginTop: '16px', justifyContent: 'flex-end' }}>
+            {currentDestination && (
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => save(true)}
+                style={{
+                  padding: '7px 12px', borderRadius: '6px',
+                  background: 'transparent', border: '1px solid rgba(140,123,107,0.3)',
+                  color: '#5A4D40', fontSize: '12.5px', fontWeight: 600,
+                  cursor: saving ? 'default' : 'pointer',
+                }}
+              >
+                Reset to default
+              </button>
+            )}
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => save(false)}
+              style={{
+                padding: '7px 14px', borderRadius: '6px',
+                background: '#C4622D', border: '1px solid #C4622D',
+                color: '#FAF7F2', fontSize: '12.5px', fontWeight: 600,
+                cursor: saving ? 'default' : 'pointer',
+              }}
+            >
+              {saving ? 'Saving…' : 'Save destination'}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   )

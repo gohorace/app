@@ -396,6 +396,46 @@ export type Database = {
         }
         Relationships: []
       }
+      contact_tracked_links: {
+        Row: {
+          id: string; workspace_id: string; agent_id: string; contact_id: string
+          token: string; destination_url: string | null
+          click_count: number; last_clicked_at: string | null; created_at: string
+        }
+        Insert: {
+          id?: string; workspace_id: string; agent_id: string; contact_id: string
+          token: string; destination_url?: string | null
+          click_count?: number; last_clicked_at?: string | null; created_at?: string
+        }
+        Update: {
+          id?: string; workspace_id?: string; agent_id?: string; contact_id?: string
+          token?: string; destination_url?: string | null
+          click_count?: number; last_clicked_at?: string | null; created_at?: string
+        }
+        Relationships: [
+          { foreignKeyName: 'contact_tracked_links_workspace_id_fkey'; columns: ['workspace_id']; isOneToOne: false; referencedRelation: 'workspaces'; referencedColumns: ['id'] },
+          { foreignKeyName: 'contact_tracked_links_agent_id_fkey'; columns: ['agent_id']; isOneToOne: false; referencedRelation: 'agents'; referencedColumns: ['id'] },
+          { foreignKeyName: 'contact_tracked_links_contact_id_fkey'; columns: ['contact_id']; isOneToOne: true; referencedRelation: 'contacts'; referencedColumns: ['id'] }
+        ]
+      }
+      identity_stitch_history: {
+        Row: {
+          id: string; workspace_id: string; agent_id: string; anonymous_id: string
+          prev_contact_id: string | null; new_contact_id: string
+          stitch_method: string; stitched_at: string
+        }
+        Insert: {
+          id?: string; workspace_id: string; agent_id: string; anonymous_id: string
+          prev_contact_id?: string | null; new_contact_id: string
+          stitch_method: string; stitched_at?: string
+        }
+        Update: {
+          id?: string; workspace_id?: string; agent_id?: string; anonymous_id?: string
+          prev_contact_id?: string | null; new_contact_id?: string
+          stitch_method?: string; stitched_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -437,10 +477,28 @@ export type Database = {
           property_address: string | null; suburb: string | null
           crm_source: string | null; session_count: number
           last_event_type: string | null; last_page_title: string | null
+          tracked_link_token: string | null
+          tracked_link_last_clicked_at: string | null
+          tracked_link_destination_url: string | null
+          is_stitched: boolean
         }>
       }
       resolve_campaign_token: {
         Args: { p_workspace_id: string; p_agent_id: string; p_token: string; p_anonymous_id: string }
+        Returns: string | null
+      }
+      resolve_contact_link_click: {
+        Args: { p_token: string }
+        Returns: Array<{
+          contact_id: string
+          agent_id: string
+          workspace_id: string
+          destination_url: string | null
+          default_url: string | null
+        }>
+      }
+      stitch_contact_from_token: {
+        Args: { p_token: string; p_workspace_id: string; p_anonymous_id: string }
         Returns: string | null
       }
       generate_campaign_tokens: {

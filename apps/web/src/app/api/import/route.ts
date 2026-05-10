@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { parseCsv } from '@/lib/crm/csv-parser'
+import { parseCsv, type FieldMapping } from '@/lib/crm/csv-parser'
 
 export async function POST(request: NextRequest) {
   // Auth check
@@ -38,8 +38,20 @@ export async function POST(request: NextRequest) {
   const filename = (file as File).name
   const csvText = await (file as File).text()
 
+  // Optional explicit field mapping from the preview/confirm step
+  const mappingRaw = formData.get('mapping')
+  let mapping: FieldMapping | undefined
+  if (typeof mappingRaw === 'string' && mappingRaw.trim().length > 0) {
+    try {
+      const parsed = JSON.parse(mappingRaw)
+      if (parsed && typeof parsed === 'object') mapping = parsed as FieldMapping
+    } catch {
+      return NextResponse.json({ error: 'Invalid mapping JSON' }, { status: 400 })
+    }
+  }
+
   // Parse CSV
-  const { contacts, skipped: parseSkipped, errors: parseErrors } = parseCsv(csvText)
+  const { contacts, skipped: parseSkipped, errors: parseErrors } = parseCsv(csvText, mapping)
 
   if (contacts.length === 0) {
     return NextResponse.json(

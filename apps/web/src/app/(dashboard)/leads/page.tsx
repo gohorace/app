@@ -20,6 +20,14 @@ export default async function LeadsPage({
   const agentId = agent!.id
   const q       = searchParams.q?.trim() ?? ''
 
+  // Pull the agent's default link URL so the override modal can show what
+  // happens when the per-contact destination is left blank.
+  const { data: settings } = await admin
+    .from('agent_settings')
+    .select('website_url')
+    .eq('agent_id', agentId)
+    .maybeSingle()
+
   // Try the rich list function first, fall back to a basic contacts query
   // if the function hasn't been migrated yet.
   let contacts: ContactRow[] = []
@@ -53,12 +61,21 @@ export default async function LeadsPage({
       session_count:    0,
       last_event_type:  null,
       last_page_title:  null,
+      tracked_link_token:           null,
+      tracked_link_last_clicked_at: null,
+      tracked_link_destination_url: null,
+      is_stitched:                  false,
     }))
   }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-      <ContactsGrid contacts={contacts} initialQ={q} agentId={agentId} />
+      <ContactsGrid
+        contacts={contacts}
+        initialQ={q}
+        agentId={agentId}
+        defaultLinkUrl={settings?.website_url ?? null}
+      />
     </div>
   )
 }

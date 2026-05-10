@@ -8,8 +8,10 @@ export interface CsvContact {
   crm_external_id: string | null
 }
 
+export type FieldKey = keyof CsvContact
+
 // Flexible column name matching — works with exports from any CRM
-const FIELD_MAP: Record<keyof CsvContact, string[]> = {
+const FIELD_MAP: Record<FieldKey, string[]> = {
   first_name:       ['First Name', 'Firstname', 'First', 'Given Name'],
   last_name:        ['Last Name', 'Lastname', 'Surname', 'Family Name'],
   email:            ['Email', 'Email Address', 'Email 1', 'Primary Email'],
@@ -27,13 +29,45 @@ function findColumn(headers: string[], candidates: string[]): string | null {
   return null
 }
 
+// Per-field mapping override. `null` means "ignore this field even if auto-detected".
+export type FieldMapping = Partial<Record<FieldKey, string | null>>
+
+function autoDetectMapping(headers: string[]): Record<FieldKey, string | null> {
+  return {
+    first_name:      findColumn(headers, FIELD_MAP.first_name),
+    last_name:       findColumn(headers, FIELD_MAP.last_name),
+    email:           findColumn(headers, FIELD_MAP.email),
+    phone:           findColumn(headers, FIELD_MAP.phone),
+    crm_external_id: findColumn(headers, FIELD_MAP.crm_external_id),
+  }
+}
+
+function applyOverrides(
+  detected: Record<FieldKey, string | null>,
+  overrides: FieldMapping | undefined,
+  headers: string[],
+): Record<FieldKey, string | null> {
+  if (!overrides) return detected
+  const headerSet = new Set(headers)
+  const result = { ...detected }
+  for (const key of Object.keys(overrides) as FieldKey[]) {
+    const v = overrides[key]
+    if (v === null) {
+      result[key] = null
+    } else if (typeof v === 'string' && headerSet.has(v)) {
+      result[key] = v
+    }
+  }
+  return result
+}
+
 export interface ParseResult {
   contacts: CsvContact[]
   skipped: number
   errors: string[]
 }
 
-export function parseCsv(csvText: string): ParseResult {
+export function parseCsv(csvText: string, mapping?: FieldMapping): ParseResult {
   const result = Papa.parse<Record<string, string>>(csvText, {
     header: true,
     skipEmptyLines: true,
@@ -43,13 +77,7 @@ export function parseCsv(csvText: string): ParseResult {
   const headers = result.meta.fields ?? []
   const errors: string[] = result.errors.map((e) => e.message)
 
-  // Resolve which CSV column maps to each field
-  const colMap = Object.fromEntries(
-    Object.entries(FIELD_MAP).map(([field, candidates]) => [
-      field,
-      findColumn(headers, candidates),
-    ]),
-  ) as Record<keyof CsvContact, string | null>
+  const colMap = applyOverrides(autoDetectMapping(headers), mapping, headers)
 
   let skipped = 0
   const contacts: CsvContact[] = []
@@ -77,4 +105,44 @@ export function parseCsv(csvText: string): ParseResult {
   }
 
   return { contacts, skipped, errors }
+}
+
+// ── Preview helpers (for the upload → confirm step) ──────────────────────────
+
+export interface CsvPreview {
+  headers: string[]
+  detected: Record<FieldKey, string | null>
+  rowCount: number
+  sampleRows: Record<string, string>[]
+  errors: string[]
+}
+
+export function previewCsv(csvText: string, sampleSize = 5): CsvPreview {
+  const result = Papa.parse<Record<string, string>>(csvText, {
+    header: true,
+    skipEmptyLines: true,
+    transformHeader: (h) => h.trim(),
+    preview: sampleSize + 1,
+  })
+  const headers = result.meta.fields ?? []
+
+  // The preview parse stops early; count non-empty data lines for total size.
+  const allLines = csvText.split(/\r?\n/).filter((l) => l.trim().length > 0)
+  const rowCount = Math.max(0, allLines.length - 1)
+
+  return {
+    headers,
+    detected: autoDetectMapping(headers),
+    rowCount,
+    sampleRows: result.data.slice(0, sampleSize),
+    errors: result.errors.map((e) => e.message),
+  }
+}
+
+export const FIELD_LABELS: Record<FieldKey, string> = {
+  first_name:      'First name',
+  last_name:       'Last name',
+  email:           'Email',
+  phone:           'Phone',
+  crm_external_id: 'External ID',
 }
