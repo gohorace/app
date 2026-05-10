@@ -108,7 +108,9 @@ export type Database = {
         Row: {
           id: string; agent_id: string; email: string | null; phone: string | null
           first_name: string | null; last_name: string | null; score: number
-          crm_source: 'rex' | 'agentbox' | 'manual' | 'website' | null; crm_external_id: string | null
+          source: 'portal' | 'crm' | 'website' | 'manual'
+          medium: string | null
+          crm_external_id: string | null
           identified_at: string | null; last_seen_at: string | null
           unsubscribed_at: string | null
           metadata: Json; created_at: string
@@ -117,7 +119,9 @@ export type Database = {
         Insert: {
           id?: string; agent_id: string; email?: string | null; phone?: string | null
           first_name?: string | null; last_name?: string | null; score?: number
-          crm_source?: 'rex' | 'agentbox' | 'manual' | 'website' | null; crm_external_id?: string | null
+          source?: 'portal' | 'crm' | 'website' | 'manual'
+          medium?: string | null
+          crm_external_id?: string | null
           identified_at?: string | null; last_seen_at?: string | null
           unsubscribed_at?: string | null
           metadata?: Json; created_at?: string
@@ -126,7 +130,9 @@ export type Database = {
         Update: {
           id?: string; agent_id?: string; email?: string | null; phone?: string | null
           first_name?: string | null; last_name?: string | null; score?: number
-          crm_source?: 'rex' | 'agentbox' | 'manual' | 'website' | null; crm_external_id?: string | null
+          source?: 'portal' | 'crm' | 'website' | 'manual'
+          medium?: string | null
+          crm_external_id?: string | null
           identified_at?: string | null; last_seen_at?: string | null
           unsubscribed_at?: string | null
           metadata?: Json; created_at?: string
@@ -576,7 +582,7 @@ export type Database = {
           email: string | null; phone: string | null; score: number
           score_change_7d: number; last_seen_at: string | null
           property_address: string | null; suburb: string | null
-          crm_source: string | null; session_count: number
+          source: string; medium: string | null; session_count: number
           last_event_type: string | null; last_page_title: string | null
           tracked_link_token: string | null
           tracked_link_last_clicked_at: string | null

@@ -120,7 +120,7 @@ export async function resolveEmail(
       .insert({
         agent_id: workspace.default_agent_id,
         email: normalizedEmail,
-        crm_source: 'website',
+        source: 'website',
         ...(meta?.first_name && { first_name: meta.first_name }),
         ...(meta?.last_name && { last_name: meta.last_name }),
         ...(meta?.phone && { phone: meta.phone }),

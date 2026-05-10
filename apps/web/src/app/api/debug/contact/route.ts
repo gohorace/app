@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
 
   const { data: contact } = await admin
     .from('contacts')
-    .select('id, email, first_name, last_name, score, crm_source, agent_id, identified_at, last_seen_at')
+    .select('id, email, first_name, last_name, score, source, medium, agent_id, identified_at, last_seen_at')
     .eq('id', contactId)
     .maybeSingle()
 

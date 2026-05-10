@@ -22,7 +22,7 @@ export async function GET(
   const [{ data: contact }, { data: events }, { data: scoreHistory }] = await Promise.all([
     admin
       .from('contacts')
-      .select('id, first_name, last_name, email, phone, score, last_seen_at, property_address, suburb, crm_source')
+      .select('id, first_name, last_name, email, phone, score, last_seen_at, property_address, suburb, source, medium')
       .eq('id', params.id)
       .eq('agent_id', agent.id)
       .maybeSingle(),

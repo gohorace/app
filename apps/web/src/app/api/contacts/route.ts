@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
       last_name:  last_name?.trim()  || null,
       email:      email?.toLowerCase().trim() || null,
       phone:      phone?.trim() || null,
-      crm_source: 'manual',
+      source: 'manual',
     })
     .select('id')
     .single()

@@ -116,7 +116,7 @@ export async function POST(request: NextRequest) {
           first_name: c.first_name,
           last_name: c.last_name,
           phone: c.phone,
-          crm_source: 'manual' as const,
+          source: 'manual' as const,
           crm_external_id: c.crm_external_id,
           identified_at: now,
         })),
@@ -169,7 +169,7 @@ export async function POST(request: NextRequest) {
           first_name: c.first_name,
           last_name: c.last_name,
           phone: c.phone,
-          crm_source: 'manual' as const,
+          source: 'manual' as const,
           crm_external_id: c.crm_external_id,
         })),
       )
