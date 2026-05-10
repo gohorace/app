@@ -41,7 +41,7 @@ export default async function LeadsPage({
     // Fallback: basic contacts query without session stats
     const { data: fallback } = await admin
       .from('contacts')
-      .select('id, first_name, last_name, email, phone, score, last_seen_at, property_address, suburb, crm_source')
+      .select('id, first_name, last_name, email, phone, score, last_seen_at, property_address, suburb, source, medium')
       .eq('agent_id', agentId)
       .order('score', { ascending: false })
       .limit(500)
@@ -57,7 +57,8 @@ export default async function LeadsPage({
       last_seen_at:     c.last_seen_at ?? null,
       property_address: c.property_address ?? null,
       suburb:           c.suburb      ?? null,
-      crm_source:       c.crm_source  ?? null,
+      source:           c.source,
+      medium:           c.medium      ?? null,
       session_count:    0,
       last_event_type:  null,
       last_page_title:  null,

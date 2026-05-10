@@ -102,7 +102,7 @@ export async function processInboundEmail(
   }
 
   // Find or create contact by (agent_id, lowercased email).
-  const contactId = await findOrCreateContact(admin, agentId, parseResult)
+  const contactId = await findOrCreateContact(admin, agentId, parseResult, meta.sourcePortal)
 
   // Upsert enquiry. UNIQUE on inbound_email_id makes replay idempotent.
   const { data: enquiry, error: enqErr } = await admin
@@ -176,11 +176,16 @@ async function resolveAgentId(admin: Admin, localPart: string | null): Promise<s
  * Find an existing contact for this agent by lowercased email; create if
  * none exists. Race-condition risk if two enquiries arrive simultaneously
  * with the same email; HOR-63 notes this and tolerates it for v1.
+ *
+ * New contacts are tagged source='portal', medium=<source_portal> so
+ * downstream attribution can distinguish portal leads from website /
+ * CRM / manual entries.
  */
 async function findOrCreateContact(
   admin: Admin,
   agentId: string,
   parsed: ParsedEnquiry,
+  sourcePortal: string | null,
 ): Promise<string | null> {
   const email = parsed.enquirer_email?.toLowerCase().trim() || null
 
@@ -194,8 +199,6 @@ async function findOrCreateContact(
     if (existing) return existing.id
   }
 
-  // Split "Ando T" into first/last where possible. Conservative — if just
-  // one word, treat as first_name.
   const { firstName, lastName } = splitName(parsed.enquirer_name)
 
   const { data: created, error } = await admin
@@ -206,8 +209,8 @@ async function findOrCreateContact(
       phone: parsed.enquirer_phone,
       first_name: firstName,
       last_name: lastName,
-      // Stop-gap until Phase 1c rename. Closest existing value to "portal-sourced".
-      crm_source: 'website',
+      source: 'portal',
+      medium: sourcePortal,
       identified_at: new Date().toISOString(),
     })
     .select('id')

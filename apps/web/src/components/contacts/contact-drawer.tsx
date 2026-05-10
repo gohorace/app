@@ -232,7 +232,8 @@ export interface DrawerContact {
   last_seen_at:     string | null
   property_address: string | null
   suburb:           string | null
-  crm_source:       string | null
+  source:           string
+  medium:           string | null
 }
 
 interface Props {

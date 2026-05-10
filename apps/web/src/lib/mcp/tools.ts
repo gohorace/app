@@ -61,7 +61,7 @@ const listContacts: McpTool = {
     const admin = createAdminClient()
     let q = admin
       .from('contacts')
-      .select('id, first_name, last_name, email, phone, score, last_seen_at, identified_at, unsubscribed_at, crm_source, created_at')
+      .select('id, first_name, last_name, email, phone, score, last_seen_at, identified_at, unsubscribed_at, source, medium, created_at')
       .eq('agent_id', ctx.agentId)
       .order(sortColumn, { ascending: false, nullsFirst: false })
       .range(offset, offset + limit - 1)

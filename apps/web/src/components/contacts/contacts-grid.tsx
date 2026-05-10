@@ -29,7 +29,8 @@ export type ContactRow = {
   last_seen_at:     string | null
   property_address: string | null
   suburb:           string | null
-  crm_source:       string | null
+  source:           string
+  medium:           string | null
   session_count:    number
   last_event_type:  string | null
   last_page_title:  string | null
