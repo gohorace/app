@@ -69,12 +69,12 @@ ALTER TABLE identity_stitch_history   ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "contact_tracked_links_all" ON contact_tracked_links
   FOR ALL TO authenticated
-  USING      (agent_id IN (SELECT user_agent_ids()))
-  WITH CHECK (agent_id IN (SELECT user_agent_ids()));
+  USING      (agent_id = ANY(public.user_agent_ids()))
+  WITH CHECK (agent_id = ANY(public.user_agent_ids()));
 
 CREATE POLICY "identity_stitch_history_select" ON identity_stitch_history
   FOR SELECT TO authenticated
-  USING (agent_id IN (SELECT user_agent_ids()));
+  USING (agent_id = ANY(public.user_agent_ids()));
 
 -- ─── Token generator ──────────────────────────────────────────────────────────
 
