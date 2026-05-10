@@ -19,13 +19,15 @@ const PRICE_ENV: Record<'pro_monthly' | 'pro_annual', string> = {
  * - Creates a Stripe Subscription with trial_period_days=14 and
  *   trial_settings.end_behavior.missing_payment_method='cancel'.
  * - At trial end, Stripe auto-cancels the subscription (no card to charge),
- *   our customer.subscription.deleted webhook resets the workspace to plan='free'.
+ *   our customer.subscription.deleted webhook sets subscription_status='canceled'
+ *   and the dashboard gate redirects to /pricing?expired=1. The workspace's
+ *   plan field is left as-is so reactivation knows the prior tier.
  * - During the trial, the user can add a card via the Customer Portal
  *   (POST /api/billing/portal) to convert to a paid subscription.
  *
  * No automatic_tax: requires a billing address. We don't collect one at signup
  * (it's collected by the Customer Portal when the user adds a card later).
- * Prices are tax-inclusive ($99 includes GST), so this is acceptable for v1.
+ * Prices are tax-inclusive ($149 includes GST), so this is acceptable for v1.
  */
 export async function POST(req: NextRequest) {
   const supabase = await createClient()
