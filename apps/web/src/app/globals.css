@@ -48,12 +48,51 @@
     /* ── Horace raw palette (for inline use) ── */
     --color-ink:        #1A1612;
     --color-charcoal:   #2E2823;
-    --color-stone:      #8C7B6B;
+    --color-stone:      #8C7B6B;        /* Decorative — sub-AA, do not use for body text on parchment */
+    --color-stone-aa:   #6E5F50;        /* AA-compliant stone for body text on parchment/cream */
     --color-parchment:  #F5F0E8;
     --color-cream:      #FAF7F2;
-    --color-terracotta: #C4622D;
+    --color-terracotta: #C4622D;        /* Brand accent — fine for buttons, icons, large headings */
+    --color-terracotta-text: #A85220;   /* AA-compliant terracotta for inline text on cream/parchment */
     --color-ember:      #E8956D;
     --color-moss:       #3D5246;
+    --color-terracotta-dim: rgba(196, 98, 45, 0.12);
+    --color-moss-dim:       rgba(61, 82, 70, 0.12);
+
+    /* ── Semantic foreground / background / border ── */
+    --fg-primary:       var(--color-ink);
+    --fg-secondary:     var(--color-stone-aa);
+    --fg-tertiary:      rgba(110, 95, 80, 0.7);
+    --fg-inverse:       var(--color-cream);
+    --fg-accent:        var(--color-terracotta-text);
+
+    --bg-page:          var(--color-parchment);
+    --bg-surface:       var(--color-cream);
+    --bg-elevated:      #FFFFFF;
+    --bg-dark:          var(--color-charcoal);
+    --bg-hover:         rgba(140, 123, 107, 0.08);
+    --bg-active:        rgba(140, 123, 107, 0.16);
+    --bg-accent-dim:    var(--color-terracotta-dim);
+
+    --border-subtle:    rgba(140, 123, 107, 0.2);
+    --border-default:   rgba(140, 123, 107, 0.35);
+    --border-strong:    rgba(26, 22, 18, 0.3);
+    --border-focus:     var(--color-terracotta);
+
+    /* ── Signal status palette ── */
+    --color-signal-high: #C4622D;
+    --color-signal-mid:  #B5922A;
+    --color-signal-low:  #3D5246;
+    --color-signal-none: #8C7B6B;
+
+    /* ── Radius scale ── */
+    --radius-xs:   2px;
+    --radius-sm:   4px;
+    --radius-md:   8px;
+    --radius-lg:   12px;
+    --radius-xl:   16px;
+    --radius-2xl:  24px;
+    --radius-pill: 9999px;
 
     /* ── Shadows (warm-tinted) ── */
     --shadow-sm:  0 1px 3px rgba(26,22,18,0.08), 0 1px 2px rgba(26,22,18,0.04);
@@ -68,6 +107,44 @@
 
   /* No dark mode override — Horace is warm/light-first. Dark surfaces are
      handled component-by-component (e.g. sidebar, onboarding). */
+}
+
+/* ── Accessibility foundations (HOR-60) ── */
+
+/* Visible keyboard focus across the app. Mouse focus stays clean via :focus-visible. */
+:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* Skip-to-content link used by onboarding shell. */
+.skip-link {
+  position: absolute;
+  top: -40px;
+  left: 8px;
+  padding: 8px 12px;
+  background: var(--color-ink);
+  color: var(--color-cream);
+  border-radius: var(--radius-sm);
+  font-size: 0.875rem;
+  z-index: 1000;
+  transition: top var(--duration-fast) var(--ease-out);
+}
+.skip-link:focus {
+  top: 8px;
+}
+
+/* Honour prefers-reduced-motion globally. Components can opt out per-rule. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 @layer base {

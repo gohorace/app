@@ -28,10 +28,15 @@ export default async function OnboardingPage() {
 
   if (!membership) {
     const metadata = (user.user_metadata ?? {}) as Record<string, unknown>
-    const pendingAgencyName = typeof metadata.pending_agency_name === 'string'
-      ? metadata.pending_agency_name.trim()
-      : ''
-    const fullName = typeof metadata.full_name === 'string' ? metadata.full_name.trim() : ''
+    const readString = (key: string): string => {
+      const v = metadata[key]
+      return typeof v === 'string' ? v.trim() : ''
+    }
+    const pendingAgencyName = readString('pending_agency_name')
+    const pendingFirstName = readString('pending_first_name')
+    const pendingLastName = readString('pending_last_name')
+    const pendingMobile = readString('pending_mobile')
+    const fullName = readString('full_name')
 
     if (!pendingAgencyName) {
       redirect('/signup')
@@ -46,8 +51,15 @@ export default async function OnboardingPage() {
       slug = `${slug}-${Math.floor(Math.random() * 9000) + 1000}`
     }
 
-    const [first, ...rest] = fullName.split(' ').filter(Boolean)
-    const last = rest.join(' ')
+    // Prefer the explicit pending_first/last_name from signup; fall back to
+    // splitting full_name for users who signed up before the split-name form.
+    let first = pendingFirstName
+    let last = pendingLastName
+    if (!first && !last && fullName) {
+      const [head, ...tail] = fullName.split(' ').filter(Boolean)
+      first = head ?? ''
+      last = tail.join(' ')
+    }
 
     const { error: rpcError } = await admin.rpc('create_workspace_with_agent', {
       p_user_id: user.id,
@@ -56,6 +68,7 @@ export default async function OnboardingPage() {
       p_email: user.email ?? '',
       ...(first ? { p_first_name: first } : {}),
       ...(last ? { p_last_name: last } : {}),
+      ...(pendingMobile ? { p_phone: pendingMobile } : {}),
     })
 
     if (rpcError) {
@@ -63,19 +76,35 @@ export default async function OnboardingPage() {
       throw new Error('Failed to set up workspace. Please contact support.')
     }
 
-    // Clear the stashed value so subsequent visits skip this branch.
+    // Clear the stashed values so subsequent visits skip this branch.
     await admin.auth.admin.updateUserById(user.id, {
-      user_metadata: { ...metadata, pending_agency_name: null },
+      user_metadata: {
+        ...metadata,
+        pending_agency_name: null,
+        pending_first_name: null,
+        pending_last_name: null,
+        pending_mobile: null,
+      },
     })
   }
 
   const { data: agent } = await admin
     .from('agents')
-    .select('id, workspace_id')
+    .select('id, workspace_id, first_name, last_completed_step')
     .eq('user_id', user.id)
     .maybeSingle()
 
-  const { data: workspace } = agent?.workspace_id
+  if (!agent) {
+    // Workspace creation must have failed silently — bounce back to signup.
+    redirect('/signup')
+  }
+
+  // Already finished — go straight to the dashboard.
+  if (agent.last_completed_step === 'done') {
+    redirect('/dashboard')
+  }
+
+  const { data: workspace } = agent.workspace_id
     ? await admin
         .from('workspaces')
         .select('snippet_key')
@@ -84,7 +113,15 @@ export default async function OnboardingPage() {
     : { data: null }
 
   const snippetKey = workspace?.snippet_key ?? ''
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://your-domain.com'
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.gohorace.com'
 
-  return <OnboardingWizard snippetKey={snippetKey} appUrl={appUrl} />
+  return (
+    <OnboardingWizard
+      agentId={agent.id}
+      snippetKey={snippetKey}
+      appUrl={appUrl}
+      firstName={agent.first_name}
+      lastCompletedStep={agent.last_completed_step}
+    />
+  )
 }

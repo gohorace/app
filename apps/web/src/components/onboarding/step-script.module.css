@@ -1,0 +1,169 @@
+.field {
+  margin-top: 32px;
+  max-width: 480px;
+}
+
+.fieldLabel {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-stone-aa);
+  margin-bottom: 8px;
+}
+
+.fieldInput {
+  width: 100%;
+  padding: 12px 14px;
+  background: var(--color-cream);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  font-size: 15px;
+  color: var(--color-ink);
+  font-family: var(--font-body);
+  transition: border-color 180ms var(--ease-out), box-shadow 180ms var(--ease-out);
+}
+
+.fieldInput:focus {
+  outline: none;
+  border-color: var(--color-terracotta);
+  box-shadow: 0 0 0 3px rgba(196, 98, 45, 0.15);
+}
+
+.snippetBlock {
+  margin-top: 24px;
+  background: var(--color-charcoal);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.snippetHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: rgba(0, 0, 0, 0.2);
+  color: rgba(245, 240, 232, 0.7);
+}
+
+.snippetLabel {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.snippetLabel code {
+  font-family: var(--font-mono);
+  background: rgba(245, 240, 232, 0.08);
+  padding: 1px 6px;
+  border-radius: 4px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.snippetCode {
+  margin: 0;
+  padding: 16px;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--color-cream);
+  white-space: pre-wrap;
+  word-break: break-all;
+  line-height: 1.6;
+  background: var(--color-charcoal);
+}
+
+.verifyRow {
+  padding: 12px 16px;
+  background: rgba(0, 0, 0, 0.15);
+  border-top: 1px solid rgba(245, 240, 232, 0.06);
+  display: flex;
+  align-items: center;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  padding: 5px 10px;
+  border-radius: 9999px;
+}
+
+.pillIdle {
+  color: rgba(245, 240, 232, 0.55);
+  background: rgba(245, 240, 232, 0.08);
+}
+
+.pillDetecting {
+  color: var(--color-ember);
+  background: rgba(232, 149, 109, 0.12);
+}
+
+.pillDetected {
+  color: #C8E0CD;
+  background: rgba(61, 82, 70, 0.4);
+}
+
+.pulseDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.4; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.15); }
+}
+
+.helpRow {
+  margin-top: 28px;
+  padding: 20px;
+  background: var(--color-cream);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+}
+
+.helpLabel {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-ink);
+  margin-bottom: 12px;
+}
+
+.helpButtons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.helpBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-ink);
+  cursor: pointer;
+  transition: all 180ms var(--ease-out);
+}
+
+.helpBtn:hover {
+  border-color: var(--color-terracotta);
+  color: var(--color-terracotta-text);
+}
