@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useEffect, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -9,13 +9,14 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent } from '@/components/ui/card'
 
 export function SignupForm() {
+  const router = useRouter()
   const searchParams = useSearchParams()
   const redirectTo = searchParams.get('redirectTo') ?? '/onboarding'
+
   const [alreadyAuthed, setAlreadyAuthed] = useState(false)
   const [name, setName] = useState('')
   const [agencyName, setAgencyName] = useState('')
   const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
@@ -31,48 +32,54 @@ export function SignupForm() {
     setLoading(true)
 
     const supabase = createClient()
-    let userEmail = email
 
-    if (!alreadyAuthed) {
-      // Create account then immediately sign in so session is active
-      const { error: signUpError } = await supabase.auth.signUp({
-        email,
-        password,
-        options: { data: { full_name: name } },
+    if (alreadyAuthed) {
+      // User already has a session — finish workspace setup directly.
+      const { data } = await supabase.auth.getUser()
+      const userEmail = data.user?.email ?? email
+
+      const res = await fetch('/api/orgs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: agencyName, email: userEmail }),
       })
 
-      if (signUpError) {
-        setError(signUpError.message)
+      if (!res.ok) {
+        const data = await res.json()
+        setError(data.error ?? 'Failed to create organisation')
         setLoading(false)
         return
       }
 
-      const { error: signInError } = await supabase.auth.signInWithPassword({ email, password })
-      if (signInError) {
-        setError(signInError.message)
-        setLoading(false)
-        return
-      }
-    } else {
-      // Already authenticated — just need their email for org settings
-      const { data } = await supabase.auth.getUser()
-      userEmail = data.user?.email ?? email
+      window.location.href = redirectTo
+      return
     }
 
-    const res = await fetch('/api/orgs', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: agencyName, email: userEmail }),
+    // New signup: stash agency name + full name in user_metadata. The
+    // /onboarding page consumes pending_agency_name to auto-create the
+    // workspace once the user clicks the magic link and gets a session.
+    const callback = new URL('/auth/callback', window.location.origin)
+    callback.searchParams.set('redirectTo', redirectTo)
+
+    const { error: otpError } = await supabase.auth.signInWithOtp({
+      email,
+      options: {
+        data: {
+          full_name: name,
+          pending_agency_name: agencyName,
+        },
+        emailRedirectTo: callback.toString(),
+        shouldCreateUser: true,
+      },
     })
 
-    if (!res.ok) {
-      const data = await res.json()
-      setError(data.error ?? 'Failed to create organisation')
+    if (otpError) {
+      setError(otpError.message)
       setLoading(false)
       return
     }
 
-    window.location.href = redirectTo
+    router.push(`/check-email?email=${encodeURIComponent(email)}`)
   }
 
   return (
@@ -103,41 +110,29 @@ export function SignupForm() {
             />
           </div>
           {!alreadyAuthed && (
-            <>
-              <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="agent@example.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                  autoComplete="email"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="Min. 8 characters"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  minLength={8}
-                  autoComplete="new-password"
-                />
-              </div>
-            </>
+            <div className="space-y-2">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                placeholder="agent@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                autoComplete="email"
+              />
+              <p className="text-xs text-muted-foreground">
+                We’ll email you a sign-in link to confirm your address. No password needed.
+              </p>
+            </div>
           )}
           {error && <p className="text-sm text-destructive">{error}</p>}
           <Button type="submit" className="w-full" disabled={loading}>
             {loading
-              ? 'Setting up...'
+              ? 'Setting up…'
               : alreadyAuthed
                 ? 'Create agency'
-                : 'Create account'}
+                : 'Email me a sign-in link'}
           </Button>
         </form>
       </CardContent>
