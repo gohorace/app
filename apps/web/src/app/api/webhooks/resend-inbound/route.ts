@@ -1,25 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import type { Json } from '@/types/database.types'
+import { processInboundEmail } from '@/lib/inbound/router'
+import type { ResendFetchedEmail } from '@/lib/inbound/types'
 
 export const runtime = 'nodejs'
 
 /**
  * POST /api/webhooks/resend-inbound
  *
- * Resend inbound webhook for portal.horace.app. Captures raw MIME +
- * parsed payload to inbound_email_samples for the HOR-28 parsing spike.
+ * Resend inbound webhook for portal.gohorace.com. Captures emails into
+ * `inbound_emails`, fetches the body via Resend's Received Emails API,
+ * dispatches to the right parser, and writes structured `enquiries`
+ * + `contacts` records.
  *
- * SPIKE NOTES
- * - No business logic. Logs only.
- * - No signature verification (spike). TODO: add `resend.webhooks.verify()`
- *   before this code path goes near production.
- * - Resend's webhook is metadata-only by design. We do a follow-up
- *   GET /emails/receiving/{id} to fetch text/html/headers and store
- *   both webhook + fetched body in `parsed` as { webhook, fetched }.
- * - Upsert merges on Message-ID so replaying the webhook (e.g. via
- *   Resend's Replay button) updates the existing row with newly
- *   fetched body content.
+ * Notes:
+ * - No signature verification yet (HOR-63 Phase 1d). Endpoint URL is
+ *   unguessable; route writes only to the inbound tables. Add
+ *   `resend.webhooks.verify()` before going beyond this phase.
+ * - Idempotent on Message-ID: replays update the existing inbound_emails
+ *   row and re-write the matching enquiry.
  */
 export async function POST(req: NextRequest) {
   let payload: unknown
@@ -30,8 +29,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  // Webhook payload shape: { type: 'email.received', data: { from, to, subject, email_id, message_id, ... } }
-  // The `data.email_id` is Resend's internal ID, used to fetch the body separately.
+  // Resend's payload shape: { type: 'email.received', data: { from, to, subject, email_id, message_id, ... } }
   const data = (payload as { data?: Record<string, unknown> })?.data ?? (payload as Record<string, unknown>)
 
   const fromAddress = pickString(data, ['from', 'sender', 'from_address'])
@@ -42,54 +40,42 @@ export async function POST(req: NextRequest) {
     extractHeader(data, 'message-id') ??
     extractHeader(data, 'Message-ID')
   const emailId = pickString(data, ['email_id', 'emailId', 'id'])
-
-  // Fetch full body (text/html/headers/reply_to) via Resend's Received Emails API.
-  // Webhook is metadata-only by design — body must be fetched separately.
-  // https://resend.com/docs/api-reference/emails/retrieve-received-email
-  const fetchedEmail = await fetchReceivedEmail(emailId)
-
   const sourcePortal = guessSourcePortal(fromAddress)
 
+  // Fetch full body via Resend's Received Emails API (webhook is metadata-only).
+  const fetchedEmail = await fetchReceivedEmail(emailId)
+
   const admin = createAdminClient()
-  const { error } = await admin
-    .from('inbound_email_samples')
-    .upsert(
-      {
-        to_address: toAddress,
-        from_address: fromAddress,
-        subject,
-        message_id: messageId,
-        source_portal: sourcePortal,
-        parsed: { webhook: payload, fetched: fetchedEmail } as Json,
-        raw_mime: null,
-      },
-      { onConflict: 'message_id' },
-    )
+  const outcome = await processInboundEmail(admin, {
+    webhookPayload: payload,
+    fetchedEmail,
+    meta: { fromAddress, toAddress, subject, messageId, sourcePortal },
+  })
 
-  if (error) {
-    console.error('resend-inbound: insert failed', error)
-    return NextResponse.json({ error: 'Insert failed' }, { status: 500 })
-  }
-
-  console.log('resend-inbound: captured', {
+  console.log('resend-inbound:', {
+    outcome: outcome.kind,
     from: fromAddress,
     to: toAddress,
     subject,
     source_portal: sourcePortal,
-    fetched_body: !!fetchedEmail,
+    has_fetched_body: !!fetchedEmail,
+    ...outcome,
   })
 
-  return NextResponse.json({ received: true })
+  // Always 200 if we successfully captured the row — Resend retries on non-2xx.
+  // Errors during capture itself (DB write failure) return 500 so they retry.
+  if (outcome.kind === 'error') {
+    return NextResponse.json({ error: outcome.error }, { status: 500 })
+  }
+  return NextResponse.json({ received: true, outcome: outcome.kind })
 }
 
 /**
  * Fetch a received email's full content from Resend.
- * Returns null on missing key / missing id / fetch failure — webhook
+ * Returns null on missing key / missing id / fetch failure — the router
  * still captures metadata in that case.
  */
-async function fetchReceivedEmail(emailId: string | null): Promise<Json> {
-  // Prefer a dedicated receiving-scoped key; fall back to the main API key.
-  // Keeps RESEND_API_KEY as least-privilege (send-only) for outbound.
+async function fetchReceivedEmail(emailId: string | null): Promise<ResendFetchedEmail | null> {
   const resendKey = process.env.RESEND_RECEIVING_API_KEY ?? process.env.RESEND_API_KEY
   if (!emailId) {
     console.warn('resend-inbound: no email_id in payload — skipping body fetch')
@@ -110,7 +96,7 @@ async function fetchReceivedEmail(emailId: string | null): Promise<Json> {
       console.warn(`resend-inbound: body fetch returned ${res.status}: ${body.slice(0, 200)}`)
       return null
     }
-    return (await res.json()) as Json
+    return (await res.json()) as ResendFetchedEmail
   } catch (err) {
     console.error('resend-inbound: body fetch failed', err)
     return null
