@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { Webhook, WebhookVerificationError } from 'svix'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { processInboundEmail } from '@/lib/inbound/router'
 import type { ResendFetchedEmail } from '@/lib/inbound/types'
@@ -8,28 +9,37 @@ export const runtime = 'nodejs'
 /**
  * POST /api/webhooks/resend-inbound
  *
- * Resend inbound webhook for portal.gohorace.com. Captures emails into
- * `inbound_emails`, fetches the body via Resend's Received Emails API,
- * dispatches to the right parser, and writes structured `enquiries`
- * + `contacts` records.
+ * Resend inbound webhook for portal.gohorace.com.
  *
- * Notes:
- * - No signature verification yet (HOR-63 Phase 1d). Endpoint URL is
- *   unguessable; route writes only to the inbound tables. Add
- *   `resend.webhooks.verify()` before going beyond this phase.
- * - Idempotent on Message-ID: replays update the existing inbound_emails
- *   row and re-write the matching enquiry.
+ * Request flow:
+ * 1. Verify svix signature (svix-id / svix-timestamp / svix-signature)
+ *    against the signing secret from Resend's webhook detail page.
+ * 2. Parse JSON payload, extract metadata.
+ * 3. Fetch full body via Resend's Received Emails API.
+ * 4. Delegate to processInboundEmail (router) for capture, parsing,
+ *    contact + enquiry writes.
+ *
+ * Idempotent on Message-ID; replays update existing rows.
  */
 export async function POST(req: NextRequest) {
+  // Read raw body BEFORE parsing — svix verifies bytes exactly.
+  const rawBody = await req.text()
+
+  // Verify the signature unless explicitly disabled via env (for local dev).
+  const verifyResult = verifySignature(rawBody, req.headers)
+  if (!verifyResult.ok) {
+    console.warn('resend-inbound: signature verification failed', verifyResult)
+    return NextResponse.json({ error: verifyResult.error }, { status: verifyResult.status })
+  }
+
   let payload: unknown
   try {
-    payload = await req.json()
+    payload = JSON.parse(rawBody)
   } catch (err) {
     console.error('resend-inbound: invalid JSON body', err)
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  // Resend's payload shape: { type: 'email.received', data: { from, to, subject, email_id, message_id, ... } }
   const data = (payload as { data?: Record<string, unknown> })?.data ?? (payload as Record<string, unknown>)
 
   const fromAddress = pickString(data, ['from', 'sender', 'from_address'])
@@ -42,7 +52,6 @@ export async function POST(req: NextRequest) {
   const emailId = pickString(data, ['email_id', 'emailId', 'id'])
   const sourcePortal = guessSourcePortal(fromAddress)
 
-  // Fetch full body via Resend's Received Emails API (webhook is metadata-only).
   const fetchedEmail = await fetchReceivedEmail(emailId)
 
   const admin = createAdminClient()
@@ -62,8 +71,6 @@ export async function POST(req: NextRequest) {
     ...outcome,
   })
 
-  // Always 200 if we successfully captured the row — Resend retries on non-2xx.
-  // Errors during capture itself (DB write failure) return 500 so they retry.
   if (outcome.kind === 'error') {
     return NextResponse.json({ error: outcome.error }, { status: 500 })
   }
@@ -71,10 +78,54 @@ export async function POST(req: NextRequest) {
 }
 
 /**
- * Fetch a received email's full content from Resend.
- * Returns null on missing key / missing id / fetch failure — the router
- * still captures metadata in that case.
+ * Verify the inbound webhook's svix signature.
+ *
+ * Resend signs every webhook with svix headers — verifying ensures the
+ * request actually came from Resend, not a spoofer who learned the URL.
+ *
+ * Reads the secret from `RESEND_INBOUND_SIGNING_SECRET` (preferred),
+ * falling back to `RESEND_INBOUND_WEBHOOK_SECRET` for back-compat with
+ * the spike's earlier env-var name.
  */
+function verifySignature(
+  rawBody: string,
+  headers: Headers,
+):
+  | { ok: true }
+  | { ok: false; status: number; error: string } {
+  const secret =
+    process.env.RESEND_INBOUND_SIGNING_SECRET ??
+    process.env.RESEND_INBOUND_WEBHOOK_SECRET
+
+  if (!secret) {
+    // Fail closed — better to drop a webhook than to silently accept
+    // spoofed POSTs. If you need to bypass for local dev, set the env
+    // explicitly to the dev signing secret.
+    return { ok: false, status: 500, error: 'webhook signing secret not configured' }
+  }
+
+  const svixHeaders = {
+    'svix-id': headers.get('svix-id') ?? '',
+    'svix-timestamp': headers.get('svix-timestamp') ?? '',
+    'svix-signature': headers.get('svix-signature') ?? '',
+  }
+
+  if (!svixHeaders['svix-id'] || !svixHeaders['svix-timestamp'] || !svixHeaders['svix-signature']) {
+    return { ok: false, status: 401, error: 'missing svix headers' }
+  }
+
+  try {
+    const wh = new Webhook(secret)
+    wh.verify(rawBody, svixHeaders)
+    return { ok: true }
+  } catch (err) {
+    if (err instanceof WebhookVerificationError) {
+      return { ok: false, status: 401, error: 'invalid signature' }
+    }
+    return { ok: false, status: 401, error: 'verification failed' }
+  }
+}
+
 async function fetchReceivedEmail(emailId: string | null): Promise<ResendFetchedEmail | null> {
   const resendKey = process.env.RESEND_RECEIVING_API_KEY ?? process.env.RESEND_API_KEY
   if (!emailId) {
