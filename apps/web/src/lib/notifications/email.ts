@@ -345,3 +345,79 @@ export function buildWeeklyBriefingEmail(
 
   return { subject, html: shell(leadsBody, footerContent) }
 }
+
+// ── Magic link email ──────────────────────────────────────────────────────────
+
+export type MagicLinkAction =
+  | 'signup'
+  | 'magiclink'
+  | 'recovery'
+  | 'email_change'
+  | 'invite'
+  | 'reauthentication'
+
+const MAGIC_COPY: Record<MagicLinkAction, { subject: string; heading: string; body: string; cta: string }> = {
+  signup: {
+    subject: 'Confirm your email to start using Horace',
+    heading: 'One click to finish signing up',
+    body: `Tap the button below to confirm your email and open your Horace workspace. The link expires in 10 minutes.`,
+    cta: 'Confirm and sign in',
+  },
+  magiclink: {
+    subject: 'Your Horace sign-in link',
+    heading: 'Sign in to Horace',
+    body: `Tap the button below to sign in. The link expires in 10 minutes and can only be used once.`,
+    cta: 'Sign in to Horace',
+  },
+  recovery: {
+    subject: 'Recover your Horace account',
+    heading: 'Recover your account',
+    body: `Tap the button below to sign in and pick up where you left off. The link expires in 10 minutes.`,
+    cta: 'Sign in to Horace',
+  },
+  email_change: {
+    subject: 'Confirm your new email for Horace',
+    heading: 'Confirm your new email',
+    body: `Tap the button below to confirm this address as your new sign-in email for Horace. The link expires in 10 minutes.`,
+    cta: 'Confirm new email',
+  },
+  invite: {
+    subject: 'You have been invited to Horace',
+    heading: 'Welcome to Horace',
+    body: `Tap the button below to accept the invitation and sign in. The link expires in 10 minutes.`,
+    cta: 'Accept invitation',
+  },
+  reauthentication: {
+    subject: 'Verify it’s you on Horace',
+    heading: 'Quick security check',
+    body: `Tap the button below to confirm it’s you. The link expires in 10 minutes.`,
+    cta: 'Confirm sign-in',
+  },
+}
+
+export function buildMagicLinkEmail(args: {
+  action: MagicLinkAction
+  url: string
+  email: string
+}): { subject: string; html: string } {
+  const { subject, heading, body, cta } = MAGIC_COPY[args.action] ?? MAGIC_COPY.magiclink
+
+  const bodyContent = `
+    <p style="margin:0 0 8px;font-size:22px;font-weight:700;color:${T.ink};letter-spacing:-0.02em;">${heading}</p>
+    <p style="margin:0 0 24px;font-size:14px;color:${T.stone};line-height:1.6;">${body}</p>
+    <a href="${args.url}" style="display:inline-block;background:${T.ink};color:${T.cream};text-decoration:none;font-size:13px;font-weight:600;padding:12px 26px;border-radius:6px;">${cta} →</a>
+    <p style="margin:24px 0 0;font-size:12px;color:${T.stone};line-height:1.6;">
+      Or paste this link into your browser:<br>
+      <a href="${args.url}" style="color:${T.terracotta};text-decoration:none;word-break:break-all;">${args.url}</a>
+    </p>
+    <div style="height:20px;"></div>
+  `
+
+  const footerContent = `
+    <p style="margin:0;font-size:11px;color:${T.stone};line-height:1.5;">
+      Sent to ${args.email}. If you didn’t request this, you can ignore this email — the link will expire on its own.
+    </p>
+  `
+
+  return { subject, html: shell(bodyContent, footerContent) }
+}
