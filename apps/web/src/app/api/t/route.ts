@@ -99,13 +99,15 @@ export async function POST(request: NextRequest) {
 
   // 2b. Email-click stitch — if the visitor arrived via a /c/{token} link,
   //     the tracker forwards `s.ctoken`. Resolve it to a contact and write
-  //     the identity_map row (last-write-wins). Errors are non-fatal —
-  //     ingest still proceeds even if the token is invalid.
+  //     the identity_map row (last-write-wins), plus an identified_devices
+  //     row (Phase 2b, HOR-104). Errors are non-fatal — ingest still proceeds
+  //     even if the token is invalid.
   if (sessionMeta?.ctoken) {
     const { error: stitchErr } = await supabase.rpc('stitch_contact_from_token', {
       p_token:        sessionMeta.ctoken,
       p_workspace_id: workspaceId,
       p_anonymous_id: anonymousId,
+      p_user_agent:   sessionMeta.ua ?? null,
     })
     if (stitchErr) console.error('Tracked-link stitch error:', stitchErr)
   }

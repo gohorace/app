@@ -3,6 +3,7 @@ import type { Database } from '@/types/database.types'
 import { scoreEventsForContact, getAgentScoringOverrides } from '@/lib/scoring/engine'
 import type { IncomingEvent } from '@/lib/scoring/types'
 import type { Json } from '@/types/database.types'
+import { writeIdentifiedDevice } from '@/lib/identity/identified-devices'
 
 type AdminClient = SupabaseClient<Database>
 
@@ -72,6 +73,16 @@ interface ContactMeta {
  * Resolves an email address to one or more contacts across all agents in the workspace.
  * Creates a contact under the workspace's default_agent_id if no match found.
  * Upserts identity_map entries for each match and updates contact timestamps.
+ *
+ * Phase 2b (HOR-104): also writes an identified_devices row for the cookie.
+ * The legacy identity_map model allows one anonymous_id to map to multiple
+ * agents' contacts in the same workspace; identified_devices is single-contact-
+ * per-cookie. We write the device row for the FIRST matched agent (or the
+ * just-created contact under default_agent_id) — first stitch wins.
+ *
+ * `userAgent` is the request's User-Agent header, used to populate
+ * identified_devices.user_agent_summary. Optional — falls back to 'unknown'.
+ *
  * Returns an array of { agentId, contactId } matches.
  */
 export async function resolveEmail(
@@ -80,6 +91,7 @@ export async function resolveEmail(
   email: string,
   anonymousId: string,
   meta?: ContactMeta,
+  userAgent?: string | null,
 ): Promise<Array<{ agentId: string; contactId: string }>> {
   const normalizedEmail = email.toLowerCase().trim()
 
@@ -185,6 +197,22 @@ export async function resolveEmail(
       .from('contacts')
       .update({ last_seen_at: now })
       .eq('id', contactId)
+  }
+
+  // Phase 2b dual-write: identified_devices row for the cookie. Single row
+  // per cookie globally, so we use the first match deterministically. Errors
+  // are swallowed inside writeIdentifiedDevice so the identity flow stays
+  // resilient.
+  if (matches.length > 0) {
+    const primary = matches[0]
+    await writeIdentifiedDevice(supabase, {
+      workspaceId,
+      contactId: primary.contactId,
+      cookieId: anonymousId,
+      agentId: primary.agentId,
+      method: 'form_submit',
+      userAgent,
+    })
   }
 
   return matches

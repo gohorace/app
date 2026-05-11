@@ -405,6 +405,40 @@ export type Database = {
         }
         Relationships: []
       }
+      identified_devices: {
+        Row: {
+          id: string; workspace_id: string; contact_id: string
+          device_fingerprint: string | null; cookie_id: string
+          first_identified_at: string; last_seen_at: string
+          identification_method: 'email_link_click' | 'form_submit' | 'login' | 'manual_merge'
+          identified_by_agent_id: string | null
+          user_agent_summary: string | null; cookie_expires_at: string | null
+          created_at: string; updated_at: string
+        }
+        Insert: {
+          id?: string; workspace_id: string; contact_id: string
+          device_fingerprint?: string | null; cookie_id: string
+          first_identified_at?: string; last_seen_at?: string
+          identification_method: 'email_link_click' | 'form_submit' | 'login' | 'manual_merge'
+          identified_by_agent_id?: string | null
+          user_agent_summary?: string | null; cookie_expires_at?: string | null
+          created_at?: string; updated_at?: string
+        }
+        Update: {
+          id?: string; workspace_id?: string; contact_id?: string
+          device_fingerprint?: string | null; cookie_id?: string
+          first_identified_at?: string; last_seen_at?: string
+          identification_method?: 'email_link_click' | 'form_submit' | 'login' | 'manual_merge'
+          identified_by_agent_id?: string | null
+          user_agent_summary?: string | null; cookie_expires_at?: string | null
+          created_at?: string; updated_at?: string
+        }
+        Relationships: [
+          { foreignKeyName: 'identified_devices_workspace_id_fkey'; columns: ['workspace_id']; isOneToOne: false; referencedRelation: 'workspaces'; referencedColumns: ['id'] },
+          { foreignKeyName: 'identified_devices_contact_id_fkey'; columns: ['contact_id']; isOneToOne: false; referencedRelation: 'contacts'; referencedColumns: ['id'] },
+          { foreignKeyName: 'identified_devices_identified_by_agent_id_fkey'; columns: ['identified_by_agent_id']; isOneToOne: false; referencedRelation: 'agents'; referencedColumns: ['id'] }
+        ]
+      }
       contact_tracked_links: {
         Row: {
           id: string; workspace_id: string; agent_id: string; contact_id: string
@@ -581,7 +615,12 @@ export type Database = {
         }>
       }
       stitch_contact_from_token: {
-        Args: { p_token: string; p_workspace_id: string; p_anonymous_id: string }
+        Args: {
+          p_token: string
+          p_workspace_id: string
+          p_anonymous_id: string
+          p_user_agent?: string | null
+        }
         Returns: string | null
       }
       generate_campaign_tokens: {
