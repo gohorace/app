@@ -107,39 +107,115 @@ export type Database = {
       contacts: {
         Row: {
           id: string; agent_id: string; email: string | null; phone: string | null
-          first_name: string | null; last_name: string | null; score: number
+          first_name: string | null; last_name: string | null
+          full_name_raw: string | null
+          score: number
           source: 'portal' | 'crm' | 'website' | 'manual'
           medium: string | null
           crm_external_id: string | null
+          ingestion_method:
+            | 'csv_import' | 'crm_sync_rex' | 'crm_sync_agentbox' | 'crm_sync_vaultre'
+            | 'manual' | 'identified_visitor' | 'form_submit' | 'portal_enquiry'
+            | null
           identified_at: string | null; last_seen_at: string | null
           unsubscribed_at: string | null
-          metadata: Json; created_at: string
+          metadata: Json; created_at: string; updated_at: string
+          deleted_at: string | null
           property_address: string | null; suburb: string | null; notes: string | null
+          residence_property_id: string | null
+          workspace_id: string | null
+          owner_agent_id: string | null
+          created_by_agent_id: string | null
         }
         Insert: {
           id?: string; agent_id: string; email?: string | null; phone?: string | null
-          first_name?: string | null; last_name?: string | null; score?: number
+          first_name?: string | null; last_name?: string | null
+          full_name_raw?: string | null
+          score?: number
           source?: 'portal' | 'crm' | 'website' | 'manual'
           medium?: string | null
           crm_external_id?: string | null
+          ingestion_method?:
+            | 'csv_import' | 'crm_sync_rex' | 'crm_sync_agentbox' | 'crm_sync_vaultre'
+            | 'manual' | 'identified_visitor' | 'form_submit' | 'portal_enquiry'
+            | null
           identified_at?: string | null; last_seen_at?: string | null
           unsubscribed_at?: string | null
-          metadata?: Json; created_at?: string
+          metadata?: Json; created_at?: string; updated_at?: string
+          deleted_at?: string | null
           property_address?: string | null; suburb?: string | null; notes?: string | null
+          residence_property_id?: string | null
+          workspace_id?: string | null
+          owner_agent_id?: string | null
+          created_by_agent_id?: string | null
         }
         Update: {
           id?: string; agent_id?: string; email?: string | null; phone?: string | null
-          first_name?: string | null; last_name?: string | null; score?: number
+          first_name?: string | null; last_name?: string | null
+          full_name_raw?: string | null
+          score?: number
           source?: 'portal' | 'crm' | 'website' | 'manual'
           medium?: string | null
           crm_external_id?: string | null
+          ingestion_method?:
+            | 'csv_import' | 'crm_sync_rex' | 'crm_sync_agentbox' | 'crm_sync_vaultre'
+            | 'manual' | 'identified_visitor' | 'form_submit' | 'portal_enquiry'
+            | null
           identified_at?: string | null; last_seen_at?: string | null
           unsubscribed_at?: string | null
-          metadata?: Json; created_at?: string
+          metadata?: Json; created_at?: string; updated_at?: string
+          deleted_at?: string | null
           property_address?: string | null; suburb?: string | null; notes?: string | null
+          residence_property_id?: string | null
+          workspace_id?: string | null
+          owner_agent_id?: string | null
+          created_by_agent_id?: string | null
         }
         Relationships: [
-          { foreignKeyName: 'contacts_agent_id_fkey'; columns: ['agent_id']; isOneToOne: false; referencedRelation: 'agents'; referencedColumns: ['id'] }
+          { foreignKeyName: 'contacts_agent_id_fkey'; columns: ['agent_id']; isOneToOne: false; referencedRelation: 'agents'; referencedColumns: ['id'] },
+          { foreignKeyName: 'contacts_residence_property_id_fkey'; columns: ['residence_property_id']; isOneToOne: false; referencedRelation: 'properties'; referencedColumns: ['id'] }
+        ]
+      }
+      properties: {
+        Row: {
+          id: string; workspace_id: string
+          street_number: string | null; street_name: string
+          suburb: string | null; state: string | null; postcode: string | null
+          address_hash: string
+          property_type: 'house' | 'unit' | 'townhouse' | 'land' | 'commercial' | 'unknown' | null
+          status: 'listed' | 'under_offer' | 'sold' | 'withdrawn' | 'off_market' | 'residence_only' | 'unknown' | null
+          listing_agent_id: string | null
+          external_ids: Json
+          first_seen_at: string; last_activity_at: string
+          created_at: string; updated_at: string; deleted_at: string | null
+        }
+        Insert: {
+          id?: string; workspace_id: string
+          street_number?: string | null; street_name: string
+          suburb?: string | null; state?: string | null; postcode?: string | null
+          address_hash: string
+          property_type?: 'house' | 'unit' | 'townhouse' | 'land' | 'commercial' | 'unknown' | null
+          status?: 'listed' | 'under_offer' | 'sold' | 'withdrawn' | 'off_market' | 'residence_only' | 'unknown' | null
+          listing_agent_id?: string | null
+          external_ids?: Json
+          first_seen_at?: string; last_activity_at?: string
+          created_at?: string; updated_at?: string; deleted_at?: string | null
+        }
+        Update: {
+          id?: string; workspace_id?: string
+          street_number?: string | null; street_name?: string
+          suburb?: string | null; state?: string | null; postcode?: string | null
+          address_hash?: string
+          property_type?: 'house' | 'unit' | 'townhouse' | 'land' | 'commercial' | 'unknown' | null
+          status?: 'listed' | 'under_offer' | 'sold' | 'withdrawn' | 'off_market' | 'residence_only' | 'unknown' | null
+          listing_agent_id?: string | null
+          external_ids?: Json
+          first_seen_at?: string; last_activity_at?: string
+          created_at?: string; updated_at?: string; deleted_at?: string | null
+        }
+        Relationships: [
+          { foreignKeyName: 'properties_workspace_id_fkey'; columns: ['workspace_id']; isOneToOne: false; referencedRelation: 'workspaces'; referencedColumns: ['id'] },
+          { foreignKeyName: 'properties_listing_agent_id_fkey'; columns: ['listing_agent_id']; isOneToOne: false; referencedRelation: 'agents'; referencedColumns: ['id'] }
         ]
       }
       sessions: {
@@ -620,6 +696,18 @@ export type Database = {
           p_workspace_id: string
           p_anonymous_id: string
           p_user_agent?: string | null
+        }
+        Returns: string | null
+      }
+      resolve_residence_property: {
+        Args: {
+          p_workspace_id: string
+          p_street_number?: string | null
+          p_street_name?: string | null
+          p_suburb?: string | null
+          p_state?: string | null
+          p_postcode?: string | null
+          p_raw?: string | null
         }
         Returns: string | null
       }
