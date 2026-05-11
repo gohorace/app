@@ -41,8 +41,9 @@ export async function GET(request: NextRequest) {
   const admin = createAdminClient()
 
   // HOR-100: invite redemption branch. If `invite_id` is present, redeem via
-  // the accept_workspace_invite RPC. On success, the user is now a member —
-  // fall through to the membership check below which will route to /dashboard.
+  // the accept_workspace_invite RPC. On success, route the invitee into the
+  // onboarding wizard so they pick up at step 3 (contacts) — the RPC pre-seeds
+  // agents.last_completed_step = 'script' to make that happen.
   if (inviteId) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { error: rpcErr } = await (admin as any).rpc('accept_workspace_invite', {
@@ -60,9 +61,7 @@ export async function GET(request: NextRequest) {
       params.set('error_description', message)
       return NextResponse.redirect(new URL(`/login?${params.toString()}`, url.origin))
     }
-    // Acceptance succeeded — workspace_members and agents rows are now in place.
-    // Fall through to the membership check; it should hit the "has membership"
-    // branch and redirect to /dashboard.
+    return NextResponse.redirect(new URL('/onboarding', url.origin))
   }
 
   // First-time post-signup: stash the agency name in user_metadata at signup time.
