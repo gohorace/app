@@ -32,6 +32,14 @@
 --     shipped `contacts.source` with a narrower capture-method enum
 --     (portal/crm/website/manual). Renaming the shipped column to
 --     `capture_method` and widening `source` is a separate ticket.
+--   • Address reconciliation: `properties` becomes the canonical source
+--     for addresses. We add `contacts.residence_property_id` (FK) and
+--     `residence_only` to properties.status. We do NOT add street/state/
+--     postcode columns the original brief had on contacts. We also do
+--     NOT drop the existing `contacts.suburb` or `contacts.property_address`
+--     in this phase — they're read by get_contacts_list() and the
+--     contact API. Phase 2 migrates writers/readers to residence_property_id;
+--     cleanup phase drops the legacy columns.
 -- ============================================================
 
 BEGIN;
@@ -117,6 +125,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS agents_workspace_email_uidx
 -- Both will be reconciled with the brief's broader UTM-style values
 -- in a separate ticket (rename shipped column → capture_method,
 -- redefine source).
+--
+-- Skipped (per address reconciliation note — properties is the canonical
+-- address store):
+--   • street, state, postcode — never added. Address resolution writes
+--     to properties; contacts references via residence_property_id (added
+--     below after the properties table exists).
 -- ============================================================
 
 ALTER TABLE contacts
@@ -124,9 +138,6 @@ ALTER TABLE contacts
   ADD COLUMN IF NOT EXISTS owner_agent_id uuid REFERENCES agents(id) ON DELETE SET NULL,
   ADD COLUMN IF NOT EXISTS created_by_agent_id uuid REFERENCES agents(id) ON DELETE SET NULL,
   ADD COLUMN IF NOT EXISTS full_name_raw text,
-  ADD COLUMN IF NOT EXISTS street text,
-  ADD COLUMN IF NOT EXISTS state text,
-  ADD COLUMN IF NOT EXISTS postcode text,
   ADD COLUMN IF NOT EXISTS ingestion_method text
     CHECK (ingestion_method IN (
       'csv_import', 'crm_sync_rex', 'crm_sync_agentbox', 'crm_sync_vaultre',
@@ -256,7 +267,7 @@ CREATE TABLE IF NOT EXISTS properties (
   postcode          text NOT NULL,
   address_hash      text NOT NULL,
   property_type     text CHECK (property_type IN ('house', 'unit', 'townhouse', 'land', 'commercial', 'unknown')),
-  status            text CHECK (status IN ('listed', 'under_offer', 'sold', 'withdrawn', 'off_market', 'unknown')),
+  status            text CHECK (status IN ('listed', 'under_offer', 'sold', 'withdrawn', 'off_market', 'residence_only', 'unknown')),
   listing_agent_id  uuid REFERENCES agents(id) ON DELETE SET NULL,
   external_ids      jsonb NOT NULL DEFAULT '{}'::jsonb,
   first_seen_at     timestamptz NOT NULL DEFAULT now(),
@@ -419,7 +430,7 @@ CREATE INDEX IF NOT EXISTS ownership_history_workspace_idx
   ON ownership_history (workspace_id, transferred_at DESC);
 
 -- ============================================================
--- K. EVENTS — late FK additions now that target tables exist
+-- K. LATE FK ADDITIONS — now that properties table exists
 -- ============================================================
 
 ALTER TABLE events
@@ -427,6 +438,22 @@ ALTER TABLE events
 
 CREATE INDEX IF NOT EXISTS events_property_occurred_at_idx
   ON events (property_id, occurred_at DESC) WHERE property_id IS NOT NULL;
+
+-- Per the address reconciliation note: properties is the canonical address
+-- store. Contacts reference a single residence property via this FK.
+-- ON DELETE SET NULL so a property purge doesn't blow away contact rows.
+-- Phase 2 wires writers (CSV import, manual entry, form submit with
+-- address fields) to populate this via the (workspace_id, address_hash)
+-- resolution function. Phase 2 also migrates get_contacts_list() and the
+-- contact API to read address from the joined property. Cleanup phase
+-- drops the legacy contacts.suburb and contacts.property_address columns
+-- once nothing reads them.
+ALTER TABLE contacts
+  ADD COLUMN IF NOT EXISTS residence_property_id uuid REFERENCES properties(id) ON DELETE SET NULL;
+
+CREATE INDEX IF NOT EXISTS contacts_residence_property_idx
+  ON contacts (residence_property_id)
+  WHERE residence_property_id IS NOT NULL AND deleted_at IS NULL;
 
 -- ============================================================
 -- L. TRIGGERS
@@ -557,6 +584,8 @@ COMMENT ON COLUMN contacts.created_by_agent_id IS
   'Immutable. The agent who originally created the contact record.';
 COMMENT ON COLUMN contacts.ingestion_method IS
   'How the contact got into Horace. Backfilled from the HOR-63 (source, medium) pair: source=crm/medium=rex → crm_sync_rex, source=website → identified_visitor, source=portal → portal_enquiry, etc.';
+COMMENT ON COLUMN contacts.residence_property_id IS
+  'The property record for this contact''s residence address. Properties is the canonical address store. Phase 2 populates this via the same (workspace_id, address_hash) resolution used for listings. Legacy contacts.suburb and contacts.property_address remain populated by old writers until Phase 2 migrates them and the cleanup phase drops them.';
 COMMENT ON COLUMN events.attributed_agent_id IS
   'Immutable once set. The agent whose action produced this event (listing agent, link sender, contact owner at time of event, or default_unassigned_agent_id).';
 COMMENT ON TABLE identified_devices IS
