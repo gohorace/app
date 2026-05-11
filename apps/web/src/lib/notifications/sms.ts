@@ -8,11 +8,11 @@ const SMS_DEDUP_HOURS = 24
 /** Templates */
 export const SMS_TEMPLATES = {
   score_threshold: (name: string, score: number, contactId: string, appUrl: string) =>
-    `Hot lead alert: ${name} just hit a score of ${score}. View: ${appUrl}/leads/${contactId}`,
+    `Hot lead alert: ${name} just hit a score of ${score}. View: ${appUrl}/contacts/${contactId}`,
   form_submit: (name: string, formName: string | null, contactId: string, appUrl: string) =>
-    `${name} submitted${formName ? ` "${formName}"` : ' a form'} on your website. ${appUrl}/leads/${contactId}`,
+    `${name} submitted${formName ? ` "${formName}"` : ' a form'} on your website. ${appUrl}/contacts/${contactId}`,
   return_visit: (name: string, contactId: string, appUrl: string) =>
-    `${name} is back on your website right now. ${appUrl}/leads/${contactId}`,
+    `${name} is back on your website right now. ${appUrl}/contacts/${contactId}`,
 }
 
 /** Send an SMS via Twilio. Only call server-side. */

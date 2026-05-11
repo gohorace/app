@@ -144,7 +144,7 @@ export async function sendScoreThresholdAlert(
     pushToAgent(agentId, {
       title: "Something's stirring.",
       body: `${firstName} just crossed your threshold. Might be worth a call.`,
-      url: `/leads/${contactId}`,
+      url: `/contacts/${contactId}`,
       tag: `score-${contactId}`,
     }),
     emailAgent(agentId, 'score_threshold', contactName, contactId, { score: scoreAfter }),
@@ -166,7 +166,7 @@ export async function sendFormSubmitAlert(
     pushToAgent(agentId, {
       title: 'They raised their hand.',
       body: `${firstName} just submitted${formName ? ` "${formName}"` : ' a form'}. Worth a follow-up now.`,
-      url: `/leads/${contactId}`,
+      url: `/contacts/${contactId}`,
       tag: `form-${contactId}`,
     }),
     emailAgent(agentId, 'form_submit', contactName, contactId, { formName }),
@@ -187,7 +187,7 @@ export async function sendReturnVisitAlert(
     pushToAgent(agentId, {
       title: "Something's stirring.",
       body: `${firstName}'s back on your site. Might be worth a call.`,
-      url: `/leads/${contactId}`,
+      url: `/contacts/${contactId}`,
       tag: `return-${contactId}`,
     }),
     emailAgent(agentId, 'return_visit', contactName, contactId),
