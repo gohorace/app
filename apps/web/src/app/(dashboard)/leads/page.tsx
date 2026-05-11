@@ -43,6 +43,7 @@ export default async function LeadsPage({
       .from('contacts')
       .select('id, first_name, last_name, email, phone, score, last_seen_at, property_address, suburb, source, medium')
       .eq('agent_id', agentId)
+      .is('deleted_at', null)
       .order('score', { ascending: false })
       .limit(500)
 

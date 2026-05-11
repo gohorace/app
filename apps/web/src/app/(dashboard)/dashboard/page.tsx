@@ -79,6 +79,7 @@ export default async function DashboardPage({
     .from('contacts')
     .select('id, first_name, last_name, email, score, last_seen_at')
     .eq('agent_id', agentId)
+    .is('deleted_at', null)
     .order('score', { ascending: false })
     .limit(20)
 
@@ -113,8 +114,8 @@ export default async function DashboardPage({
     { count: totalActive },
     { count: recentEvents },
   ] = await Promise.all([
-    admin.from('contacts').select('*', { count: 'exact', head: true }).eq('agent_id', agentId).gte('score', 50),
-    admin.from('contacts').select('*', { count: 'exact', head: true }).eq('agent_id', agentId).gte('score', 5),
+    admin.from('contacts').select('*', { count: 'exact', head: true }).eq('agent_id', agentId).is('deleted_at', null).gte('score', 50),
+    admin.from('contacts').select('*', { count: 'exact', head: true }).eq('agent_id', agentId).is('deleted_at', null).gte('score', 5),
     admin.from('score_history').select('*', { count: 'exact', head: true }).eq('agent_id', agentId)
       .gte('occurred_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()),
   ])
