@@ -27,7 +27,11 @@ import { createHash, randomBytes } from 'crypto'
 import { Resend } from 'resend'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { buildMagicLinkEmail } from '@/lib/notifications/email'
+import {
+  buildMagicLinkEmail,
+  buildInvitePlainText,
+  type WorkspaceInviteContext,
+} from '@/lib/notifications/email'
 import { getAppUrl } from '@/lib/url'
 
 const INVITE_TTL_DAYS = 7
@@ -225,18 +229,20 @@ export async function POST(
     user.email ||
     'A teammate'
 
-  // 6. Send the email via Resend.
+  // 6. Send the email via Resend (HTML + plain-text fallback per HOR-103).
   const inviteUrl = `${getAppUrl()}/invite/accept?token=${plaintext}`
+  const inviteContext: WorkspaceInviteContext = {
+    workspaceName: workspace.name,
+    inviterName,
+    role,
+  }
   const { subject, html } = buildMagicLinkEmail({
     action: 'invite',
     url: inviteUrl,
     email,
-    inviteContext: {
-      workspaceName: workspace.name,
-      inviterName,
-      role,
-    },
+    inviteContext,
   })
+  const text = buildInvitePlainText({ url: inviteUrl, inviteContext })
 
   const resendApiKey = process.env.RESEND_API_KEY
   if (!resendApiKey) {
@@ -256,6 +262,7 @@ export async function POST(
       to: email,
       subject,
       html,
+      text,
     })
     if (sendErr) {
       console.error('Resend send failed for invite', { inviteId: invite.id, error: sendErr })
