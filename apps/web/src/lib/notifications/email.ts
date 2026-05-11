@@ -401,9 +401,6 @@ const MAGIC_COPY: Record<MagicLinkAction, { subject: string; heading: string; bo
  * who, where, and as what. Falls back to the generic invite copy when omitted
  * (so the Supabase Auth webhook caller — which uses the built-in `invite`
  * action — still works unchanged).
- *
- * HOR-103 will polish this copy further; HOR-99 just establishes the call
- * surface.
  */
 export interface WorkspaceInviteContext {
   workspaceName: string
@@ -420,16 +417,33 @@ export function buildMagicLinkEmail(args: {
 }): { subject: string; html: string } {
   let { subject, heading, body, cta } = MAGIC_COPY[args.action] ?? MAGIC_COPY.magiclink
 
+  // HOR-103: when invite context is present, interpolate inviter/workspace/role
+  // and adopt the operational voice from HOR-93 (sign as "— The Horace team").
+  // No context = unchanged generic copy (Supabase Auth webhook path).
+  const isContextualInvite = args.action === 'invite' && Boolean(args.inviteContext)
+  let preheader = ''
+
   if (args.action === 'invite' && args.inviteContext) {
     const { workspaceName, inviterName, role } = args.inviteContext
+    const firstName = inviterName.split(/\s+/)[0] || inviterName
     const roleLabel = role === 'manager' ? 'a manager' : 'an agent'
-    subject = `${inviterName} invited you to ${workspaceName} on Horace`
+    subject = `${firstName} invited you to ${workspaceName} on Horace`
     heading = `Join ${workspaceName} on Horace`
-    body = `${inviterName} invited you to join ${workspaceName} as ${roleLabel}. Tap the button below to accept and sign in. The link expires in 7 days.`
+    body = `${inviterName} invited you to join ${workspaceName} as ${roleLabel}.`
     cta = 'Accept invitation'
+    preheader = 'Tap to accept and sign in — link expires in 7 days.'
   }
 
+  const preheaderHtml = preheader
+    ? `<div style="display:none;font-size:1px;color:#fff;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">${preheader}</div>`
+    : ''
+
+  const signOffHtml = isContextualInvite
+    ? `<p style="margin:24px 0 0;font-size:13px;color:${T.charcoal};line-height:1.6;">— The Horace team</p>`
+    : ''
+
   const bodyContent = `
+    ${preheaderHtml}
     <p style="margin:0 0 8px;font-size:22px;font-weight:700;color:${T.ink};letter-spacing:-0.02em;">${heading}</p>
     <p style="margin:0 0 24px;font-size:14px;color:${T.stone};line-height:1.6;">${body}</p>
     <a href="${args.url}" style="display:inline-block;background:${T.ink};color:${T.cream};text-decoration:none;font-size:13px;font-weight:600;padding:12px 26px;border-radius:6px;">${cta} →</a>
@@ -437,6 +451,7 @@ export function buildMagicLinkEmail(args: {
       Or paste this link into your browser:<br>
       <a href="${args.url}" style="color:${T.terracotta};text-decoration:none;word-break:break-all;">${args.url}</a>
     </p>
+    ${signOffHtml}
     <div style="height:20px;"></div>
   `
 
@@ -447,4 +462,28 @@ export function buildMagicLinkEmail(args: {
   `
 
   return { subject, html: shell(bodyContent, footerContent) }
+}
+
+/**
+ * Plain-text fallback for the invite email. Useful for clients that don't
+ * render HTML (or for unit-test assertions). HOR-99's send path can pass
+ * this alongside the HTML when calling Resend's `text` field.
+ *
+ * Intentionally minimal — no styling, no tables, just the human content.
+ */
+export function buildInvitePlainText(args: {
+  url: string
+  inviteContext: WorkspaceInviteContext
+}): string {
+  const { workspaceName, inviterName, role } = args.inviteContext
+  const roleLabel = role === 'manager' ? 'a manager' : 'an agent'
+  return [
+    `${inviterName} invited you to join ${workspaceName} on Horace as ${roleLabel}.`,
+    '',
+    `Accept the invitation: ${args.url}`,
+    '',
+    'The link expires in 7 days. If you didn’t expect this, you can ignore the email.',
+    '',
+    '— The Horace team',
+  ].join('\n')
 }
