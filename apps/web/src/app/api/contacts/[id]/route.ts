@@ -25,10 +25,7 @@ export async function GET(
 
   const contactQuery = admin
     .from('contacts')
-    .select(
-      'id, first_name, last_name, full_name_raw, email, phone, score, last_seen_at, ' +
-        'property_address, suburb, source, medium, deleted_at, residence_property_id',
-    )
+    .select('id, first_name, last_name, full_name_raw, email, phone, score, last_seen_at, property_address, suburb, source, medium, deleted_at, residence_property_id')
     .eq('id', params.id)
     .eq('agent_id', agent.id)
 
