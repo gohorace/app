@@ -395,12 +395,39 @@ const MAGIC_COPY: Record<MagicLinkAction, { subject: string; heading: string; bo
   },
 }
 
+/**
+ * Optional context for the `invite` action. When provided, the subject/body
+ * are interpolated with workspace + inviter + role so the recipient knows
+ * who, where, and as what. Falls back to the generic invite copy when omitted
+ * (so the Supabase Auth webhook caller — which uses the built-in `invite`
+ * action — still works unchanged).
+ *
+ * HOR-103 will polish this copy further; HOR-99 just establishes the call
+ * surface.
+ */
+export interface WorkspaceInviteContext {
+  workspaceName: string
+  inviterName: string
+  /** agents.role vocabulary — 'manager' or 'agent'. */
+  role: 'manager' | 'agent'
+}
+
 export function buildMagicLinkEmail(args: {
   action: MagicLinkAction
   url: string
   email: string
+  inviteContext?: WorkspaceInviteContext
 }): { subject: string; html: string } {
-  const { subject, heading, body, cta } = MAGIC_COPY[args.action] ?? MAGIC_COPY.magiclink
+  let { subject, heading, body, cta } = MAGIC_COPY[args.action] ?? MAGIC_COPY.magiclink
+
+  if (args.action === 'invite' && args.inviteContext) {
+    const { workspaceName, inviterName, role } = args.inviteContext
+    const roleLabel = role === 'manager' ? 'a manager' : 'an agent'
+    subject = `${inviterName} invited you to ${workspaceName} on Horace`
+    heading = `Join ${workspaceName} on Horace`
+    body = `${inviterName} invited you to join ${workspaceName} as ${roleLabel}. Tap the button below to accept and sign in. The link expires in 7 days.`
+    cta = 'Accept invitation'
+  }
 
   const bodyContent = `
     <p style="margin:0 0 8px;font-size:22px;font-weight:700;color:${T.ink};letter-spacing:-0.02em;">${heading}</p>
