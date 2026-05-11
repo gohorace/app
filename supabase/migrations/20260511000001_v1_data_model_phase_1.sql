@@ -40,6 +40,11 @@
 --     in this phase — they're read by get_contacts_list() and the
 --     contact API. Phase 2 migrates writers/readers to residence_property_id;
 --     cleanup phase drops the legacy columns.
+--   • Per-owner unique indexes on contacts.email and contacts.phone are
+--     DEFERRED to a later phase. Prod data already contains duplicates
+--     (shared household phones, import dupes); enforcing uniqueness here
+--     would fail and there's no merge/dedup story yet. Non-unique indexes
+--     are added in their place for lookup performance.
 -- ============================================================
 
 BEGIN;
@@ -173,12 +178,17 @@ SET workspace_id        = a.workspace_id,
 FROM agents a
 WHERE a.id = c.agent_id;
 
--- Per-owner uniqueness — partial, lowercased email, ignores soft-deleted.
-CREATE UNIQUE INDEX IF NOT EXISTS contacts_owner_email_uidx
+-- Per-owner unique indexes on email and phone are DEFERRED.
+-- Initial migration attempt found duplicates (e.g. same phone under same
+-- agent — likely shared household contacts or import duplicates). The
+-- brief's strict per-agent uniqueness needs reconciliation with the
+-- shape of real data plus a merge/dedup story; that's Phase 2 work.
+-- For now we add non-unique indexes for lookup performance only.
+CREATE INDEX IF NOT EXISTS contacts_owner_email_idx
   ON contacts (owner_agent_id, lower(email))
   WHERE email IS NOT NULL AND deleted_at IS NULL;
 
-CREATE UNIQUE INDEX IF NOT EXISTS contacts_owner_phone_uidx
+CREATE INDEX IF NOT EXISTS contacts_owner_phone_idx
   ON contacts (owner_agent_id, phone)
   WHERE phone IS NOT NULL AND deleted_at IS NULL;
 
