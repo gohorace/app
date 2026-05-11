@@ -30,7 +30,8 @@ export function ImportForm() {
   const [result,   setResult]   = useState<ImportResult | null>(null)
   const [preview,  setPreview]  = useState<PreviewData | null>(null)
   const [mapping,  setMapping]  = useState<Record<FieldKey, string | null>>({
-    email: null, first_name: null, last_name: null, phone: null, crm_external_id: null,
+    email: null, first_name: null, last_name: null, full_name: null, phone: null, crm_external_id: null,
+    street: null, suburb: null, state: null, postcode: null, address: null,
   })
   const [error,    setError]    = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)

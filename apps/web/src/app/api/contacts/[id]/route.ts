@@ -25,7 +25,7 @@ export async function GET(
 
   const contactQuery = admin
     .from('contacts')
-    .select('id, first_name, last_name, email, phone, score, last_seen_at, property_address, suburb, source, medium, deleted_at')
+    .select('id, first_name, last_name, full_name_raw, email, phone, score, last_seen_at, property_address, suburb, source, medium, deleted_at, residence_property_id')
     .eq('id', params.id)
     .eq('agent_id', agent.id)
 
@@ -43,7 +43,36 @@ export async function GET(
 
   if (!contact) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  return NextResponse.json({ contact, events: events ?? [], scoreHistory: scoreHistory ?? [] })
+  // Phase 2c: enrich with the joined residence property when set. Falls back
+  // to the legacy contacts.property_address text for un-migrated rows.
+  let residenceProperty:
+    | {
+        id: string
+        street_number: string | null
+        street_name: string | null
+        suburb: string | null
+        state: string | null
+        postcode: string | null
+        status: string | null
+      }
+    | null = null
+
+  if (contact.residence_property_id) {
+    const { data: property } = await admin
+      .from('properties')
+      .select('id, street_number, street_name, suburb, state, postcode, status')
+      .eq('id', contact.residence_property_id)
+      .is('deleted_at', null)
+      .maybeSingle()
+    residenceProperty = property ?? null
+  }
+
+  return NextResponse.json({
+    contact,
+    residence_property: residenceProperty,
+    events: events ?? [],
+    scoreHistory: scoreHistory ?? [],
+  })
 }
 
 export async function PATCH(
