@@ -74,8 +74,10 @@ export async function POST(request: NextRequest) {
     return new Response('Internal error', { status: 500, headers: CORS_HEADERS })
   }
 
-  // Resolve email → contacts via identity_map
-  const matches = await resolveEmail(supabase, workspaceId, email, anonymousId, meta)
+  // Resolve email → contacts via identity_map (also writes identified_devices).
+  // UA from the request is fed through to identified_devices.user_agent_summary.
+  const userAgent = request.headers.get('user-agent')
+  const matches = await resolveEmail(supabase, workspaceId, email, anonymousId, meta, userAgent)
 
   if (matches.length === 0) {
     return NextResponse.json({ ok: true, contactId: null }, { headers: CORS_HEADERS })
