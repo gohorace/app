@@ -28,13 +28,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Provide at least a name or email' }, { status: 400 })
   }
 
-  // Prevent duplicate email
+  // Prevent duplicate email. Ignore soft-deleted rows so the email can be
+  // re-used; the old row will be purged within the 30-day window or the
+  // agent can explicitly restore it.
   if (email) {
     const { data: existing } = await admin
       .from('contacts')
       .select('id')
       .eq('agent_id', agent.id)
       .eq('email', email.toLowerCase().trim())
+      .is('deleted_at', null)
       .maybeSingle()
 
     if (existing) {

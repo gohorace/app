@@ -199,6 +199,7 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
       .select('*')
       .eq('id', params.id)
       .eq('agent_id', agentId)
+      .is('deleted_at', null)
       .maybeSingle(),
     admin.rpc('get_contact_events', { p_contact_id: params.id }),
     admin
