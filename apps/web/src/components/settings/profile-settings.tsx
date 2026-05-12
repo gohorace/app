@@ -45,7 +45,11 @@ export function ProfileSettings({ agentId, firstName, lastName, email, avatarUrl
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     e.target.value = ''
-    if (!file || !agentId) return
+    console.log('[avatar] handleFile fired', { hasFile: !!file, agentId, fileName: file?.name, size: file?.size, type: file?.type })
+    if (!file || !agentId) {
+      console.warn('[avatar] aborting: no file or no agentId')
+      return
+    }
 
     if (!file.type.startsWith('image/')) {
       setUploadError('Please choose an image file.')
@@ -60,28 +64,40 @@ export function ProfileSettings({ agentId, firstName, lastName, email, avatarUrl
     setUploading(true)
     try {
       const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
+      const { data: { user }, error: userErr } = await supabase.auth.getUser()
+      console.log('[avatar] getUser', { userId: user?.id, userErr })
       if (!user) throw new Error('Not signed in')
 
       const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg'
       const path = `${user.id}/${Date.now()}.${ext}`
+      console.log('[avatar] uploading to', path)
 
-      const { error: uploadErr } = await supabase.storage
+      const uploadResult = await supabase.storage
         .from('avatars')
         .upload(path, file, { cacheControl: '3600', upsert: false, contentType: file.type })
-      if (uploadErr) throw uploadErr
+      console.log('[avatar] upload result', uploadResult)
+      if (uploadResult.error) throw uploadResult.error
 
       const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(path)
+      console.log('[avatar] publicUrl', publicUrl)
 
-      const { error: updateErr } = await supabase
+      const updateResult = await supabase
         .from('agents')
         .update({ avatar_url: publicUrl })
         .eq('id', agentId)
-      if (updateErr) throw updateErr
+        .select()
+      console.log('[avatar] agents.update result', updateResult)
+      if (updateResult.error) throw updateResult.error
+      if (!updateResult.data || updateResult.data.length === 0) {
+        throw new Error('Update returned 0 rows — likely RLS blocked it')
+      }
 
       router.refresh()
     } catch (err) {
-      setUploadError(err instanceof Error ? err.message : 'Upload failed')
+      console.error('[avatar] upload failed', err)
+      const msg = err instanceof Error ? err.message : JSON.stringify(err)
+      setUploadError(msg)
+      alert('Avatar upload failed: ' + msg)
     } finally {
       setUploading(false)
     }
