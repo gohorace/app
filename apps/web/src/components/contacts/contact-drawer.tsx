@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
+import { useCallback, useEffect, useState, useRef } from 'react'
 import { formatDistanceToNow } from 'date-fns'
 import {
   X, Phone, Mail, Home, ChevronUp, ChevronDown,
@@ -274,20 +274,31 @@ export function ContactDrawer({ contactId, preview, isOnline = false, onClose, o
   const [detail, setDetail] = useState<DetailData | null>(null)
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    setLoading(true)
-    setDetail(null)
-    fetch(`/api/contacts/${contactId}`)
-      .then(r => r.json())
-      .then(d => {
-        // Only set detail if we got a valid response shape
-        if (d && d.contact && Array.isArray(d.events)) {
-          setDetail(d)
-        }
-      })
-      .catch(() => { /* silently fall back to preview data */ })
-      .finally(() => setLoading(false))
+  // Refetch detail data. Used both on contact-change (full reload) and on
+  // child-component save (e.g. AddressEditor) so updates reflect immediately.
+  // `silent=true` skips the loading skeleton — for in-place refreshes that
+  // shouldn't flash the activity timeline.
+  const fetchDetail = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) {
+      setLoading(true)
+      setDetail(null)
+    }
+    try {
+      const r = await fetch(`/api/contacts/${contactId}`)
+      const d = await r.json()
+      if (d && d.contact && Array.isArray(d.events)) {
+        setDetail(d)
+      }
+    } catch {
+      /* silently fall back to preview data */
+    } finally {
+      if (!opts?.silent) setLoading(false)
+    }
   }, [contactId])
+
+  useEffect(() => {
+    fetchDetail()
+  }, [fetchDetail])
 
   const contact: DrawerContact = detail?.contact ?? preview
   const events  = Array.isArray(detail?.events) ? mergeScrollDepth(detail!.events) : []
@@ -450,6 +461,7 @@ export function ContactDrawer({ contactId, preview, isOnline = false, onClose, o
               residenceProperty={detail?.residence_property ?? null}
               fallbackAddress={contact.property_address}
               fallbackSuburb={contact.suburb}
+              onSaved={() => fetchDetail({ silent: true })}
             />
             <div style={{ paddingBottom: '12px' }} />
           </div>
@@ -569,11 +581,14 @@ function AddressEditor({
   residenceProperty,
   fallbackAddress,
   fallbackSuburb,
+  onSaved,
 }: {
   contactId: string
   residenceProperty: ResidenceProperty | null
   fallbackAddress: string | null
   fallbackSuburb: string | null
+  /** Fires after a successful PATCH so the parent can refetch detail data. */
+  onSaved?: () => void
 }) {
   const [current, setCurrent] = useState<SelectedAddress | null>(
     () => residencePropertyToAddress(residenceProperty),
@@ -583,14 +598,18 @@ function AddressEditor({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // When the parent's residenceProperty arrives async (after detail fetch),
-  // sync our local "current" view if the user isn't mid-edit.
+  // Sync local state only when the parent's residenceProperty prop actually
+  // changes (i.e. a fresh fetch arrived). Without this guard, the effect
+  // re-fires whenever `editing` toggles — and immediately after save would
+  // stomp our optimistic update with stale prop data.
+  const prevPropRef = useRef(residenceProperty)
   useEffect(() => {
-    if (!editing) {
-      const next = residencePropertyToAddress(residenceProperty)
-      setCurrent(next)
-      setDraft(next)
-    }
+    if (prevPropRef.current === residenceProperty) return
+    prevPropRef.current = residenceProperty
+    if (editing) return
+    const next = residencePropertyToAddress(residenceProperty)
+    setCurrent(next)
+    setDraft(next)
   }, [residenceProperty, editing])
 
   const displayText = current?.formatted || fallbackAddress || fallbackSuburb || null
@@ -606,8 +625,14 @@ function AddressEditor({
         body: JSON.stringify(payload),
       })
       if (res.ok) {
-        setCurrent(isAddressEmpty(draft) ? null : draft)
+        // Optimistic local update first — instantly reflects in the row.
+        const finalValue = isAddressEmpty(draft) ? null : draft
+        setCurrent(finalValue)
+        setDraft(finalValue)
         setEditing(false)
+        // Then ask the parent to silently refetch so other surfaces
+        // (suburb badge in the hero, etc.) reflect the new property too.
+        onSaved?.()
       } else {
         const data = await res.json().catch(() => ({}))
         setError(data.error ?? 'Could not save address')
