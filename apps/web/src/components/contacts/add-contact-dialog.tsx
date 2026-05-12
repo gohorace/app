@@ -3,6 +3,11 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Plus, X, Loader2 } from 'lucide-react'
+import {
+  AddressAutocomplete,
+  type SelectedAddress,
+  isAddressEmpty,
+} from '@/components/address'
 
 export function AddContactDialog() {
   const [open, setOpen]       = useState(false)
@@ -13,9 +18,11 @@ export function AddContactDialog() {
   const [form, setForm] = useState({
     first_name: '', last_name: '', email: '', phone: '',
   })
+  const [residence, setResidence] = useState<SelectedAddress | null>(null)
 
   function reset() {
     setForm({ first_name: '', last_name: '', email: '', phone: '' })
+    setResidence(null)
     setError(null)
   }
 
@@ -33,7 +40,11 @@ export function AddContactDialog() {
     const res = await fetch('/api/contacts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form),
+      body: JSON.stringify({
+        ...form,
+        // Only send a residence payload when something was actually entered.
+        residence: isAddressEmpty(residence) ? null : residence,
+      }),
     })
 
     const data = await res.json()
@@ -124,6 +135,12 @@ export function AddContactDialog() {
                 onChange={v => setForm(f => ({ ...f, email: v }))} />
               <Field label="Phone" type="tel" value={form.phone} placeholder="0412 345 678"
                 onChange={v => setForm(f => ({ ...f, phone: v }))} />
+
+              <AddressAutocomplete
+                label="Home address (optional)"
+                defaultValue={residence}
+                onChange={setResidence}
+              />
 
               {error && (
                 <p style={{ fontSize: '12px', color: '#C4622D' }}>{error}</p>

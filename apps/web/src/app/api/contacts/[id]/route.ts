@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { resolveResidence, type SelectedAddressInput } from '@/lib/contacts/residence'
 
 export async function GET(
   req: NextRequest,
@@ -86,19 +87,45 @@ export async function PATCH(
   const admin = createAdminClient()
   const { data: agent } = await admin
     .from('agents')
-    .select('id')
+    .select('id, workspace_id')
     .eq('user_id', user.id)
     .maybeSingle()
 
   if (!agent) return NextResponse.json({ error: 'Agent not found' }, { status: 404 })
 
-  const body = await req.json()
+  const body = await req.json() as Record<string, unknown>
 
-  // Allowlist of patchable fields
-  const allowed = ['property_address', 'suburb', 'first_name', 'last_name', 'email', 'phone'] as const
+  // Slice 4: the legacy property_address / suburb columns are no longer
+  // patchable directly. The address path is `residence: SelectedAddress | null`
+  // which is resolved through resolve_residence_property and written to
+  // contacts.residence_property_id. contacts.suburb is then auto-maintained
+  // by the sync_contact_suburb trigger from Slice 1.
+  const allowed = ['first_name', 'last_name', 'email', 'phone'] as const
   const update: Record<string, unknown> = {}
   for (const key of allowed) {
     if (key in body) update[key] = body[key]
+  }
+
+  // Handle residence separately. Three cases:
+  //   • key absent → leave residence_property_id alone
+  //   • key === null → clear residence_property_id (trigger clears suburb)
+  //   • key === SelectedAddress object → resolve to property id and write
+  const hasResidence = 'residence' in body
+  if (hasResidence) {
+    const residence = body.residence as SelectedAddressInput | null
+
+    if (residence === null) {
+      update.residence_property_id = null
+    } else if (residence && agent.workspace_id) {
+      const result = await resolveResidence(admin, agent.workspace_id, residence)
+      if (result.error) {
+        return NextResponse.json(
+          { error: `Address resolution failed: ${result.error}` },
+          { status: 500 },
+        )
+      }
+      update.residence_property_id = result.propertyId
+    }
   }
 
   if (Object.keys(update).length === 0) {

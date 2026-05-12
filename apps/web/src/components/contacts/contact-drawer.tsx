@@ -3,9 +3,15 @@
 import { useEffect, useState, useRef } from 'react'
 import { formatDistanceToNow } from 'date-fns'
 import {
-  X, Phone, Mail, MapPin, Home, ChevronUp, ChevronDown,
-  Eye, FileText, RotateCcw, BookOpen, Pencil, Check,
+  X, Phone, Mail, Home, ChevronUp, ChevronDown,
+  Eye, FileText, RotateCcw, BookOpen, Pencil, Check, Loader2,
 } from 'lucide-react'
+import {
+  AddressAutocomplete,
+  type SelectedAddress,
+  formatAddressLine,
+  isAddressEmpty,
+} from '@/components/address'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -247,9 +253,20 @@ interface Props {
   hasNext?:   boolean
 }
 
+type ResidenceProperty = {
+  id:            string
+  street_number: string | null
+  street_name:   string | null
+  suburb:        string | null
+  state:         string | null
+  postcode:      string | null
+  status:        string | null
+}
+
 type DetailData = {
-  contact:      DrawerContact
-  events:       RawEvent[]
+  contact:            DrawerContact
+  residence_property: ResidenceProperty | null
+  events:             RawEvent[]
   scoreHistory: { id: string; delta: number; reason: string; score_after: number; occurred_at: string }[]
 }
 
@@ -428,8 +445,12 @@ export function ContactDrawer({ contactId, preview, isOnline = false, onClose, o
             </p>
             <EditableField contactId={contact.id} field="phone"            value={contact.phone}            label="Phone"   icon={<Phone   style={{ width: '13px', height: '13px' }} />} placeholder="Add phone number" />
             <EditableField contactId={contact.id} field="email"            value={contact.email}            label="Email"   icon={<Mail    style={{ width: '13px', height: '13px' }} />} placeholder="Add email address" />
-            <EditableField contactId={contact.id} field="suburb"           value={contact.suburb}           label="Suburb"  icon={<MapPin  style={{ width: '13px', height: '13px' }} />} placeholder="Add suburb" />
-            <EditableField contactId={contact.id} field="property_address" value={contact.property_address} label="Address" icon={<Home    style={{ width: '13px', height: '13px' }} />} placeholder="Add property address" />
+            <AddressEditor
+              contactId={contact.id}
+              residenceProperty={detail?.residence_property ?? null}
+              fallbackAddress={contact.property_address}
+              fallbackSuburb={contact.suburb}
+            />
             <div style={{ paddingBottom: '12px' }} />
           </div>
 
@@ -516,5 +537,165 @@ export function ContactDrawer({ contactId, preview, isOnline = false, onClose, o
         </div>
       </aside>
     </>
+  )
+}
+
+// ── AddressEditor ─────────────────────────────────────────────────────────────
+// Replaces the inline suburb + property_address EditableFields. Displays the
+// joined residence_property when set (falls back to legacy text columns for
+// rows that pre-date Slice 6's bulk re-resolve). Editing opens an inline
+// AddressAutocomplete; saving PATCHes `residence: SelectedAddress | null` and
+// the server runs resolve_residence_property + writes residence_property_id.
+
+function residencePropertyToAddress(p: ResidenceProperty | null): SelectedAddress | null {
+  if (!p) return null
+  const addr: SelectedAddress = {
+    google_place_id: null,
+    latitude:        null,
+    longitude:       null,
+    street_number:   p.street_number,
+    street_name:     p.street_name,
+    suburb:          p.suburb,
+    state:           p.state,
+    postcode:        p.postcode,
+    formatted:       null,
+  }
+  addr.formatted = formatAddressLine(addr) || null
+  return addr
+}
+
+function AddressEditor({
+  contactId,
+  residenceProperty,
+  fallbackAddress,
+  fallbackSuburb,
+}: {
+  contactId: string
+  residenceProperty: ResidenceProperty | null
+  fallbackAddress: string | null
+  fallbackSuburb: string | null
+}) {
+  const [current, setCurrent] = useState<SelectedAddress | null>(
+    () => residencePropertyToAddress(residenceProperty),
+  )
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState<SelectedAddress | null>(current)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  // When the parent's residenceProperty arrives async (after detail fetch),
+  // sync our local "current" view if the user isn't mid-edit.
+  useEffect(() => {
+    if (!editing) {
+      const next = residencePropertyToAddress(residenceProperty)
+      setCurrent(next)
+      setDraft(next)
+    }
+  }, [residenceProperty, editing])
+
+  const displayText = current?.formatted || fallbackAddress || fallbackSuburb || null
+
+  async function save() {
+    setSaving(true)
+    setError(null)
+    const payload = { residence: isAddressEmpty(draft) ? null : draft }
+    try {
+      const res = await fetch(`/api/contacts/${contactId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      if (res.ok) {
+        setCurrent(isAddressEmpty(draft) ? null : draft)
+        setEditing(false)
+      } else {
+        const data = await res.json().catch(() => ({}))
+        setError(data.error ?? 'Could not save address')
+      }
+    } catch {
+      setError('Network error — please try again')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  function cancel() {
+    setDraft(current)
+    setEditing(false)
+    setError(null)
+  }
+
+  if (editing) {
+    return (
+      <div style={{ padding: '10px 0', borderBottom: '1px solid rgba(140,123,107,0.08)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+          <Home style={{ width: '13px', height: '13px', color: '#8C7B6B' }} />
+          <span style={{ fontSize: '11px', color: '#8C7B6B', fontWeight: 500 }}>Address</span>
+        </div>
+        <AddressAutocomplete
+          label=""
+          defaultValue={current}
+          onChange={setDraft}
+        />
+        {error && (
+          <p style={{ fontSize: '11px', color: '#C4622D', marginTop: '6px' }}>{error}</p>
+        )}
+        <div style={{ display: 'flex', gap: '6px', marginTop: '8px', justifyContent: 'flex-end' }}>
+          <button
+            type="button"
+            onClick={cancel}
+            disabled={saving}
+            style={{
+              padding: '4px 10px', borderRadius: '6px',
+              background: 'none', border: '1px solid rgba(140,123,107,0.35)',
+              color: '#8C7B6B', fontSize: '12px',
+              cursor: saving ? 'not-allowed' : 'pointer',
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={save}
+            disabled={saving}
+            style={{
+              padding: '4px 12px', borderRadius: '6px',
+              background: '#1A1612', border: 'none', color: '#FAF7F2',
+              fontSize: '12px', fontWeight: 500,
+              display: 'inline-flex', alignItems: 'center', gap: '5px',
+              cursor: saving ? 'not-allowed' : 'pointer',
+              opacity: saving ? 0.7 : 1,
+            }}
+          >
+            {saving && <Loader2 style={{ width: '11px', height: '11px', animation: 'spin 1s linear infinite' }} />}
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '7px 0', borderBottom: '1px solid rgba(140,123,107,0.08)' }}>
+      <div style={{ color: '#8C7B6B', flexShrink: 0, width: '14px', display: 'flex', alignItems: 'center' }}>
+        <Home style={{ width: '13px', height: '13px' }} />
+      </div>
+      <span style={{ fontSize: '11px', color: '#8C7B6B', width: '60px', flexShrink: 0, fontWeight: 500 }}>Address</span>
+      <button
+        type="button"
+        onClick={() => { setDraft(current); setEditing(true) }}
+        style={{
+          flex: 1, background: 'none', border: 'none', cursor: 'pointer',
+          textAlign: 'left', padding: '2px 0',
+          display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0,
+        }}
+        className="editable-field-btn"
+      >
+        <span style={{ fontSize: '13px', color: displayText ? '#1A1612' : '#8C7B6B', fontStyle: displayText ? 'normal' : 'italic', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {displayText || 'Add home address'}
+        </span>
+        <Pencil style={{ width: '11px', height: '11px', color: '#8C7B6B', flexShrink: 0, opacity: 0 }} className="field-pencil" />
+      </button>
+    </div>
   )
 }
