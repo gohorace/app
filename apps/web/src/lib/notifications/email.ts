@@ -88,7 +88,7 @@ function shell(bodyContent: string, footerContent: string): string {
 function contactCard(lead: LeadWithInsight, appUrl: string, isFirst: boolean): string {
   const name = [lead.first_name, lead.last_name].filter(Boolean).join(' ') || lead.email || 'Unknown'
   const initials = [lead.first_name?.[0], lead.last_name?.[0]].filter(Boolean).join('').toUpperCase() || '?'
-  const profileUrl = `${appUrl}/leads/${lead.contact_id}`
+  const profileUrl = `${appUrl}/contacts/${lead.contact_id}`
 
   const isHigh = lead.score >= 50
   const isMid  = lead.score >= 20 && lead.score < 50
@@ -186,7 +186,7 @@ export function buildAlertEmail(
   appUrl: string,
   extra?: { score?: number; formName?: string | null },
 ): { subject: string; html: string } {
-  const profileUrl = `${appUrl}/leads/${contactId}`
+  const profileUrl = `${appUrl}/contacts/${contactId}`
   const firstName = contactName.split(' ')[0]
 
   const content: Record<AlertEmailType, { subject: string; heading: string; body: string; cta: string }> = {

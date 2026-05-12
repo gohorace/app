@@ -2,12 +2,13 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Home, Users, Settings } from 'lucide-react'
+import { Eye, Users, Inbox, MoreHorizontal } from 'lucide-react'
 
 const TABS = [
-  { href: '/dashboard', label: 'Today',    icon: Home    },
-  { href: '/leads',     label: 'Contacts', icon: Users   },
-  { href: '/settings', label: 'Profile', icon: Settings },
+  { href: '/dashboard', label: 'Signals',  icon: Eye             },
+  { href: '/contacts',  label: 'Contacts', icon: Users           },
+  { href: '/digest',    label: 'Digest',   icon: Inbox           },
+  { href: '/settings',  label: 'More',     icon: MoreHorizontal  },
 ]
 
 export function MobileNav() {
@@ -30,7 +31,6 @@ export function MobileNav() {
       }}
     >
       {TABS.map(({ href, label, icon: Icon }) => {
-        // "Today" and "Signals" both map to /dashboard path area
         const isActive =
           href === '/dashboard'
             ? pathname === '/dashboard'

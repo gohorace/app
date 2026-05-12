@@ -233,7 +233,7 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
 
       {/* Back */}
       <Link
-        href="/leads"
+        href="/contacts"
         style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#8C7B6B', textDecoration: 'none', fontSize: '13px', marginBottom: '20px' }}
       >
         <ArrowLeft style={{ width: '14px', height: '14px' }} />

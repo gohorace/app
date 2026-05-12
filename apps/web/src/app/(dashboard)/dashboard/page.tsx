@@ -214,7 +214,7 @@ function SignalCard({ signal }: {
 
   return (
     <Link
-      href={`/leads/${signal.id}`}
+      href={`/contacts/${signal.id}`}
       style={{
         display: 'block',
         background: '#FAF7F2',

@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { Sidebar } from '@/components/dashboard/sidebar'
 import { MobileNav } from '@/components/dashboard/mobile-nav'
 import { requireActiveSubscription } from '@/lib/billing/gate'
@@ -29,16 +30,30 @@ export default async function DashboardLayout({ children }: { children: React.Re
     redirect('/signup')
   }
 
-  // Get workspace name + subscription state
+  // Get workspace name + subscription state (trial countdown reads current_period_end)
   const { data: workspace } = await supabase
     .from('workspaces')
-    .select('name, snippet_key, subscription_status')
+    .select('name, snippet_key, subscription_status, current_period_end')
     .eq('id', agent.workspace_id)
     .maybeSingle()
 
   requireActiveSubscription(workspace?.subscription_status)
 
   const workspaceName = workspace?.name ?? 'My Agency'
+
+  // High-intent signal count for the rail badge (admin client bypasses RLS for read-only count).
+  const admin = createAdminClient()
+  const { count: highSignalCount } = await admin
+    .from('contacts')
+    .select('*', { count: 'exact', head: true })
+    .eq('agent_id', agent.id)
+    .is('deleted_at', null)
+    .gte('score', 50)
+
+  const trialDaysLeft = computeTrialDaysLeft(
+    workspace?.subscription_status,
+    workspace?.current_period_end,
+  )
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
@@ -48,6 +63,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
           orgName={workspaceName}
           agentFirstName={agent.first_name}
           agentLastName={agent.last_name}
+          highSignalCount={highSignalCount ?? 0}
+          trialDaysLeft={trialDaysLeft}
         />
       </div>
 
@@ -62,4 +79,15 @@ export default async function DashboardLayout({ children }: { children: React.Re
       </div>
     </div>
   )
+}
+
+function computeTrialDaysLeft(
+  status: string | null | undefined,
+  currentPeriodEnd: string | null | undefined,
+): number | null {
+  if (status !== 'trialing' || !currentPeriodEnd) return null
+  const end = new Date(currentPeriodEnd).getTime()
+  if (Number.isNaN(end)) return null
+  const days = Math.ceil((end - Date.now()) / (1000 * 60 * 60 * 24))
+  return Math.max(0, days)
 }
