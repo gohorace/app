@@ -40,6 +40,13 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   const workspaceName = workspace?.name ?? 'My Agency'
 
+  const { count: unreadActivity } = await supabase
+    .from('notification_log')
+    .select('*', { count: 'exact', head: true })
+    .eq('agent_id', agent.id)
+    .is('read_at', null)
+    .not('title', 'is', null)
+
   return (
     <div className="flex h-screen overflow-hidden bg-background">
       {/* Desktop sidebar — hidden on mobile */}
@@ -48,6 +55,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           orgName={workspaceName}
           agentFirstName={agent.first_name}
           agentLastName={agent.last_name}
+          unreadActivity={unreadActivity ?? 0}
         />
       </div>
 
@@ -58,7 +66,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
       {/* Mobile bottom tab bar — hidden on desktop */}
       <div className="md:hidden">
-        <MobileNav />
+        <MobileNav unreadActivity={unreadActivity ?? 0} />
       </div>
     </div>
   )

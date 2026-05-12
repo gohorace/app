@@ -69,9 +69,21 @@ async function isRecentlySent(agentId: string, contactId: string | null, type: A
   return (count ?? 0) > 0
 }
 
-async function logAlert(agentId: string, contactId: string | null, type: AlertType): Promise<void> {
+async function logAlert(
+  agentId: string,
+  contactId: string | null,
+  type: AlertType,
+  display?: { title: string; body: string; url: string },
+): Promise<void> {
   const admin = createAdminClient()
-  await admin.from('notification_log').insert({ agent_id: agentId, contact_id: contactId, type })
+  await admin.from('notification_log').insert({
+    agent_id: agentId,
+    contact_id: contactId,
+    type,
+    title: display?.title ?? null,
+    body: display?.body ?? null,
+    url: display?.url ?? null,
+  })
 }
 
 async function pushToAgent(agentId: string, payload: PushPayload): Promise<void> {
@@ -150,7 +162,11 @@ async function dispatchPushAlert(args: {
   if (await isRecentlySent(agentId, contactId, type)) return
 
   await pushToAgent(agentId, payload)
-  await logAlert(agentId, contactId, type)
+  await logAlert(agentId, contactId, type, {
+    title: payload.title,
+    body: payload.body,
+    url: payload.url,
+  })
 
   const countAfter = await pushesInLast24h(agentId)
   if (countAfter > VOLUME_CAP_PER_24H) {

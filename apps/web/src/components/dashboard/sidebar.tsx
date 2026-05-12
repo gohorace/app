@@ -32,6 +32,7 @@ type NavItem = {
 const MAIN_NAV: NavItem[] = [
   { href: '/dashboard', label: 'Signals',  icon: Eye   },
   { href: '/leads',     label: 'Contacts', icon: Users },
+  { href: '/activity',  label: 'Activity', icon: Bell  },
 ]
 
 const SETTINGS_NAV: NavItem[] = [
@@ -50,9 +51,10 @@ interface SidebarProps {
   agentFirstName?: string | null
   agentLastName?: string | null
   agentEmail?: string | null
+  unreadActivity?: number
 }
 
-export function Sidebar({ orgName, agentFirstName, agentLastName, agentEmail }: SidebarProps) {
+export function Sidebar({ orgName, agentFirstName, agentLastName, unreadActivity = 0 }: SidebarProps) {
   const pathname = usePathname()
   const router   = useRouter()
 
@@ -145,9 +147,12 @@ export function Sidebar({ orgName, agentFirstName, agentLastName, agentEmail }: 
               Intelligence
             </p>
 
-            {MAIN_NAV.map(({ href, label, icon: Icon }) => (
-              <NavLink key={href} href={href} label={label} icon={Icon} active={isActive(href)} />
-            ))}
+            {MAIN_NAV.map(({ href, label, icon: Icon }) => {
+              const badge = href === '/activity' && unreadActivity > 0 ? unreadActivity : null
+              return (
+                <NavLink key={href} href={href} label={label} icon={Icon} active={isActive(href)} badge={badge} />
+              )
+            })}
           </>
         )}
       </nav>

@@ -2,15 +2,20 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Home, Users, Settings } from 'lucide-react'
+import { Home, Users, Bell, Settings } from 'lucide-react'
 
 const TABS = [
-  { href: '/dashboard', label: 'Today',    icon: Home    },
-  { href: '/leads',     label: 'Contacts', icon: Users   },
-  { href: '/settings', label: 'Profile', icon: Settings },
-]
+  { href: '/dashboard', label: 'Today',    icon: Home     },
+  { href: '/leads',     label: 'Contacts', icon: Users    },
+  { href: '/activity',  label: 'Activity', icon: Bell     },
+  { href: '/settings',  label: 'Profile',  icon: Settings },
+] as const
 
-export function MobileNav() {
+interface Props {
+  unreadActivity?: number
+}
+
+export function MobileNav({ unreadActivity = 0 }: Props) {
   const pathname = usePathname()
 
   return (
@@ -30,11 +35,11 @@ export function MobileNav() {
       }}
     >
       {TABS.map(({ href, label, icon: Icon }) => {
-        // "Today" and "Signals" both map to /dashboard path area
         const isActive =
           href === '/dashboard'
             ? pathname === '/dashboard'
             : pathname.startsWith(href)
+        const showBadge = href === '/activity' && unreadActivity > 0
 
         return (
           <Link
@@ -53,13 +58,36 @@ export function MobileNav() {
               transition: 'color 150ms',
             }}
           >
-            <Icon
-              style={{
-                width: '22px',
-                height: '22px',
-                strokeWidth: 1.5,
-              }}
-            />
+            <div style={{ position: 'relative', display: 'flex' }}>
+              <Icon
+                style={{
+                  width: '22px',
+                  height: '22px',
+                  strokeWidth: 1.5,
+                }}
+              />
+              {showBadge && (
+                <span
+                  style={{
+                    position: 'absolute',
+                    top: '-3px',
+                    right: '-6px',
+                    minWidth: '14px',
+                    height: '14px',
+                    padding: '0 4px',
+                    borderRadius: '9999px',
+                    background: '#C4622D',
+                    color: '#FAF7F2',
+                    fontSize: '9px',
+                    fontWeight: 700,
+                    lineHeight: '14px',
+                    textAlign: 'center',
+                  }}
+                >
+                  {unreadActivity > 99 ? '99+' : unreadActivity}
+                </span>
+              )}
+            </div>
             <span style={{
               fontSize: '10px',
               fontWeight: isActive ? 600 : 400,
