@@ -98,7 +98,6 @@ interface Props {
 const COL_FLEX = {
   name:     3,
   email:    2.5,
-  suburb:   1.5,
   intent:   1.5,
   lastPage: 2.5,
   sessions: 1,
@@ -108,7 +107,6 @@ const COL_FLEX = {
 const COL_MIN: Partial<Record<keyof typeof COL_FLEX, string>> = {
   name:     '160px',
   email:    '160px',
-  suburb:   '110px',
   intent:   '110px',
   lastPage: '160px',
   sessions: '70px',
@@ -287,7 +285,6 @@ export function ContactsGrid({ contacts, initialQ = '', agentId, defaultLinkUrl 
               {[
                 { label: 'Name',      key: 'name'     as const },
                 { label: 'Email',     key: 'email'    as const },
-                { label: 'Suburb',    key: 'suburb'   as const },
                 { label: 'Signal',    key: 'intent'   as const },
                 { label: 'Last page', key: 'lastPage' as const },
                 { label: 'Sessions',  key: 'sessions' as const },
@@ -423,23 +420,6 @@ export function ContactsGrid({ contacts, initialQ = '', agentId, defaultLinkUrl 
                     <span style={{ fontSize: '12.5px', color: '#5A4D40', fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>
                       {contact.email ?? '—'}
                     </span>
-                  </div>
-
-                  {/* Suburb */}
-                  <div style={{ flex: COL_FLEX.suburb, minWidth: 0, paddingRight: '12px', overflow: 'hidden' }}>
-                    {contact.suburb ? (
-                      <span style={{
-                        display: 'inline-flex', alignItems: 'center', gap: '4px',
-                        padding: '2px 8px', borderRadius: '4px',
-                        background: 'rgba(140,123,107,0.1)',
-                        fontSize: '11.5px', fontWeight: 500, color: '#1A1612',
-                        overflow: 'hidden', maxWidth: '100%',
-                      }}>
-                        {contact.suburb}
-                      </span>
-                    ) : (
-                      <span style={{ fontSize: '12px', color: 'rgba(140,123,107,0.4)' }}>—</span>
-                    )}
                   </div>
 
                   {/* Intent */}
