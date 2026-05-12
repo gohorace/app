@@ -138,12 +138,11 @@ export async function sendScoreThresholdAlert(
   if (!(scoreBefore < threshold && scoreAfter >= threshold)) return
   if (await isRecentlySent(agentId, contactId, 'alert_score_threshold')) return
 
-  const score = scoreAfter
   const firstName = contactName.split(' ')[0]
   await Promise.all([
     pushToAgent(agentId, {
-      title: "Something's stirring.",
-      body: `${firstName} just crossed your threshold. Might be worth a call.`,
+      title: `${firstName} is gathering momentum`,
+      body: `Horace's been watching ${firstName} — the signal just got stronger. Worth a look.`,
       url: `/leads/${contactId}`,
       tag: `score-${contactId}`,
     }),
@@ -162,10 +161,13 @@ export async function sendFormSubmitAlert(
   if (await isRecentlySent(agentId, contactId, 'alert_form_submit')) return
 
   const firstName = contactName.split(' ')[0]
+  const title = formName
+    ? `${firstName} just submitted "${formName}"`
+    : `${firstName} just got in touch`
   await Promise.all([
     pushToAgent(agentId, {
-      title: 'They raised their hand.',
-      body: `${firstName} just submitted${formName ? ` "${formName}"` : ' a form'}. Worth a follow-up now.`,
+      title,
+      body: `Horace has ${firstName}'s details now. Worth a call while it's warm.`,
       url: `/leads/${contactId}`,
       tag: `form-${contactId}`,
     }),
@@ -185,8 +187,8 @@ export async function sendReturnVisitAlert(
   const firstName = contactName.split(' ')[0]
   await Promise.all([
     pushToAgent(agentId, {
-      title: "Something's stirring.",
-      body: `${firstName}'s back on your site. Might be worth a call.`,
+      title: `${firstName} is back on your site`,
+      body: `Horace just spotted ${firstName} returning. Worth a quick hello.`,
       url: `/leads/${contactId}`,
       tag: `return-${contactId}`,
     }),

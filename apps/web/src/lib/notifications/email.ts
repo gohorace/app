@@ -245,10 +245,17 @@ export function buildDailyBriefingEmail(
       ? `Your daily brief — 1 contact worth your attention`
       : `Your daily brief — ${leads.length} contacts worth your attention`
 
+  const signOff = `
+    <div style="margin-top:24px;padding-top:20px;border-top:1px solid ${T.border};">
+      <p style="margin:0;font-size:13px;color:${T.charcoal};line-height:1.6;font-style:italic;">Seize the moment — Horace</p>
+    </div>
+  `
+
   const emptyState = `
     <p style="margin:0 0 24px;font-size:14px;color:${T.stone};line-height:1.6;font-style:italic;">
       &ldquo;${narrative}&rdquo;
     </p>
+    ${signOff}
   `
 
   const leadsBody = leads.length === 0 ? emptyState : `
@@ -270,6 +277,7 @@ export function buildDailyBriefingEmail(
         Open Horace →
       </a>
     </div>
+    ${signOff}
     <div style="height:20px;"></div>
   `
 
@@ -277,7 +285,7 @@ export function buildDailyBriefingEmail(
     <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
       <tr>
         <td style="font-size:11px;color:${T.stone};">
-          Daily brief for ${agentFirst} · Seize the moment.
+          Daily brief for ${agentFirst}
         </td>
         <td align="right" style="font-size:11px;">
           <a href="${appUrl}/settings/notifications" style="color:${T.stone};text-decoration:none;border-bottom:1px solid ${T.border};">Manage preferences</a>
@@ -305,10 +313,17 @@ export function buildWeeklyBriefingEmail(
       ? `Your weekly brief — 1 contact to act on`
       : `Your weekly brief — ${leads.length} contacts to act on`
 
+  const signOff = `
+    <div style="margin-top:24px;padding-top:20px;border-top:1px solid ${T.border};">
+      <p style="margin:0;font-size:13px;color:${T.charcoal};line-height:1.6;font-style:italic;">Seize the moment — Horace</p>
+    </div>
+  `
+
   const leadsBody = leads.length === 0 ? `
     <p style="margin:0 0 24px;font-size:14px;color:${T.stone};line-height:1.6;font-style:italic;">
       &ldquo;${narrative}&rdquo;
     </p>
+    ${signOff}
   ` : `
     <!-- Narrative intro -->
     <p style="margin:0 0 24px;font-size:14px;color:${T.charcoal};line-height:1.65;font-style:italic;border-left:3px solid ${T.terracotta};padding-left:14px;">
@@ -327,6 +342,7 @@ export function buildWeeklyBriefingEmail(
         Open Horace →
       </a>
     </div>
+    ${signOff}
     <div style="height:20px;"></div>
   `
 
@@ -334,7 +350,7 @@ export function buildWeeklyBriefingEmail(
     <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
       <tr>
         <td style="font-size:11px;color:${T.stone};">
-          Weekly brief for ${agentFirst} · Seize the moment.
+          Weekly brief for ${agentFirst}
         </td>
         <td align="right" style="font-size:11px;">
           <a href="${appUrl}/settings/notifications" style="color:${T.stone};text-decoration:none;border-bottom:1px solid ${T.border};">Manage preferences</a>
@@ -417,10 +433,6 @@ export function buildMagicLinkEmail(args: {
 }): { subject: string; html: string } {
   let { subject, heading, body, cta } = MAGIC_COPY[args.action] ?? MAGIC_COPY.magiclink
 
-  // HOR-103: when invite context is present, interpolate inviter/workspace/role
-  // and adopt the operational voice from HOR-93 (sign as "— The Horace team").
-  // No context = unchanged generic copy (Supabase Auth webhook path).
-  const isContextualInvite = args.action === 'invite' && Boolean(args.inviteContext)
   let preheader = ''
 
   if (args.action === 'invite' && args.inviteContext) {
@@ -438,9 +450,8 @@ export function buildMagicLinkEmail(args: {
     ? `<div style="display:none;font-size:1px;color:#fff;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">${preheader}</div>`
     : ''
 
-  const signOffHtml = isContextualInvite
-    ? `<p style="margin:24px 0 0;font-size:13px;color:${T.charcoal};line-height:1.6;">— The Horace team</p>`
-    : ''
+  // Auth emails are operational — always sign as the team, never as Horace.
+  const signOffHtml = `<p style="margin:24px 0 0;font-size:13px;color:${T.charcoal};line-height:1.6;">— The Horace team</p>`
 
   const bodyContent = `
     ${preheaderHtml}
