@@ -21,7 +21,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // Get agent record for this user (includes workspace_id)
   const { data: agent } = await supabase
     .from('agents')
-    .select('id, workspace_id, first_name, last_name')
+    .select('id, workspace_id, first_name, last_name, avatar_url')
     .eq('user_id', user.id)
     .maybeSingle()
 
@@ -63,6 +63,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           orgName={workspaceName}
           agentFirstName={agent.first_name}
           agentLastName={agent.last_name}
+          avatarUrl={agent.avatar_url}
           highSignalCount={highSignalCount ?? 0}
           trialDaysLeft={trialDaysLeft}
         />
