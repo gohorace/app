@@ -125,7 +125,7 @@ export async function POST(request: NextRequest) {
 
   const from = process.env.RESEND_AUTH_FROM_EMAIL
     ?? process.env.RESEND_FROM_EMAIL
-    ?? 'Horace <auth@gohorace.com>'
+    ?? 'The Horace team <auth@gohorace.com>'
 
   const resend = new Resend(apiKey)
   const { error } = await resend.emails.send({
