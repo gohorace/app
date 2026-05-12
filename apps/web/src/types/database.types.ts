@@ -344,9 +344,9 @@ export type Database = {
         ]
       }
       notification_log: {
-        Row: { id: string; agent_id: string; contact_id: string | null; type: 'sms_threshold' | 'sms_form' | 'sms_return' | 'email_briefing' | 'email_daily_brief' | 'alert_threshold' | 'alert_form' | 'alert_return' | 'alert_score_threshold' | 'alert_form_submit' | 'alert_return_visit'; sent_at: string }
-        Insert: { id?: string; agent_id: string; contact_id?: string | null; type: 'sms_threshold' | 'sms_form' | 'sms_return' | 'email_briefing' | 'email_daily_brief' | 'alert_threshold' | 'alert_form' | 'alert_return' | 'alert_score_threshold' | 'alert_form_submit' | 'alert_return_visit'; sent_at?: string }
-        Update: { id?: string; agent_id?: string; contact_id?: string | null; type?: 'sms_threshold' | 'sms_form' | 'sms_return' | 'email_briefing' | 'email_daily_brief' | 'alert_threshold' | 'alert_form' | 'alert_return' | 'alert_score_threshold' | 'alert_form_submit' | 'alert_return_visit'; sent_at?: string }
+        Row: { id: string; agent_id: string; contact_id: string | null; type: 'sms_threshold' | 'sms_form' | 'sms_return' | 'email_briefing' | 'email_daily_brief' | 'alert_threshold' | 'alert_form' | 'alert_return' | 'alert_score_threshold' | 'alert_form_submit' | 'alert_return_visit' | 'volume_review'; sent_at: string }
+        Insert: { id?: string; agent_id: string; contact_id?: string | null; type: 'sms_threshold' | 'sms_form' | 'sms_return' | 'email_briefing' | 'email_daily_brief' | 'alert_threshold' | 'alert_form' | 'alert_return' | 'alert_score_threshold' | 'alert_form_submit' | 'alert_return_visit' | 'volume_review'; sent_at?: string }
+        Update: { id?: string; agent_id?: string; contact_id?: string | null; type?: 'sms_threshold' | 'sms_form' | 'sms_return' | 'email_briefing' | 'email_daily_brief' | 'alert_threshold' | 'alert_form' | 'alert_return' | 'alert_score_threshold' | 'alert_form_submit' | 'alert_return_visit' | 'volume_review'; sent_at?: string }
         Relationships: [
           { foreignKeyName: 'notification_log_agent_id_fkey'; columns: ['agent_id']; isOneToOne: false; referencedRelation: 'agents'; referencedColumns: ['id'] }
         ]
