@@ -1,19 +1,23 @@
 'use client'
 
+import { useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ChevronRight, Bell, Code, BarChart2, Key, LogOut, Building2, Link2, Inbox } from 'lucide-react'
+import { ChevronRight, Bell, Code, BarChart2, Key, LogOut, Building2, Link2, Inbox, Users, Camera, Loader2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { InstallPrompt } from './install-prompt'
 
 interface ProfileSettingsProps {
+  agentId: string | null
   firstName: string | null
   lastName: string | null
   email: string | null
+  avatarUrl: string | null
   workspaceName: string
 }
 
 const NAV_ITEMS = [
+  { href: '/settings/team',           label: 'Team',               icon: Users,     desc: 'Invite teammates, manage roles' },
   { href: '/settings/notifications',  label: 'Alerts & briefing',  icon: Bell,      desc: 'Push notifications, daily email' },
   { href: '/settings/portal',         label: 'Portal address',     icon: Inbox,     desc: 'Your inbound email for REA / Domain enquiries' },
   { href: '/settings/tracked-links',  label: 'Tracked links',      icon: Link2,     desc: 'Per-contact links + default destination' },
@@ -22,8 +26,11 @@ const NAV_ITEMS = [
   { href: '/settings/api-tokens',     label: 'API & integrations', icon: Key,       desc: 'Tokens for MCP and outreach' },
 ]
 
-export function ProfileSettings({ firstName, lastName, email, workspaceName }: ProfileSettingsProps) {
+export function ProfileSettings({ agentId, firstName, lastName, email, avatarUrl, workspaceName }: ProfileSettingsProps) {
   const router = useRouter()
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
 
   const initials = [firstName?.[0], lastName?.[0]].filter(Boolean).join('').toUpperCase() || '?'
   const fullName = [firstName, lastName].filter(Boolean).join(' ') || 'Your profile'
@@ -33,6 +40,51 @@ export function ProfileSettings({ firstName, lastName, email, workspaceName }: P
     await supabase.auth.signOut()
     router.push('/login')
     router.refresh()
+  }
+
+  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file || !agentId) return
+
+    if (!file.type.startsWith('image/')) {
+      setUploadError('Please choose an image file.')
+      return
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setUploadError('Image must be under 5MB.')
+      return
+    }
+
+    setUploadError(null)
+    setUploading(true)
+    try {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error('Not signed in')
+
+      const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg'
+      const path = `${user.id}/${Date.now()}.${ext}`
+
+      const { error: uploadErr } = await supabase.storage
+        .from('avatars')
+        .upload(path, file, { cacheControl: '3600', upsert: false, contentType: file.type })
+      if (uploadErr) throw uploadErr
+
+      const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(path)
+
+      const { error: updateErr } = await supabase
+        .from('agents')
+        .update({ avatar_url: publicUrl })
+        .eq('id', agentId)
+      if (updateErr) throw updateErr
+
+      router.refresh()
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : 'Upload failed')
+    } finally {
+      setUploading(false)
+    }
   }
 
   return (
@@ -48,27 +100,68 @@ export function ProfileSettings({ firstName, lastName, email, workspaceName }: P
         alignItems: 'center',
         gap: '14px',
       }}>
-        {/* Avatar */}
-        <div style={{
-          width: '52px',
-          height: '52px',
-          borderRadius: '50%',
-          background: '#C4622D',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          flexShrink: 0,
-        }}>
-          <span style={{
-            fontSize: '18px',
-            fontWeight: 600,
-            color: '#FAF7F2',
-            fontFamily: 'var(--font-display)',
-            letterSpacing: '-0.01em',
-          }}>
-            {initials}
-          </span>
-        </div>
+        {/* Avatar (click to upload) */}
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={uploading || !agentId}
+          aria-label="Change profile photo"
+          style={{
+            position: 'relative',
+            width: '52px',
+            height: '52px',
+            borderRadius: '50%',
+            background: avatarUrl ? '#FAF7F2' : '#C4622D',
+            backgroundImage: avatarUrl ? `url(${avatarUrl})` : undefined,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+            border: 'none',
+            padding: 0,
+            cursor: agentId && !uploading ? 'pointer' : 'default',
+          }}
+        >
+          {!avatarUrl && !uploading && (
+            <span style={{
+              fontSize: '18px',
+              fontWeight: 600,
+              color: '#FAF7F2',
+              fontFamily: 'var(--font-display)',
+              letterSpacing: '-0.01em',
+            }}>
+              {initials}
+            </span>
+          )}
+          {uploading ? (
+            <div style={{
+              position: 'absolute', inset: 0, borderRadius: '50%',
+              background: 'rgba(26,22,18,0.5)', display: 'flex',
+              alignItems: 'center', justifyContent: 'center',
+            }}>
+              <Loader2 style={{ width: '18px', height: '18px', color: '#FAF7F2' }} className="animate-spin" />
+            </div>
+          ) : (
+            <div style={{
+              position: 'absolute', right: '-2px', bottom: '-2px',
+              width: '20px', height: '20px', borderRadius: '50%',
+              background: '#1A1612', display: 'flex',
+              alignItems: 'center', justifyContent: 'center',
+              border: '2px solid #FAF7F2',
+            }}>
+              <Camera style={{ width: '10px', height: '10px', color: '#FAF7F2' }} />
+            </div>
+          )}
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          onChange={handleFile}
+          style={{ display: 'none' }}
+        />
 
         <div style={{ minWidth: 0 }}>
           <p style={{ fontSize: '16px', fontWeight: 600, color: '#1A1612', lineHeight: 1.2 }}>
@@ -83,6 +176,11 @@ export function ProfileSettings({ firstName, lastName, email, workspaceName }: P
             <Building2 style={{ width: '11px', height: '11px', color: '#8C7B6B' }} />
             <span style={{ fontSize: '11px', color: '#8C7B6B' }}>{workspaceName}</span>
           </div>
+          {uploadError && (
+            <p style={{ fontSize: '11px', color: '#C4622D', marginTop: '4px' }}>
+              {uploadError}
+            </p>
+          )}
         </div>
       </div>
 
