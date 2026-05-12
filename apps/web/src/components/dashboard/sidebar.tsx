@@ -40,6 +40,7 @@ interface SidebarProps {
   orgName: string
   agentFirstName?: string | null
   agentLastName?: string | null
+  avatarUrl?: string | null
   highSignalCount?: number
   trialDaysLeft?: number | null
 }
@@ -48,6 +49,7 @@ export function Sidebar({
   orgName,
   agentFirstName,
   agentLastName,
+  avatarUrl,
   highSignalCount = 0,
   trialDaysLeft = null,
 }: SidebarProps) {
@@ -121,25 +123,30 @@ export function Sidebar({
               width: '28px',
               height: '28px',
               borderRadius: '50%',
-              background: 'rgba(196,98,45,0.18)',
+              background: avatarUrl ? 'transparent' : 'rgba(196,98,45,0.18)',
+              backgroundImage: avatarUrl ? `url(${avatarUrl})` : undefined,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               flexShrink: 0,
             }}
           >
-            <span
-              style={{
-                fontSize: '11px',
-                fontWeight: 600,
-                color: '#C4622D',
-                fontFamily: 'var(--font-display)',
-                letterSpacing: '-0.01em',
-                lineHeight: 1,
-              }}
-            >
-              {initials}
-            </span>
+            {!avatarUrl && (
+              <span
+                style={{
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  color: '#C4622D',
+                  fontFamily: 'var(--font-display)',
+                  letterSpacing: '-0.01em',
+                  lineHeight: 1,
+                }}
+              >
+                {initials}
+              </span>
+            )}
           </div>
 
           {/* Name + trial countdown */}
