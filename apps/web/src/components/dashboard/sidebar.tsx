@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import {
   Eye,
   Users,
+  Home,
   Bell,
   Code,
   BarChart2,
@@ -30,8 +31,9 @@ type NavItem = {
 // ── Nav definitions ───────────────────────────────────────────────────────────
 
 const MAIN_NAV: NavItem[] = [
-  { href: '/dashboard', label: 'Signals',  icon: Eye   },
-  { href: '/leads',     label: 'Contacts', icon: Users },
+  { href: '/dashboard',      label: 'Signals',    icon: Eye   },
+  { href: '/leads',          label: 'Contacts',   icon: Users },
+  { href: '/properties/new', label: 'Properties', icon: Home  },
 ]
 
 const SETTINGS_NAV: NavItem[] = [
