@@ -143,7 +143,7 @@ export async function sendScoreThresholdAlert(
     pushToAgent(agentId, {
       title: `${firstName} is gathering momentum`,
       body: `Horace's been watching ${firstName} — the signal just got stronger. Worth a look.`,
-      url: `/leads/${contactId}`,
+      url: `/contacts/${contactId}`,
       tag: `score-${contactId}`,
     }),
     emailAgent(agentId, 'score_threshold', contactName, contactId, { score: scoreAfter }),
@@ -168,7 +168,7 @@ export async function sendFormSubmitAlert(
     pushToAgent(agentId, {
       title,
       body: `Horace has ${firstName}'s details now. Worth a call while it's warm.`,
-      url: `/leads/${contactId}`,
+      url: `/contacts/${contactId}`,
       tag: `form-${contactId}`,
     }),
     emailAgent(agentId, 'form_submit', contactName, contactId, { formName }),
@@ -189,7 +189,7 @@ export async function sendReturnVisitAlert(
     pushToAgent(agentId, {
       title: `${firstName} is back on your site`,
       body: `Horace just spotted ${firstName} returning. Worth a quick hello.`,
-      url: `/leads/${contactId}`,
+      url: `/contacts/${contactId}`,
       tag: `return-${contactId}`,
     }),
     emailAgent(agentId, 'return_visit', contactName, contactId),
