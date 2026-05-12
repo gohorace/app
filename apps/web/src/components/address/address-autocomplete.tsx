@@ -21,7 +21,7 @@ interface Props {
   countryBias?: string
   /** Optional placeholder; defaults to "Start typing an address…". */
   placeholder?: string
-  /** Optional id for input-label association in tests. */
+  /** Optional id for testing. */
   id?: string
 }
 
@@ -30,16 +30,20 @@ const API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
 /**
  * Reusable Google Places autocomplete + manual structured-field fallback.
  *
- * Behaviour:
- *   - Renders a single input bound to a Google Places Autocomplete widget.
- *   - On Place selection: parses components, lat/lng, place_id → calls onChange.
- *   - "Edit manually" link expands the structured fields below the input
- *     for manual entry / correction.
- *   - If the Google API fails to load OR `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`
- *     is unset, structured fields are shown by default with a small note.
- *   - Manual edits of any structured field after a Google selection clear
- *     `google_place_id` / `latitude` / `longitude` on the next emit — the
- *     typed address has diverged from Google's notion of the place.
+ * Uses Google's new `PlaceAutocompleteElement` Web Component (Places API
+ * (New)). The legacy `google.maps.places.Autocomplete` widget is blocked
+ * for GCP projects created after 2025-03-01 — calls return
+ * ApiNotActivatedMapError even when the legacy Places API is enabled — so
+ * we cannot use it. The new element renders its own input; we mount it
+ * inside our container div rather than binding to our own <input>.
+ *
+ * Behaviour matches the original:
+ *   - Renders an autocomplete input (Google's element).
+ *   - On selection → fetches Place fields and emits SelectedAddress via onChange.
+ *   - "Edit manually" toggle expands structured fields for manual entry.
+ *   - Manual edits after a Google selection clear google_place_id / lat / lng.
+ *   - Graceful degradation when API key is missing OR load fails — manual
+ *     fields shown by default with a small note.
  */
 export function AddressAutocomplete({
   label,
@@ -50,9 +54,9 @@ export function AddressAutocomplete({
   id: idProp,
 }: Props) {
   const autoId = useId()
-  const inputId = idProp ?? `addr-${autoId}`
-  const inputRef = useRef<HTMLInputElement>(null)
-  const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null)
+  const elementHostId = idProp ?? `addr-${autoId}`
+  const hostRef = useRef<HTMLDivElement>(null)
+  const elementRef = useRef<HTMLElement | null>(null)
   const onChangeRef = useRef(onChange)
   onChangeRef.current = onChange
 
@@ -60,20 +64,12 @@ export function AddressAutocomplete({
   const [showManual, setShowManual] = useState<boolean>(!API_KEY)
   const [current, setCurrent] = useState<SelectedAddress | null>(defaultValue)
 
-  // Seed input value from defaultValue on mount.
+  // Load the Places library + mount the PlaceAutocompleteElement.
   useEffect(() => {
-    if (inputRef.current && defaultValue?.formatted) {
-      inputRef.current.value = defaultValue.formatted
-    }
-    // We intentionally only seed once on mount.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  // Load Google Maps JS and wire up the Autocomplete widget.
-  useEffect(() => {
-    if (!API_KEY || !inputRef.current) return
+    if (!API_KEY || !hostRef.current) return
 
     let cancelled = false
+
     const loader = new Loader({
       apiKey: API_KEY,
       libraries: ['places'],
@@ -82,71 +78,103 @@ export function AddressAutocomplete({
 
     loader
       .load()
-      .then((google) => {
-        if (cancelled || !inputRef.current) return
+      .then(async (google) => {
+        if (cancelled || !hostRef.current) return
 
-        const ac = new google.maps.places.Autocomplete(inputRef.current, {
-          componentRestrictions: countryBias
-            ? { country: countryBias.toLowerCase() }
-            : undefined,
-          fields: [
-            'place_id',
-            'address_components',
-            'geometry.location',
-            'formatted_address',
-          ],
-          types: ['address'],
+        // The PlaceAutocompleteElement constructor lives on places.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const placesNs = (google.maps as any).places
+        if (!placesNs?.PlaceAutocompleteElement) {
+          // Library loaded but the new element constructor isn't present.
+          // Most likely cause: Places API (New) isn't enabled on this key.
+          setAvailable(false)
+          setShowManual(true)
+          return
+        }
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const el = new placesNs.PlaceAutocompleteElement({
+          includedRegionCodes: countryBias ? [countryBias.toLowerCase()] : undefined,
+        }) as HTMLElement
+
+        el.id = elementHostId
+        el.setAttribute('placeholder', placeholder)
+        el.style.width = '100%'
+
+        // Preserve a seeded value, if any, by setting the inner input's value
+        // once the element's shadow DOM has wired up.
+        if (defaultValue?.formatted) {
+          queueMicrotask(() => {
+            const input = el.querySelector('input') as HTMLInputElement | null
+            if (input) input.value = defaultValue.formatted ?? ''
+          })
+        }
+
+        // Selection event from the new element. The payload is a prediction
+        // — convert to a Place and fetch the fields we need.
+        el.addEventListener('gmp-select', async (rawEvent: Event) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const event = rawEvent as any
+          const prediction = event.placePrediction
+          if (!prediction) return
+
+          try {
+            const place = prediction.toPlace()
+            await place.fetchFields({
+              fields: ['id', 'formattedAddress', 'location', 'addressComponents'],
+            })
+
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const components: Array<any> = place.addressComponents ?? []
+            const pick = (type: string, short = false): string | null => {
+              const c = components.find((x) => x.types.includes(type))
+              return c ? (short ? (c.shortText ?? null) : (c.longText ?? null)) : null
+            }
+
+            const lat = typeof place.location?.lat === 'function'
+              ? place.location.lat()
+              : (place.location?.lat ?? null)
+            const lng = typeof place.location?.lng === 'function'
+              ? place.location.lng()
+              : (place.location?.lng ?? null)
+
+            const next: SelectedAddress = {
+              google_place_id: place.id ?? null,
+              latitude:        typeof lat === 'number' ? lat : null,
+              longitude:       typeof lng === 'number' ? lng : null,
+              street_number:   pick('street_number'),
+              street_name:     pick('route'),
+              suburb:          pick('locality') ?? pick('sublocality_level_1') ?? pick('postal_town'),
+              state:           pick('administrative_area_level_1', true),
+              postcode:        pick('postal_code'),
+              formatted:       place.formattedAddress ?? null,
+            }
+
+            setCurrent(next)
+            setShowManual(false)
+            onChangeRef.current(next)
+          } catch (err) {
+            console.error('[AddressAutocomplete] Place fetch failed', err)
+          }
         })
 
-        ac.addListener('place_changed', () => {
-          const place = ac.getPlace()
-          if (!place || !place.address_components) {
-            // Place lookup didn't return enough — surface manual fields.
-            setShowManual(true)
-            return
-          }
-
-          const components = place.address_components
-          const pick = (type: string, short = false): string | null => {
-            const c = components.find((x) => x.types.includes(type))
-            return c ? (short ? c.short_name : c.long_name) : null
-          }
-
-          const next: SelectedAddress = {
-            google_place_id: place.place_id ?? null,
-            latitude: place.geometry?.location?.lat() ?? null,
-            longitude: place.geometry?.location?.lng() ?? null,
-            street_number: pick('street_number'),
-            street_name: pick('route'),
-            suburb: pick('locality') ?? pick('sublocality_level_1') ?? pick('postal_town'),
-            state: pick('administrative_area_level_1', true),
-            postcode: pick('postal_code'),
-            formatted: place.formatted_address ?? null,
-          }
-
-          if (inputRef.current && next.formatted) {
-            inputRef.current.value = next.formatted
-          }
-
-          setCurrent(next)
-          setShowManual(false)
-          onChangeRef.current(next)
-        })
-
-        autocompleteRef.current = ac
+        hostRef.current.replaceChildren(el)
+        elementRef.current = el
         setAvailable(true)
       })
-      .catch(() => {
+      .catch((err) => {
         if (cancelled) return
-        // Network / quota / load failure → silently degrade to manual.
+        console.warn('[AddressAutocomplete] Google Places failed to load:', err)
         setAvailable(false)
         setShowManual(true)
       })
 
     return () => {
       cancelled = true
+      elementRef.current?.remove()
+      elementRef.current = null
     }
-  }, [countryBias])
+  }, [countryBias, elementHostId, placeholder, defaultValue?.formatted])
 
   // Manual-field edit: update structured field, clear Google fields.
   const updateField = useCallback(
@@ -156,16 +184,12 @@ export function AddressAutocomplete({
         const next: SelectedAddress = {
           ...base,
           [key]: value.trim() === '' ? null : value,
-          // Any manual edit invalidates the prior Google selection — the
-          // typed address has diverged from the place we previously got.
+          // Any manual edit invalidates the prior Google selection.
           google_place_id: null,
-          latitude: null,
-          longitude: null,
+          latitude:        null,
+          longitude:       null,
         }
         next.formatted = formatAddressLine(next)
-        // Reflect the freshly-composed line in the visible input.
-        if (inputRef.current) inputRef.current.value = next.formatted
-        // Emit (or emit null when everything has been cleared).
         onChangeRef.current(isAddressEmpty(next) ? null : next)
         return next
       })
@@ -175,10 +199,12 @@ export function AddressAutocomplete({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-      <label htmlFor={inputId} style={labelStyle}>
+      <label htmlFor={elementHostId} style={labelStyle}>
         {label}
       </label>
 
+      {/* Host for the Google PlaceAutocompleteElement. The element manages
+          its own internal input + dropdown; we just provide a placement. */}
       <div style={{ position: 'relative' }}>
         <MapPin
           aria-hidden
@@ -190,19 +216,13 @@ export function AddressAutocomplete({
             width: 14,
             height: 14,
             opacity: 0.55,
+            zIndex: 1,
+            pointerEvents: 'none',
           }}
         />
-        <input
-          id={inputId}
-          ref={inputRef}
-          type="text"
-          placeholder={placeholder}
-          autoComplete="off"
-          style={{ ...inputStyle, paddingLeft: 30 }}
-        />
+        <div ref={hostRef} style={hostStyle} />
       </div>
 
-      {/* Confirmation line + manual toggle */}
       {current?.formatted && !showManual && (
         <div style={confirmStyle}>{current.formatted}</div>
       )}
@@ -287,8 +307,7 @@ function ManualField({ label, value, onChange, width, autoComplete }: ManualFiel
   )
 }
 
-// --- Inline styles (matching the inline-style pattern used elsewhere
-// in apps/web/src/components/contacts and /onboarding) ----------------------
+// --- Inline styles ---------------------------------------------------------
 
 const labelStyle: React.CSSProperties = {
   fontSize: '11px',
@@ -299,16 +318,8 @@ const labelStyle: React.CSSProperties = {
   fontFamily: 'var(--font-body)',
 }
 
-const inputStyle: React.CSSProperties = {
+const hostStyle: React.CSSProperties = {
   width: '100%',
-  padding: '10px 12px',
-  fontSize: '14px',
-  fontFamily: 'var(--font-body)',
-  color: '#1A1612',
-  background: '#FAF7F2',
-  border: '1px solid rgba(140,123,107,0.35)',
-  borderRadius: '7px',
-  outline: 'none',
 }
 
 const confirmStyle: React.CSSProperties = {
