@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ChevronRight, Bell, Code, BarChart2, Key, LogOut, Building2, Link2, Inbox } from 'lucide-react'
+import { ChevronRight, Bell, Code, BarChart2, Key, LogOut, Building2, Link2, Inbox, Users } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { InstallPrompt } from './install-prompt'
 
@@ -14,6 +14,7 @@ interface ProfileSettingsProps {
 }
 
 const NAV_ITEMS = [
+  { href: '/settings/team',           label: 'Team',               icon: Users,     desc: 'Invite teammates, manage roles' },
   { href: '/settings/notifications',  label: 'Alerts & briefing',  icon: Bell,      desc: 'Push notifications, daily email' },
   { href: '/settings/portal',         label: 'Portal address',     icon: Inbox,     desc: 'Your inbound email for REA / Domain enquiries' },
   { href: '/settings/tracked-links',  label: 'Tracked links',      icon: Link2,     desc: 'Per-contact links + default destination' },
