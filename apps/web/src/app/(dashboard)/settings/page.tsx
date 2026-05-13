@@ -9,7 +9,7 @@ export default async function SettingsPage() {
   const admin = createAdminClient()
   const { data: agent } = await admin
     .from('agents')
-    .select('id, first_name, last_name, workspace_id')
+    .select('id, first_name, last_name, workspace_id, avatar_url')
     .eq('user_id', user!.id)
     .maybeSingle()
 
@@ -24,9 +24,11 @@ export default async function SettingsPage() {
   return (
     <div className="flex-1 overflow-y-auto pb-20 md:pb-0">
       <ProfileSettings
+        agentId={agent?.id ?? null}
         firstName={agent?.first_name ?? null}
         lastName={agent?.last_name ?? null}
         email={user?.email ?? null}
+        avatarUrl={agent?.avatar_url ?? null}
         workspaceName={workspace?.name ?? 'My Agency'}
       />
     </div>

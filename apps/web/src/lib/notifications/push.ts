@@ -183,7 +183,7 @@ export async function sendScoreThresholdAlert(
     payload: {
       title: `${firstName} is gathering momentum`,
       body: `Horace's been watching ${firstName} — the signal just got stronger. Worth a look.`,
-      url: `/leads/${contactId}`,
+      url: `/contacts/${contactId}`,
       tag: `score-${contactId}`,
     },
   })
@@ -206,7 +206,7 @@ export async function sendFormSubmitAlert(
     payload: {
       title,
       body: `Horace has ${firstName}'s details now. Worth a call while it's warm.`,
-      url: `/leads/${contactId}`,
+      url: `/contacts/${contactId}`,
       tag: `form-${contactId}`,
     },
   })
@@ -225,7 +225,7 @@ export async function sendReturnVisitAlert(
     payload: {
       title: `${firstName} is back on your site`,
       body: `Horace just spotted ${firstName} returning. Worth a quick hello.`,
-      url: `/leads/${contactId}`,
+      url: `/contacts/${contactId}`,
       tag: `return-${contactId}`,
     },
   })
