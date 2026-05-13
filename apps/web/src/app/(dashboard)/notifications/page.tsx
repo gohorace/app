@@ -1,40 +1,41 @@
-import { Bell } from 'lucide-react'
+import { redirect } from 'next/navigation'
+import { createClient } from '@/lib/supabase/server'
+import { NotificationsList } from '@/components/dashboard/notifications-list'
 
 export const dynamic = 'force-dynamic'
 
-// HOR-123 — V1 stub. Will become the dispatcher view that surfaces every
-// Worth-watching? + Newly-known prompt in one place. The dispatcher itself
-// is deferred (see HOR-122 deferred list).
-export default function NotificationsPage() {
+const PAGE_SIZE = 30
+
+export default async function NotificationsPage() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/login')
+
+  const { data: agent } = await supabase
+    .from('agents')
+    .select('id')
+    .eq('user_id', user.id)
+    .maybeSingle()
+  if (!agent) redirect('/signup')
+
+  const { data: items } = await supabase
+    .from('notification_log')
+    .select('id, type, contact_id, title, body, url, sent_at, read_at')
+    .eq('agent_id', agent.id)
+    .not('title', 'is', null)
+    .order('sent_at', { ascending: false })
+    .limit(PAGE_SIZE + 1)
+
+  const hasMore = (items?.length ?? 0) > PAGE_SIZE
+  const initialItems = hasMore ? items!.slice(0, PAGE_SIZE) : (items ?? [])
+  const initialCursor = hasMore ? initialItems[initialItems.length - 1].sent_at : null
+
   return (
-    <div className="flex-1 overflow-y-auto pb-20 md:pb-0">
-      <div className="p-4 md:p-8 max-w-3xl">
-        <div
-          className="flex flex-col items-start gap-3 rounded-xl border p-6"
-          style={{
-            background: '#FAF7F2',
-            borderColor: 'rgba(140,123,107,0.2)',
-          }}
-        >
-          <div
-            className="flex h-10 w-10 items-center justify-center rounded-lg"
-            style={{ background: 'rgba(196,98,45,0.1)' }}
-          >
-            <Bell style={{ width: 18, height: 18, color: '#C4622D' }} />
-          </div>
-          <h1
-            className="font-display"
-            style={{ fontSize: 22, color: '#1A1612', letterSpacing: '-0.01em' }}
-          >
-            Notifications
-          </h1>
-          <p style={{ fontSize: 14, color: '#8C7B6B', lineHeight: 1.55 }}>
-            Every prompt Horace surfaces will land here — Worth-watching properties,
-            Newly-known contacts, and the rest. The dispatcher is coming together;
-            check back soon.
-          </p>
-        </div>
-      </div>
+    <div className="flex flex-col h-full overflow-hidden" style={{ background: '#F5F0E8' }}>
+      <NotificationsList
+        initialItems={initialItems}
+        initialCursor={initialCursor}
+      />
     </div>
   )
 }

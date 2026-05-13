@@ -42,15 +42,25 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const workspaceName = workspace?.name ?? 'My Agency'
 
   // Attention count for the bell badge (admin client bypasses RLS for read-only count).
-  // V1 definition: contacts with score >= 50. Will expand to include unhandled Worth-watching /
-  // Newly-known prompts when those surfaces ship.
+  // V1 definition: high-intent contacts (score >= 50) PLUS unread notification_log
+  // entries with display copy (HOR-77 in-app feed). Continues to expand when other
+  // dispatcher surfaces (Worth-watching, etc.) ship.
   const admin = createAdminClient()
-  const { count: attentionCount } = await admin
-    .from('contacts')
-    .select('*', { count: 'exact', head: true })
-    .eq('agent_id', agent.id)
-    .is('deleted_at', null)
-    .gte('score', 50)
+  const [{ count: highIntentContacts }, { count: unreadNotifications }] = await Promise.all([
+    admin
+      .from('contacts')
+      .select('*', { count: 'exact', head: true })
+      .eq('agent_id', agent.id)
+      .is('deleted_at', null)
+      .gte('score', 50),
+    admin
+      .from('notification_log')
+      .select('*', { count: 'exact', head: true })
+      .eq('agent_id', agent.id)
+      .is('read_at', null)
+      .not('title', 'is', null),
+  ])
+  const attentionCount = (highIntentContacts ?? 0) + (unreadNotifications ?? 0)
 
   const trialDaysLeft = computeTrialDaysLeft(
     workspace?.subscription_status,
@@ -66,7 +76,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           agentFirstName={agent.first_name}
           agentLastName={agent.last_name}
           avatarUrl={agent.avatar_url}
-          attentionCount={attentionCount ?? 0}
+          attentionCount={attentionCount}
           trialDaysLeft={trialDaysLeft}
         />
       </div>
