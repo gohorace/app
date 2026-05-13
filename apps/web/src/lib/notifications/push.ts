@@ -1,9 +1,17 @@
 import { createAdminClient } from '@/lib/supabase/admin'
-import { buildAlertEmail } from '@/lib/notifications/email'
+import { postToAlertVolumeChannel } from '@/lib/notifications/slack'
 
 const DEDUP_MINUTES = 30
+const VOLUME_CAP_PER_24H = 8
+const REVIEW_WINDOW_MS = 24 * 60 * 60 * 1000
 
 export type AlertType = 'alert_score_threshold' | 'alert_form_submit' | 'alert_return_visit'
+
+const PUSH_ALERT_TYPES: AlertType[] = [
+  'alert_score_threshold',
+  'alert_form_submit',
+  'alert_return_visit',
+]
 
 interface PushPayload {
   title: string
@@ -66,48 +74,6 @@ async function logAlert(agentId: string, contactId: string | null, type: AlertTy
   await admin.from('notification_log').insert({ agent_id: agentId, contact_id: contactId, type })
 }
 
-async function emailAgent(
-  agentId: string,
-  type: import('./email').AlertEmailType,
-  contactName: string,
-  contactId: string,
-  extra?: { score?: number; formName?: string | null },
-): Promise<void> {
-  const resendKey = process.env.RESEND_API_KEY
-  if (!resendKey || resendKey === 'your-resend-key') return
-
-  const admin = createAdminClient()
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? ''
-
-  // Get agent email + briefing_emails recipients
-  const { data: settings } = await admin
-    .from('agent_settings')
-    .select('agent_email, briefing_emails')
-    .eq('agent_id', agentId)
-    .maybeSingle()
-
-  const recipients: string[] = []
-  if (settings?.briefing_emails?.length) {
-    recipients.push(...settings.briefing_emails)
-  } else if (settings?.agent_email) {
-    recipients.push(settings.agent_email)
-  }
-
-  if (recipients.length === 0) return
-
-  const { subject, html } = buildAlertEmail(type, contactName, contactId, appUrl, extra)
-
-  const { Resend } = await import('resend')
-  const resend = new Resend(resendKey)
-
-  await resend.emails.send({
-    from: process.env.RESEND_FROM_EMAIL ?? 'Horace <alerts@gohorace.com>',
-    to: recipients,
-    subject,
-    html,
-  }).catch((err) => console.error('[email] alert send failed:', err))
-}
-
 async function pushToAgent(agentId: string, payload: PushPayload): Promise<void> {
   const admin = createAdminClient()
   const { data: subs } = await admin
@@ -118,6 +84,78 @@ async function pushToAgent(agentId: string, payload: PushPayload): Promise<void>
   if (!subs || subs.length === 0) return
 
   await Promise.all(subs.map((s) => sendWebPush(s.endpoint, s.p256dh, s.auth, payload)))
+}
+
+async function pushesInLast24h(agentId: string): Promise<number> {
+  const admin = createAdminClient()
+  const since = new Date(Date.now() - REVIEW_WINDOW_MS).toISOString()
+  const { count } = await admin
+    .from('notification_log')
+    .select('*', { count: 'exact', head: true })
+    .eq('agent_id', agentId)
+    .in('type', PUSH_ALERT_TYPES)
+    .gte('sent_at', since)
+  return count ?? 0
+}
+
+async function alreadyFlaggedForReview(agentId: string): Promise<boolean> {
+  const admin = createAdminClient()
+  const since = new Date(Date.now() - REVIEW_WINDOW_MS).toISOString()
+  const { count } = await admin
+    .from('notification_log')
+    .select('*', { count: 'exact', head: true })
+    .eq('agent_id', agentId)
+    .eq('type', 'volume_review')
+    .gte('sent_at', since)
+  return (count ?? 0) > 0
+}
+
+async function emitVolumeReview(agentId: string, countAfter: number): Promise<void> {
+  if (await alreadyFlaggedForReview(agentId)) return
+
+  const admin = createAdminClient()
+  const { data: agent } = await admin
+    .from('agents')
+    .select('first_name, last_name, workspaces(name)')
+    .eq('id', agentId)
+    .maybeSingle<{ first_name: string | null; last_name: string | null; workspaces: { name: string | null } | null }>()
+
+  const agentName = agent
+    ? [agent.first_name, agent.last_name].filter(Boolean).join(' ').trim() || agentId
+    : agentId
+  const workspaceName = agent?.workspaces?.name ?? 'unknown workspace'
+
+  const text =
+    `Alert volume cap hit — *${agentName}* (${workspaceName}) has had *${countAfter} pushes* ` +
+    `in the last 24h (cap is ${VOLUME_CAP_PER_24H}). The alert design is likely mis-tuned for this agent. ` +
+    `<https://linear.app/gohorace/project/alerts-and-notifications-02f66872bea5|Alerts & Notifications>`
+
+  await postToAlertVolumeChannel(text)
+
+  await admin.from('notification_log').insert({
+    agent_id: agentId,
+    contact_id: null,
+    type: 'volume_review',
+  })
+}
+
+async function dispatchPushAlert(args: {
+  agentId: string
+  contactId: string
+  type: AlertType
+  payload: PushPayload
+}): Promise<void> {
+  const { agentId, contactId, type, payload } = args
+
+  if (await isRecentlySent(agentId, contactId, type)) return
+
+  await pushToAgent(agentId, payload)
+  await logAlert(agentId, contactId, type)
+
+  const countAfter = await pushesInLast24h(agentId)
+  if (countAfter > VOLUME_CAP_PER_24H) {
+    await emitVolumeReview(agentId, countAfter)
+  }
 }
 
 export async function sendScoreThresholdAlert(
@@ -136,20 +174,19 @@ export async function sendScoreThresholdAlert(
 
   const threshold = settings?.sms_threshold_score ?? 50
   if (!(scoreBefore < threshold && scoreAfter >= threshold)) return
-  if (await isRecentlySent(agentId, contactId, 'alert_score_threshold')) return
 
   const firstName = contactName.split(' ')[0]
-  await Promise.all([
-    pushToAgent(agentId, {
+  await dispatchPushAlert({
+    agentId,
+    contactId,
+    type: 'alert_score_threshold',
+    payload: {
       title: `${firstName} is gathering momentum`,
       body: `Horace's been watching ${firstName} — the signal just got stronger. Worth a look.`,
       url: `/contacts/${contactId}`,
       tag: `score-${contactId}`,
-    }),
-    emailAgent(agentId, 'score_threshold', contactName, contactId, { score: scoreAfter }),
-  ])
-
-  await logAlert(agentId, contactId, 'alert_score_threshold')
+    },
+  })
 }
 
 export async function sendFormSubmitAlert(
@@ -158,23 +195,21 @@ export async function sendFormSubmitAlert(
   contactName: string,
   formName: string | null,
 ): Promise<void> {
-  if (await isRecentlySent(agentId, contactId, 'alert_form_submit')) return
-
   const firstName = contactName.split(' ')[0]
   const title = formName
     ? `${firstName} just submitted "${formName}"`
     : `${firstName} just got in touch`
-  await Promise.all([
-    pushToAgent(agentId, {
+  await dispatchPushAlert({
+    agentId,
+    contactId,
+    type: 'alert_form_submit',
+    payload: {
       title,
       body: `Horace has ${firstName}'s details now. Worth a call while it's warm.`,
       url: `/contacts/${contactId}`,
       tag: `form-${contactId}`,
-    }),
-    emailAgent(agentId, 'form_submit', contactName, contactId, { formName }),
-  ])
-
-  await logAlert(agentId, contactId, 'alert_form_submit')
+    },
+  })
 }
 
 export async function sendReturnVisitAlert(
@@ -182,18 +217,16 @@ export async function sendReturnVisitAlert(
   contactId: string,
   contactName: string,
 ): Promise<void> {
-  if (await isRecentlySent(agentId, contactId, 'alert_return_visit')) return
-
   const firstName = contactName.split(' ')[0]
-  await Promise.all([
-    pushToAgent(agentId, {
+  await dispatchPushAlert({
+    agentId,
+    contactId,
+    type: 'alert_return_visit',
+    payload: {
       title: `${firstName} is back on your site`,
       body: `Horace just spotted ${firstName} returning. Worth a quick hello.`,
       url: `/contacts/${contactId}`,
       tag: `return-${contactId}`,
-    }),
-    emailAgent(agentId, 'return_visit', contactName, contactId),
-  ])
-
-  await logAlert(agentId, contactId, 'alert_return_visit')
+    },
+  })
 }

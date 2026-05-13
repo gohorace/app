@@ -2,8 +2,6 @@ import type { LeadWithInsight } from '@/lib/ai/briefing'
 
 export type { LeadWithInsight }
 
-export type AlertEmailType = 'return_visit' | 'form_submit' | 'score_threshold'
-
 // ── Shared design tokens (email-safe hex values) ──────────────────────────────
 
 const T = {
@@ -175,58 +173,6 @@ function contactCard(lead: LeadWithInsight, appUrl: string, isFirst: boolean): s
         </table>
       </td>
     </tr>`
-}
-
-// ── Alert emails ──────────────────────────────────────────────────────────────
-
-export function buildAlertEmail(
-  type: AlertEmailType,
-  contactName: string,
-  contactId: string,
-  appUrl: string,
-  extra?: { score?: number; formName?: string | null },
-): { subject: string; html: string } {
-  const profileUrl = `${appUrl}/contacts/${contactId}`
-  const firstName = contactName.split(' ')[0]
-
-  const content: Record<AlertEmailType, { subject: string; heading: string; body: string; cta: string }> = {
-    return_visit: {
-      subject: `${firstName} is back on your site`,
-      heading: `${contactName} just returned`,
-      body: `They're browsing your site right now. This might be a good time to reach out while you're top of mind.`,
-      cta: 'View their activity',
-    },
-    form_submit: {
-      subject: `${firstName} submitted a form`,
-      heading: `${contactName} raised their hand`,
-      body: `They just submitted${extra?.formName ? ` "${extra.formName}"` : ' a form'} on your website. Worth a follow-up now while the lead is warm.`,
-      cta: 'View contact',
-    },
-    score_threshold: {
-      subject: `${firstName} just crossed your intent threshold`,
-      heading: `Something's stirring — score ${extra?.score ?? ''}`,
-      body: `${contactName} has been actively engaging with your site and just crossed your alert threshold. Now's the time to act.`,
-      cta: 'View contact',
-    },
-  }
-
-  const { subject, heading, body, cta } = content[type]
-
-  const bodyContent = `
-    <p style="margin:0 0 8px;font-size:22px;font-weight:700;color:${T.ink};letter-spacing:-0.02em;">${heading}</p>
-    <p style="margin:0 0 24px;font-size:14px;color:${T.stone};line-height:1.6;">${body}</p>
-    <a href="${profileUrl}" style="display:inline-block;background:${T.ink};color:${T.cream};text-decoration:none;font-size:13px;font-weight:600;padding:10px 22px;border-radius:6px;">${cta} →</a>
-    <div style="height:20px;"></div>
-  `
-
-  const footerContent = `
-    <p style="margin:0;font-size:11px;color:${T.stone};">
-      <a href="${appUrl}/settings/notifications" style="color:${T.stone};text-decoration:none;border-bottom:1px solid ${T.border};">Manage alert preferences</a>
-      &nbsp;·&nbsp; Seize the moment.
-    </p>
-  `
-
-  return { subject, html: shell(bodyContent, footerContent) }
 }
 
 // ── Daily briefing email ──────────────────────────────────────────────────────
