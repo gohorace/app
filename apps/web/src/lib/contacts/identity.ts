@@ -29,19 +29,23 @@ export function deriveIdentity(input: {
 }
 
 /**
- * Initials for an avatar. Falls back to email's first letter, then `?`.
- * Always uppercases.
+ * Initials for an avatar. Returns name initials, or '?' as a placeholder
+ * when no name is available.
+ *
+ * HOR-135: explicitly does NOT fall back to the email's first letter.
+ * Email-only contacts (identity === 'email') render with the anonymous
+ * eye-icon avatar via `PersonAvatar`, not a letter from the email — to
+ * avoid implying the agent knows someone whose name starts with that
+ * letter (e.g. `email+arnold@…` would have shown 'E').
  */
 export function makeInitials(input: {
   first_name?: string | null
   last_name?: string | null
-  email?: string | null
+  email?: string | null  // accepted but intentionally unused; kept for callers' convenience
 }): string {
   const fromName = [input.first_name?.[0], input.last_name?.[0]]
     .filter(Boolean)
     .join('')
     .toUpperCase()
-  if (fromName) return fromName
-  if (input.email) return input.email[0]?.toUpperCase() ?? '?'
-  return '?'
+  return fromName || '?'
 }

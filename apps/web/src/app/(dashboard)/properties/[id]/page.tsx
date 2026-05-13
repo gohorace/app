@@ -132,17 +132,17 @@ export default async function PropertyDetailPage({
       sessions:   1, // accurate session count needs identity_map join; coarse for V1
     }))
 
-  // Most active known contact for "Call …" CTA — pick highest score with a phone.
+  // Most active known contact for the primary "View most active contact"
+  // CTA (HOR-135). Highest score across linked contacts. Phone no longer
+  // required — the agent navigates to the contact's detail page and dials
+  // from there (CRM-boundary language).
   const topContact = (() => {
-    const candidates = linked
-      .filter((c) => c.phone)
-      .sort((a, b) => b.score - a.score)
+    const candidates = [...linked].sort((a, b) => b.score - a.score)
     if (candidates.length === 0) return null
     const c = candidates[0]
     return {
       id:        c.id,
       firstName: c.first_name,
-      phone:     c.phone,
     }
   })()
 

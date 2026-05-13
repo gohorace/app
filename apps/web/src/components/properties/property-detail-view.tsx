@@ -71,8 +71,8 @@ export interface PropertyDetailViewProps {
   engagement:      EngagementValue
   roleAttached:    PropertyDetailRoleAttached[]
   engagingNow:     PropertyDetailEngagingNow[]
-  /** Most active known contact — used by the primary "Call …" action. */
-  topContact:      { id: string; firstName: string | null; phone: string | null } | null
+  /** Most active known contact — used by the primary "View most active contact" action. */
+  topContact:      { id: string; firstName: string | null } | null
   timeline:        PropertyDetailTimelineRow[]
 }
 
@@ -247,20 +247,28 @@ export function PropertyDetailView({
 
             {/* Actions */}
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {topContact?.phone ? (
-                <a href={`tel:${topContact.phone}`} style={primaryBtnStyle}>
-                  <Phone style={{ width: 13, height: 13 }} />
-                  Call {topContact.firstName ?? 'most active contact'}
-                </a>
+              {/*
+                HOR-135: CRM-boundary language. Horace shows the contact;
+                the agent dials from there. Primary action navigates to
+                the most active contact's detail page (not a tel: link).
+              */}
+              {topContact ? (
+                <Link
+                  href={`/contacts/${topContact.id}`}
+                  style={{ ...primaryBtnStyle, textDecoration: 'none' }}
+                >
+                  <ArrowRight style={{ width: 13, height: 13 }} />
+                  View most active contact
+                </Link>
               ) : (
                 <button
                   type="button"
                   disabled
-                  title="No active contacts with a phone number"
+                  title="No active contacts on this property yet"
                   style={{ ...primaryBtnStyle, opacity: 0.55, cursor: 'not-allowed' }}
                 >
-                  <Phone style={{ width: 13, height: 13 }} />
-                  Call most active contact
+                  <ArrowRight style={{ width: 13, height: 13 }} />
+                  View most active contact
                 </button>
               )}
               <ChangeStatusButton propertyId={property.id} currentStatus={property.status} onChanged={() => router.refresh()} />
@@ -477,9 +485,14 @@ export function PropertyDetailView({
           />
 
           {filtered.length === 0 ? (
-            <p style={{ fontSize: 13, color: '#8C7B6B', textAlign: 'center', padding: '20px 0' }}>
-              Nothing here yet.
-            </p>
+            <div style={{ textAlign: 'center', padding: '24px 0' }}>
+              <p style={{ fontSize: 13, color: '#5E5246', fontWeight: 500, margin: '0 0 4px' }}>
+                Quiet so far.
+              </p>
+              <p style={{ fontSize: 12, color: '#8C7B6B', margin: 0 }}>
+                Horace is watching every visit — you&rsquo;ll see them land here.
+              </p>
+            </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               {filtered.map((row, i) => {
@@ -690,7 +703,7 @@ function ChangeStatusButton({
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
 
-  const options: PropertyStatus[] = ['listed', 'off_market', 'sold']
+  const options: PropertyStatus[] = ['listed', 'appraising', 'watching', 'sold']
 
   async function set(status: PropertyStatus) {
     if (saving) return

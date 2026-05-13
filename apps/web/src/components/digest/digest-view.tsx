@@ -2,6 +2,7 @@ import Image from 'next/image'
 import { Archive, SlidersHorizontal } from 'lucide-react'
 import { SignalCard, type DigestSignal } from './signal-card'
 import { DigestRail, type DigestRailData } from './digest-rail'
+import { ActivityPrompts } from './activity-prompts'
 
 export interface DigestViewModel {
   /** Human date the digest is for ("Wednesday, 13 May"). Computed server-side. */
@@ -393,6 +394,9 @@ function DigestStats({ stats }: { stats: DigestViewModel['stats'] }) {
 }
 
 // ── Empty state — "A quiet one" ──────────────────────────────────────────────
+// HOR-135 #4: empty state now includes three Activity Prompt cards so the
+// surface is active rather than purely informational. Horace prompts the
+// agent to generate signal when there's nothing to read.
 
 function EmptyState() {
   return (
@@ -461,16 +465,7 @@ function EmptyState() {
         </div>
       </div>
 
-      <p
-        style={{
-          marginTop: 20,
-          fontSize: 12,
-          color: '#8C7B6B',
-          fontStyle: 'italic',
-        }}
-      >
-        Horace will tell you when something stirs.
-      </p>
+      <ActivityPrompts />
     </>
   )
 }

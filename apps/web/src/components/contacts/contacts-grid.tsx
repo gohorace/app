@@ -898,27 +898,24 @@ function ContactRow({
 // ── Empty state ──────────────────────────────────────────────────────────────
 
 function EmptyState({ search, hasAnyContacts }: { search: string; hasAnyContacts: boolean }) {
+  // Two-line pattern (HOR-135 #5): acknowledge + Horace's next move.
+  const line1 = search
+    ? `Nothing matches "${search}" yet.`
+    : !hasAnyContacts
+      ? "Horace hasn't met anyone yet."
+      : 'Nothing matches this view yet.'
+  const line2 = search
+    ? 'Try a different search, or adjust the filters above.'
+    : !hasAnyContacts
+      ? 'Import your contacts so Horace can recognise them when they visit your site.'
+      : 'Adjust filters, or add a contact.'
+
   return (
     <div style={{ padding: '48px 24px', textAlign: 'center', background: '#FAF7F2' }}>
-      <p
-        style={{
-          fontSize: 13,
-          fontWeight: 500,
-          color: '#5E5246',
-          marginBottom: 6,
-        }}
-      >
-        {search
-          ? `No contacts match "${search}"`
-          : !hasAnyContacts
-            ? "Horace hasn't met anyone yet."
-            : 'No contacts match this filter.'}
+      <p style={{ fontSize: 13, fontWeight: 500, color: '#5E5246', marginBottom: 6 }}>{line1}</p>
+      <p style={{ fontSize: 12, color: '#8C7B6B', marginBottom: !hasAnyContacts && !search ? 18 : 0 }}>
+        {line2}
       </p>
-      {!search && !hasAnyContacts && (
-        <p style={{ fontSize: 12, color: '#8C7B6B', marginBottom: 18 }}>
-          Import your contacts so Horace can recognise them when they visit your site.
-        </p>
-      )}
       {!search && !hasAnyContacts && (
         <Link
           href="/import"
