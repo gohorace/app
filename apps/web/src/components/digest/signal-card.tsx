@@ -3,18 +3,21 @@
 import Link from 'next/link'
 import { ListPlus, MoreHorizontal } from 'lucide-react'
 import { IntentBadge } from './intent-badge'
-import { INTENT_AVATAR_BG, type IntentLevel } from '@/lib/design/intent'
+import { GuidanceBadge } from './guidance-badge'
+import { INTENT_AVATAR_BG, type IntentLevel, type GuidanceMode } from '@/lib/design/intent'
 
 export interface DigestSignal {
   contactId: string
   name: string
   initials: string
-  /** Suburb or area string — e.g. "Paddington, NSW". Optional (older contacts may not have one) */
+  /** Suburb or area string — e.g. "Paddington, NSW". Optional. */
   suburb: string | null
-  /** Short time-ago string. Pre-computed server-side ("2h ago", "Yesterday"…) */
+  /** Pre-computed time-ago string ("Active 2h ago", "Yesterday"…). */
   timing: string
   intent: IntentLevel
-  /** The Horace-voiced "why now" line. Italic in the card. */
+  /** Horace voice mode for the nudge — drives the badge above it. */
+  guidance: GuidanceMode
+  /** Italic "why now" line. */
   nudge: string
   /** Tag chips — event-type labels, session counts, etc. */
   tags: string[]
@@ -25,13 +28,12 @@ interface SignalCardProps {
 }
 
 /**
- * One signal in the ranked roster. Whole card is a link to /contacts/{id}.
- * Inner action buttons stopPropagation so the card click is the canonical
- * action ("open the contact") and the buttons are secondary.
+ * One signal in the ranked roster. Three-column row on desktop:
+ *   [ avatar ] [ name + meta + guidance + nudge + tags ] [ actions stack ]
+ * The whole card links to /contacts/{id}; inner action buttons stopPropagation.
  *
- * `Add to list` is deferred — disabled in V1 with a tooltip.
- * `More` overflow is rendered but inert in V1 (placeholder for snooze /
- * dismiss / not useful, all deferred).
+ * `Add to list` is the primary action (disabled in V1 — Lists feature deferred).
+ * `More` is the overflow (snooze / dismiss / not useful — all deferred).
  */
 export function SignalCard({ signal }: SignalCardProps) {
   return (
@@ -39,118 +41,134 @@ export function SignalCard({ signal }: SignalCardProps) {
       href={`/contacts/${signal.contactId}`}
       className="signal-card"
       style={{
-        display: 'block',
+        display: 'flex',
+        gap: 16,
         background: '#FAF7F2',
         border: '1px solid rgba(140,123,107,0.2)',
-        borderRadius: 10,
-        padding: '16px 18px',
+        borderRadius: 12,
+        padding: '18px 20px',
         textDecoration: 'none',
         color: 'inherit',
         transition: 'box-shadow 180ms cubic-bezier(0.16,1,0.3,1)',
+        alignItems: 'stretch',
       }}
     >
-      {/* Head: avatar + name/suburb + intent */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+      {/* Avatar */}
+      <div
+        style={{
+          width: 44,
+          height: 44,
+          borderRadius: '50%',
+          background: INTENT_AVATAR_BG[signal.intent],
+          color: '#FAF7F2',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: 14,
+          fontWeight: 600,
+          fontFamily: 'var(--font-body)',
+          flexShrink: 0,
+        }}
+        aria-hidden
+      >
+        {signal.initials}
+      </div>
+
+      {/* Body */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        {/* Name row */}
         <div
           style={{
-            width: 40,
-            height: 40,
-            borderRadius: '50%',
-            background: INTENT_AVATAR_BG[signal.intent],
-            color: '#FAF7F2',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: 13,
-            fontWeight: 600,
-            fontFamily: 'var(--font-body)',
-            flexShrink: 0,
+            gap: 10,
+            flexWrap: 'wrap',
+            marginBottom: 4,
           }}
-          aria-hidden
         >
-          {signal.initials}
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div
+          <span
             style={{
-              fontSize: 14,
+              fontSize: 15,
               fontWeight: 600,
               color: '#1A1612',
-              lineHeight: 1.3,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
+              lineHeight: 1.25,
             }}
           >
             {signal.name}
-          </div>
-          <div
-            style={{
-              fontSize: 12,
-              color: '#8C7B6B',
-              marginTop: 2,
-              lineHeight: 1.4,
-            }}
-          >
-            {signal.suburb ? <>{signal.suburb} · </> : null}
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>{signal.timing}</span>
-          </div>
+          </span>
+          <IntentBadge intent={signal.intent} />
         </div>
-        <IntentBadge intent={signal.intent} />
-      </div>
 
-      {/* Nudge — italic, Horace voice */}
-      {signal.nudge && (
+        {/* Meta */}
+        <div
+          style={{
+            fontSize: 12,
+            color: '#8C7B6B',
+            lineHeight: 1.4,
+            marginBottom: 10,
+          }}
+        >
+          {signal.suburb ? <>{signal.suburb} · </> : null}
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>{signal.timing}</span>
+        </div>
+
+        {/* Guidance mode label */}
+        <div style={{ marginBottom: 6 }}>
+          <GuidanceBadge mode={signal.guidance} />
+        </div>
+
+        {/* Italic nudge — Horace voice */}
         <p
           className="horace-nudge"
           style={{
-            margin: '12px 0 0',
-            fontSize: 14,
+            margin: '0 0 12px',
+            fontSize: 15,
             lineHeight: 1.55,
             color: '#2E2823',
           }}
         >
           {signal.nudge}
         </p>
-      )}
 
-      {/* Tag chips */}
-      {signal.tags.length > 0 && (
-        <div
-          style={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: 6,
-            marginTop: 12,
-          }}
-        >
-          {signal.tags.map((t) => (
-            <span
-              key={t}
-              style={{
-                fontSize: 10.5,
-                fontWeight: 500,
-                color: '#5E5246',
-                background: 'rgba(140,123,107,0.12)',
-                padding: '2px 8px',
-                borderRadius: 4,
-                fontFamily: 'var(--font-body)',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {t}
-            </span>
-          ))}
-        </div>
-      )}
+        {/* Tag chips */}
+        {signal.tags.length > 0 && (
+          <div
+            style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: 6,
+            }}
+          >
+            {signal.tags.map((t) => (
+              <span
+                key={t}
+                style={{
+                  fontSize: 10.5,
+                  fontWeight: 500,
+                  color: '#5E5246',
+                  background: 'rgba(140,123,107,0.12)',
+                  padding: '2px 8px',
+                  borderRadius: 4,
+                  fontFamily: 'var(--font-body)',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {t}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
 
-      {/* Actions — primary "Add to list" (disabled, lists deferred) + overflow */}
+      {/* Actions stack (right) */}
       <div
         style={{
           display: 'flex',
-          alignItems: 'center',
+          flexDirection: 'column',
           gap: 8,
-          marginTop: 14,
+          flexShrink: 0,
+          alignItems: 'stretch',
+          minWidth: 132,
         }}
       >
         <button
@@ -165,19 +183,22 @@ export function SignalCard({ signal }: SignalCardProps) {
           style={{
             display: 'inline-flex',
             alignItems: 'center',
-            gap: 6,
-            padding: '6px 12px',
-            fontSize: 12,
+            justifyContent: 'center',
+            gap: 7,
+            padding: '10px 14px',
+            fontSize: 13,
             fontWeight: 500,
-            color: 'rgba(94,82,70,0.55)',
-            background: 'rgba(140,123,107,0.08)',
-            border: '1px solid rgba(140,123,107,0.18)',
-            borderRadius: 6,
+            color: '#FAF7F2',
+            background: '#1A1612',
+            border: '1px solid #1A1612',
+            borderRadius: 7,
             cursor: 'not-allowed',
+            opacity: 0.85,
             fontFamily: 'var(--font-body)',
+            transition: 'opacity 180ms',
           }}
         >
-          <ListPlus style={{ width: 12, height: 12 }} />
+          <ListPlus style={{ width: 14, height: 14 }} />
           Add to list
         </button>
         <button
@@ -192,16 +213,20 @@ export function SignalCard({ signal }: SignalCardProps) {
             display: 'inline-flex',
             alignItems: 'center',
             justifyContent: 'center',
-            width: 28,
-            height: 28,
-            color: '#8C7B6B',
+            gap: 6,
+            padding: '8px 14px',
+            fontSize: 12,
+            fontWeight: 500,
+            color: '#5E5246',
             background: 'transparent',
-            border: '1px solid transparent',
-            borderRadius: 6,
+            border: '1px solid rgba(140,123,107,0.3)',
+            borderRadius: 7,
             cursor: 'default',
+            fontFamily: 'var(--font-body)',
           }}
         >
-          <MoreHorizontal style={{ width: 14, height: 14 }} />
+          <MoreHorizontal style={{ width: 13, height: 13 }} />
+          More
         </button>
       </div>
     </Link>

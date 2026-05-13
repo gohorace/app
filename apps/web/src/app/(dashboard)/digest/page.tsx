@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { DigestView, type DigestViewModel } from '@/components/digest/digest-view'
 import { type DigestSignal } from '@/components/digest/signal-card'
-import { intentForScore } from '@/lib/design/intent'
+import { intentForScore, guidanceForEventType } from '@/lib/design/intent'
 import {
   generateContactInsight,
   generateBriefingNarrative,
@@ -15,13 +15,23 @@ import {
 // 24h window the RPC reads).
 export const dynamic = 'force-dynamic'
 
-export default async function DigestPage() {
+export default async function DigestPage({
+  searchParams,
+}: {
+  searchParams: { demo?: string }
+}) {
+  // ?demo=1 — design-review affordance. Skips the RPC + AI entirely and
+  // renders the design's canonical mock cast (Sarah / Marcus / David / Claire)
+  // so we can verify visuals on a preview where the test workspace has
+  // no recent score_history. The DEMO DATA chip in the topbar makes this
+  // unambiguous in screenshots.
+  if (searchParams.demo === '1') {
+    return <DigestView model={demoModel()} />
+  }
+
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) {
-    // Layout already gates auth; this is belt-and-braces.
-    return null
-  }
+  if (!user) return null
 
   const admin = createAdminClient()
   const { data: agent } = await admin
@@ -31,7 +41,6 @@ export default async function DigestPage() {
     .maybeSingle()
 
   if (!agent) {
-    // No agent record yet — same defensive path as other dashboard pages.
     return <DigestView model={emptyModel()} />
   }
 
@@ -148,16 +157,14 @@ export default async function DigestPage() {
       suburb: l.suburb,
       timing: formatTiming(l.lastSeenAt),
       intent,
+      guidance: guidanceForEventType(l.topEventType),
       nudge: l.nudge,
       tags: l.tags,
     }
   })
 
-  // Stats. "Newly known" = identified within the last 24h. Cheap derive:
-  // count leads whose first event was a stitch / identification flow.
-  // V1 simplification — count leads with high score AND a recent form_submit
-  // or return_visit as the top event. Tighter heuristic comes with the
-  // anon→known variant later.
+  // "Newly known" = leads whose top event is a form_submit or return_visit.
+  // Tighter heuristic comes with the anon→known variant later.
   const newlyKnown = enriched.filter(
     (l) => l.topEventType === 'form_submit' || l.topEventType === 'return_visit',
   ).length
@@ -179,6 +186,78 @@ export default async function DigestPage() {
   }
 
   return <DigestView model={model} />
+}
+
+// ─── Demo dataset ────────────────────────────────────────────────────────────
+// Mirrors the four canonical signals in the design's screens.jsx so we can
+// verify the populated layout on a preview without seeding real activity.
+// Only renders when ?demo=1 is set — never served by default.
+
+function demoModel(): DigestViewModel {
+  const signals: DigestSignal[] = [
+    {
+      contactId: 'demo-sarah-thompson',
+      name: 'Sarah Thompson',
+      initials: 'ST',
+      suburb: 'Paddington, NSW',
+      timing: 'Active 2h ago',
+      intent: 'high',
+      guidance: 'advisory',
+      nudge: 'She’s been on the appraisal page twice this week. Lead with that.',
+      tags: ['Appraisal', '3 sessions', 'Returning'],
+    },
+    {
+      contactId: 'demo-marcus-bell',
+      name: 'Marcus Bell',
+      initials: 'MB',
+      suburb: 'Glebe, NSW',
+      timing: 'Active this morning',
+      intent: 'high',
+      guidance: 'time-sensitive',
+      nudge: 'Started a contact form, didn’t send. Catch him before he tries someone else.',
+      tags: ['Contact form', 'Near-submit'],
+    },
+    {
+      contactId: 'demo-david-nguyen',
+      name: 'David Nguyen',
+      initials: 'DN',
+      suburb: 'Surry Hills, NSW',
+      timing: 'Yesterday',
+      intent: 'mid',
+      guidance: 'contextual',
+      nudge: 'Browsing sold results on Maple Street. Classic pre-appraisal pattern.',
+      tags: ['Sold results', 'Maple St'],
+    },
+    {
+      contactId: 'demo-claire-adeyemi',
+      name: 'Claire Adeyemi',
+      initials: 'CA',
+      suburb: 'Newtown, NSW',
+      timing: '3 days ago',
+      intent: 'low',
+      guidance: 'contextual',
+      nudge: 'Downloaded the Newtown report. Early-stage, but she came back for it.',
+      tags: ['Suburb report'],
+    },
+  ]
+
+  return {
+    dateLabel: new Date().toLocaleDateString('en-AU', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+    }),
+    sentAtLabel: '6:02 am',
+    narrative:
+      'Four contacts worth your attention today. Sarah Thompson looks ready — she’s been on the appraisal page twice this week. Marcus Bell got close to a contact form. And someone I’d been watching for a fortnight just put her name to it.',
+    signals,
+    stats: {
+      worthAttention: 4,
+      highIntent: 2,
+      newlyKnown: 1,
+    },
+    isDemo: true,
+  }
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

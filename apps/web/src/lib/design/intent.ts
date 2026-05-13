@@ -57,3 +57,42 @@ export const INTENT_AVATAR_BG: Record<IntentLevel | 'none', string> = {
   low:  '#3D5246',
   none: '#8C7B6B',
 }
+
+// ── Guidance copy modes ──────────────────────────────────────────────────────
+// Three classifications mapping nudge tone to signal type. Renders as a
+// small icon + uppercase label above the italic nudge on each signal card.
+
+export type GuidanceMode = 'advisory' | 'contextual' | 'time-sensitive'
+
+export interface GuidanceStyle {
+  /** Display label (uppercase rendered) */
+  label: string
+  /** Lucide icon name */
+  icon: 'lightbulb' | 'eye' | 'clock'
+  /** Foreground colour for icon + label */
+  color: string
+}
+
+export const GUIDANCE: Record<GuidanceMode, GuidanceStyle> = {
+  'advisory':       { label: 'Advisory',       icon: 'lightbulb', color: '#C4622D' },
+  'contextual':     { label: 'Contextual',     icon: 'eye',       color: '#8C7B6B' },
+  'time-sensitive': { label: 'Time-sensitive', icon: 'clock',     color: '#9C4A1F' },
+}
+
+/**
+ * Pick a guidance mode for a signal based on its top event type. Mirrors
+ * the design's intent: form-submit windows close fast (time-sensitive),
+ * returning visitors are pattern-recognition moments (advisory), the rest
+ * are observational (contextual).
+ */
+export function guidanceForEventType(eventType: string | null | undefined): GuidanceMode {
+  switch (eventType) {
+    case 'form_submit':
+    case 'campaign_click':
+      return 'time-sensitive'
+    case 'return_visit':
+      return 'advisory'
+    default:
+      return 'contextual'
+  }
+}

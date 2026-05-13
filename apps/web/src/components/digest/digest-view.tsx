@@ -1,9 +1,10 @@
+import Image from 'next/image'
 import { SignalCard, type DigestSignal } from './signal-card'
 
 export interface DigestViewModel {
   /** Human date the digest is for ("Wednesday, 13 May"). Computed server-side. */
   dateLabel: string
-  /** Time the cron ran today, formatted ("6:02 am"). Optional. */
+  /** Time the digest was generated, formatted ("6:02 am"). Optional. */
   sentAtLabel: string | null
   /** Horace-voiced narrative paragraph (2–3 sentences). May be empty. */
   narrative: string
@@ -14,6 +15,8 @@ export interface DigestViewModel {
     highIntent: number
     newlyKnown: number
   }
+  /** When true, a "DEMO DATA" chip renders so reviewers know this is the mock view. */
+  isDemo?: boolean
 }
 
 interface DigestViewProps {
@@ -22,18 +25,14 @@ interface DigestViewProps {
 
 /**
  * Top-level Digest layout. Renders one of two states:
- *  - **Ranked roster** (when there are signals) — Horace opener + cards + signoff.
+ *  - **Ranked roster** — Horace opener card + signal cards.
  *  - **Empty / "A quiet one"** — design's deferred-CTA empty state without wired actions.
  *
- * Single component for both desktop + mobile; the opener card's 3-stat row
- * wraps on narrow viewports. The page is wrapped in the dashboard layout's
- * sidebar/main split, so this just owns the column content.
+ * Page-level topbar lives here (eyebrow crumb + serif h1) so the dashboard
+ * layout stays generic. Right-side actions (Past digests, Preferences) are
+ * deferred per HOR-122 scope.
  */
 export function DigestView({ model }: DigestViewProps) {
-  if (model.signals.length === 0) {
-    return <EmptyState dateLabel={model.dateLabel} />
-  }
-
   return (
     <div
       style={{
@@ -42,73 +41,146 @@ export function DigestView({ model }: DigestViewProps) {
         paddingBottom: 80,
       }}
     >
+      <PageTopbar dateLabel={model.dateLabel} isDemo={model.isDemo} />
+
       <div
         style={{
-          maxWidth: 760,
+          maxWidth: 820,
           margin: '0 auto',
-          padding: '28px 20px 28px',
+          padding: '0 24px 28px',
         }}
       >
-        {/* Eyebrow */}
+        {model.signals.length === 0
+          ? <EmptyState />
+          : <PopulatedState model={model} />}
+      </div>
+    </div>
+  )
+}
+
+// ── Page-level topbar ────────────────────────────────────────────────────────
+
+function PageTopbar({ dateLabel, isDemo }: { dateLabel: string; isDemo?: boolean }) {
+  return (
+    <div
+      style={{
+        maxWidth: 820,
+        margin: '0 auto',
+        padding: '28px 24px 24px',
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          fontSize: 11,
+          fontWeight: 500,
+          letterSpacing: '0.08em',
+          textTransform: 'uppercase',
+          color: '#8C7B6B',
+          marginBottom: 8,
+        }}
+      >
+        <span
+          style={{
+            width: 6,
+            height: 6,
+            borderRadius: '50%',
+            background: '#C4622D',
+          }}
+        />
+        Today · {dateLabel}
+        {isDemo && (
+          <span
+            style={{
+              marginLeft: 8,
+              padding: '2px 8px',
+              fontSize: 9,
+              fontWeight: 600,
+              letterSpacing: '0.1em',
+              color: '#9C4A1F',
+              background: 'rgba(196,98,45,0.12)',
+              borderRadius: 4,
+            }}
+          >
+            DEMO DATA
+          </span>
+        )}
+      </div>
+      <h1
+        className="font-display"
+        style={{
+          margin: 0,
+          fontSize: 36,
+          fontWeight: 600,
+          letterSpacing: '-0.02em',
+          lineHeight: 1.15,
+          color: '#1A1612',
+        }}
+      >
+        Today&rsquo;s digest
+      </h1>
+    </div>
+  )
+}
+
+// ── Populated state ──────────────────────────────────────────────────────────
+
+function PopulatedState({ model }: { model: DigestViewModel }) {
+  return (
+    <>
+      {/* Horace opener (charcoal card) */}
+      <section
+        style={{
+          background: '#2E2823',
+          borderRadius: 14,
+          padding: '22px 24px 24px',
+          marginBottom: 26,
+          color: '#F5F0E8',
+        }}
+      >
+        {/* Top row: Horace identity (left) + stats (right) */}
         <div
           style={{
             display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            fontSize: 11,
-            fontWeight: 500,
-            letterSpacing: '0.06em',
-            textTransform: 'uppercase',
-            color: '#8C7B6B',
+            alignItems: 'flex-start',
+            justifyContent: 'space-between',
+            gap: 24,
+            flexWrap: 'wrap',
             marginBottom: 18,
           }}
         >
-          <span
-            style={{
-              width: 6,
-              height: 6,
-              borderRadius: '50%',
-              background: '#C4622D',
-            }}
-          />
-          Today&rsquo;s digest · {model.dateLabel}
-        </div>
-
-        {/* Horace opener card (charcoal) */}
-        <section
-          style={{
-            background: '#2E2823',
-            borderRadius: 12,
-            padding: '20px 22px 22px',
-            marginBottom: 24,
-            color: '#F5F0E8',
-          }}
-        >
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: 16,
-              flexWrap: 'wrap',
-              marginBottom: 14,
-            }}
-          >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+            <Image
+              src="/horace-charcoal.png"
+              alt=""
+              width={48}
+              height={48}
+              style={{
+                width: 48,
+                height: 48,
+                borderRadius: '50%',
+                background: '#2E2823',
+                flexShrink: 0,
+              }}
+            />
             <div
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: 8,
                 fontSize: 11,
-                fontWeight: 500,
-                letterSpacing: '0.04em',
+                fontWeight: 600,
+                letterSpacing: '0.08em',
+                textTransform: 'uppercase',
                 color: 'rgba(245,240,232,0.55)',
               }}
             >
               <span
                 style={{
-                  width: 8,
-                  height: 8,
+                  width: 7,
+                  height: 7,
                   borderRadius: '50%',
                   background: '#C4622D',
                 }}
@@ -116,114 +188,105 @@ export function DigestView({ model }: DigestViewProps) {
               Horace
               {model.sentAtLabel && <span>· {model.sentAtLabel}</span>}
             </div>
-            <DigestStats stats={model.stats} />
           </div>
 
-          <h1
+          <DigestStats stats={model.stats} />
+        </div>
+
+        {/* Narrative quote */}
+        {model.narrative && (
+          <p
             className="font-display"
             style={{
               margin: 0,
-              fontSize: 24,
-              fontWeight: 500,
-              letterSpacing: '-0.01em',
-              lineHeight: 1.3,
-              color: '#F5F0E8',
+              fontSize: 19,
+              lineHeight: 1.55,
+              fontStyle: 'italic',
+              fontWeight: 400,
+              color: 'rgba(245,240,232,0.92)',
+              letterSpacing: '-0.005em',
             }}
           >
-            Here&rsquo;s what Horace picked up overnight.
-          </h1>
+            &ldquo;{model.narrative}&rdquo;
+          </p>
+        )}
 
-          {model.narrative && (
-            <p
-              style={{
-                margin: '12px 0 0',
-                fontSize: 14,
-                lineHeight: 1.6,
-                color: 'rgba(245,240,232,0.88)',
-                fontStyle: 'italic',
-              }}
-            >
-              &ldquo;{model.narrative}&rdquo;
-            </p>
-          )}
-
-          <div
-            style={{
-              marginTop: 16,
-              fontSize: 10,
-              fontWeight: 500,
-              letterSpacing: '0.08em',
-              textTransform: 'uppercase',
-              color: 'rgba(245,240,232,0.45)',
-            }}
-          >
-            Seize the moment — Horace
-          </div>
-        </section>
-
-        {/* Section heading */}
         <div
           style={{
-            display: 'flex',
-            alignItems: 'baseline',
-            justifyContent: 'space-between',
-            gap: 12,
-            marginBottom: 12,
+            marginTop: 18,
+            fontSize: 10,
+            fontWeight: 600,
+            letterSpacing: '0.1em',
+            textTransform: 'uppercase',
+            color: 'rgba(245,240,232,0.45)',
           }}
         >
-          <span
-            style={{
-              fontSize: 11,
-              fontWeight: 600,
-              letterSpacing: '0.08em',
-              textTransform: 'uppercase',
-              color: '#5E5246',
-            }}
-          >
-            Ranked by urgency
-          </span>
-          <span
-            style={{
-              fontFamily: 'var(--font-mono)',
-              fontSize: 11,
-              color: '#8C7B6B',
-            }}
-          >
-            {model.signals.length} {model.signals.length === 1 ? 'contact' : 'contacts'}
-          </span>
+          Seize the moment — Horace
         </div>
+      </section>
 
-        {/* Ranked roster */}
-        <div
+      {/* Section heading */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'baseline',
+          justifyContent: 'space-between',
+          gap: 12,
+          marginBottom: 14,
+        }}
+      >
+        <span
           style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 12,
-          }}
-        >
-          {model.signals.map((s) => (
-            <SignalCard key={s.contactId} signal={s} />
-          ))}
-        </div>
-
-        {/* Closing rule + signoff */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 12,
-            marginTop: 28,
-            color: '#8C7B6B',
             fontSize: 11,
-            fontStyle: 'italic',
+            fontWeight: 600,
+            letterSpacing: '0.08em',
+            textTransform: 'uppercase',
+            color: '#5E5246',
           }}
         >
-          <span style={{ flex: 1, height: 1, background: 'rgba(140,123,107,0.2)' }} />
-          That&rsquo;s the morning. — Horace
-          <span style={{ flex: 1, height: 1, background: 'rgba(140,123,107,0.2)' }} />
-        </div>
+          Ranked by urgency
+        </span>
+        <span
+          style={{
+            fontFamily: 'var(--font-mono)',
+            fontSize: 11,
+            color: '#8C7B6B',
+          }}
+        >
+          {model.signals.length} {model.signals.length === 1 ? 'contact' : 'contacts'}
+        </span>
       </div>
-    </div>
+
+      {/* Ranked roster */}
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 14,
+        }}
+      >
+        {model.signals.map((s) => (
+          <SignalCard key={s.contactId} signal={s} />
+        ))}
+      </div>
+
+      {/* Closing rule + signoff */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 14,
+          marginTop: 32,
+          color: '#8C7B6B',
+          fontSize: 11,
+          fontStyle: 'italic',
+        }}
+      >
+        <span style={{ flex: 1, height: 1, background: 'rgba(140,123,107,0.2)' }} />
+        That&rsquo;s the morning. — Horace
+        <span style={{ flex: 1, height: 1, background: 'rgba(140,123,107,0.2)' }} />
+      </div>
+    </>
   )
 }
 
@@ -236,16 +299,16 @@ function DigestStats({ stats }: { stats: DigestViewModel['stats'] }) {
     { val: stats.newlyKnown,     lbl: 'Newly known' },
   ]
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 18 }}>
+    <div style={{ display: 'flex', gap: 28, alignItems: 'flex-start' }}>
       {cells.map((c) => (
-        <div key={c.lbl} style={{ textAlign: 'left' }}>
+        <div key={c.lbl}>
           <div
+            className="font-display"
             style={{
-              fontFamily: 'var(--font-display)',
-              fontSize: 22,
+              fontSize: 32,
               fontWeight: 600,
               color: c.accent ?? '#F5F0E8',
-              letterSpacing: '-0.01em',
+              letterSpacing: '-0.02em',
               lineHeight: 1,
             }}
           >
@@ -254,11 +317,11 @@ function DigestStats({ stats }: { stats: DigestViewModel['stats'] }) {
           <div
             style={{
               fontSize: 10,
-              fontWeight: 500,
-              letterSpacing: '0.06em',
+              fontWeight: 600,
+              letterSpacing: '0.1em',
               textTransform: 'uppercase',
-              color: 'rgba(245,240,232,0.55)',
-              marginTop: 4,
+              color: 'rgba(245,240,232,0.5)',
+              marginTop: 6,
             }}
           >
             {c.lbl}
@@ -271,82 +334,47 @@ function DigestStats({ stats }: { stats: DigestViewModel['stats'] }) {
 
 // ── Empty state — "A quiet one" ──────────────────────────────────────────────
 
-function EmptyState({ dateLabel }: { dateLabel: string }) {
+function EmptyState() {
   return (
-    <div
-      style={{
-        flex: 1,
-        overflowY: 'auto',
-        paddingBottom: 80,
-      }}
-    >
-      <div
+    <>
+      <p
         style={{
-          maxWidth: 620,
-          margin: '0 auto',
-          padding: '28px 20px 28px',
+          margin: '0 0 24px',
+          fontSize: 16,
+          lineHeight: 1.65,
+          color: '#5E5246',
+          maxWidth: 600,
         }}
       >
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            fontSize: 11,
-            fontWeight: 500,
-            letterSpacing: '0.06em',
-            textTransform: 'uppercase',
-            color: '#8C7B6B',
-            marginBottom: 18,
-          }}
-        >
-          <span
-            style={{
-              width: 6,
-              height: 6,
-              borderRadius: '50%',
-              background: '#3D5246',
-            }}
-          />
-          Today&rsquo;s digest · {dateLabel}
-        </div>
+        Nothing&rsquo;s stirring on your site today — which makes this a good morning to make
+        some noise of your own.
+      </p>
 
-        <h1
-          className="font-display"
+      <div
+        style={{
+          padding: '20px 22px',
+          background: '#FAF7F2',
+          border: '1px solid rgba(140,123,107,0.2)',
+          borderRadius: 12,
+          display: 'flex',
+          gap: 14,
+          alignItems: 'flex-start',
+        }}
+      >
+        <Image
+          src="/horace-charcoal.png"
+          alt=""
+          width={36}
+          height={36}
           style={{
-            margin: '0 0 12px',
-            fontSize: 32,
-            fontWeight: 600,
-            letterSpacing: '-0.02em',
-            lineHeight: 1.15,
-            color: '#1A1612',
+            width: 36,
+            height: 36,
+            borderRadius: '50%',
+            background: '#2E2823',
+            flexShrink: 0,
           }}
-        >
-          A quiet one.
-        </h1>
-        <p
-          style={{
-            margin: 0,
-            fontSize: 15,
-            lineHeight: 1.6,
-            color: '#5E5246',
-            maxWidth: 540,
-          }}
-        >
-          Nothing&rsquo;s stirring on your site today — which makes this a good morning to make
-          some noise of your own.
-        </p>
-
-        {/* Horace prompt card */}
-        <div
-          style={{
-            marginTop: 24,
-            padding: '18px 20px',
-            background: '#FAF7F2',
-            border: '1px solid rgba(140,123,107,0.2)',
-            borderRadius: 12,
-          }}
-        >
+        />
+        <div style={{ flex: 1, minWidth: 0 }}>
           <div
             style={{
               fontSize: 10,
@@ -354,7 +382,7 @@ function EmptyState({ dateLabel }: { dateLabel: string }) {
               letterSpacing: '0.1em',
               textTransform: 'uppercase',
               color: '#8C7B6B',
-              marginBottom: 8,
+              marginBottom: 6,
             }}
           >
             Horace says
@@ -363,7 +391,7 @@ function EmptyState({ dateLabel }: { dateLabel: string }) {
             className="horace-nudge"
             style={{
               margin: 0,
-              fontSize: 15,
+              fontSize: 16,
               lineHeight: 1.65,
               color: '#1A1612',
             }}
@@ -371,18 +399,18 @@ function EmptyState({ dateLabel }: { dateLabel: string }) {
             Looking at your last 14 days — when something stirs, you&rsquo;ll hear it here first.
           </p>
         </div>
-
-        <p
-          style={{
-            marginTop: 18,
-            fontSize: 12,
-            color: '#8C7B6B',
-            fontStyle: 'italic',
-          }}
-        >
-          Horace will tell you when something stirs.
-        </p>
       </div>
-    </div>
+
+      <p
+        style={{
+          marginTop: 20,
+          fontSize: 12,
+          color: '#8C7B6B',
+          fontStyle: 'italic',
+        }}
+      >
+        Horace will tell you when something stirs.
+      </p>
+    </>
   )
 }
