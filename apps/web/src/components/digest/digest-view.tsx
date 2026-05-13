@@ -1,5 +1,7 @@
 import Image from 'next/image'
+import { Archive, SlidersHorizontal } from 'lucide-react'
 import { SignalCard, type DigestSignal } from './signal-card'
+import { DigestRail, type DigestRailData } from './digest-rail'
 
 export interface DigestViewModel {
   /** Human date the digest is for ("Wednesday, 13 May"). Computed server-side. */
@@ -15,7 +17,9 @@ export interface DigestViewModel {
     highIntent: number
     newlyKnown: number
   }
-  /** When true, a "DEMO DATA" chip renders so reviewers know this is the mock view. */
+  /** Right-rail content. */
+  rail: DigestRailData
+  /** When true, a "DEMO DATA" chip renders so reviewers know this is mock. */
   isDemo?: boolean
 }
 
@@ -24,13 +28,14 @@ interface DigestViewProps {
 }
 
 /**
- * Top-level Digest layout. Renders one of two states:
- *  - **Ranked roster** — Horace opener card + signal cards.
- *  - **Empty / "A quiet one"** — design's deferred-CTA empty state without wired actions.
+ * Top-level Digest layout. Three-column shell:
+ *  - [sidebar from layout]
+ *  - main content column (left-anchored, no max-width centring)
+ *  - right rail (~280px, lg breakpoint and up)
  *
- * Page-level topbar lives here (eyebrow crumb + serif h1) so the dashboard
- * layout stays generic. Right-side actions (Past digests, Preferences) are
- * deferred per HOR-122 scope.
+ * Two states inside the main column:
+ *  - **Ranked roster** — Horace opener + signal cards.
+ *  - **Empty / "A quiet one"** — design's deferred-CTA empty state.
  */
 export function DigestView({ model }: DigestViewProps) {
   return (
@@ -41,88 +46,143 @@ export function DigestView({ model }: DigestViewProps) {
         paddingBottom: 80,
       }}
     >
-      <PageTopbar dateLabel={model.dateLabel} isDemo={model.isDemo} />
-
       <div
         style={{
-          maxWidth: 820,
-          margin: '0 auto',
-          padding: '0 24px 28px',
+          display: 'flex',
+          gap: 32,
+          padding: '28px 32px 0',
+          alignItems: 'flex-start',
         }}
       >
-        {model.signals.length === 0
-          ? <EmptyState />
-          : <PopulatedState model={model} />}
+        {/* Main column — left-anchored, takes remaining space up to a cap */}
+        <div
+          style={{
+            flex: 1,
+            minWidth: 0,
+            maxWidth: 760,
+          }}
+        >
+          <PageTopbar dateLabel={model.dateLabel} isDemo={model.isDemo} />
+          {model.signals.length === 0
+            ? <EmptyState />
+            : <PopulatedState model={model} />}
+        </div>
+
+        {/* Right rail — hidden below lg */}
+        <DigestRail data={model.rail} />
       </div>
     </div>
   )
 }
 
-// ── Page-level topbar ────────────────────────────────────────────────────────
+// ── Page-level topbar (crumb + h1 + right-side actions) ─────────────────────
 
 function PageTopbar({ dateLabel, isDemo }: { dateLabel: string; isDemo?: boolean }) {
   return (
     <div
       style={{
-        maxWidth: 820,
-        margin: '0 auto',
-        padding: '28px 24px 24px',
+        display: 'flex',
+        alignItems: 'flex-start',
+        justifyContent: 'space-between',
+        gap: 16,
+        marginBottom: 22,
       }}
     >
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          fontSize: 11,
-          fontWeight: 500,
-          letterSpacing: '0.08em',
-          textTransform: 'uppercase',
-          color: '#8C7B6B',
-          marginBottom: 8,
-        }}
-      >
-        <span
+      <div style={{ minWidth: 0 }}>
+        <div
           style={{
-            width: 6,
-            height: 6,
-            borderRadius: '50%',
-            background: '#C4622D',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            fontSize: 11,
+            fontWeight: 500,
+            letterSpacing: '0.08em',
+            textTransform: 'uppercase',
+            color: '#8C7B6B',
+            marginBottom: 8,
+            flexWrap: 'wrap',
           }}
-        />
-        Today · {dateLabel}
-        {isDemo && (
+        >
           <span
             style={{
-              marginLeft: 8,
-              padding: '2px 8px',
-              fontSize: 9,
-              fontWeight: 600,
-              letterSpacing: '0.1em',
-              color: '#9C4A1F',
-              background: 'rgba(196,98,45,0.12)',
-              borderRadius: 4,
+              width: 6,
+              height: 6,
+              borderRadius: '50%',
+              background: '#C4622D',
             }}
-          >
-            DEMO DATA
-          </span>
-        )}
+          />
+          Today · {dateLabel}
+          {isDemo && (
+            <span
+              style={{
+                marginLeft: 8,
+                padding: '2px 8px',
+                fontSize: 9,
+                fontWeight: 600,
+                letterSpacing: '0.1em',
+                color: '#9C4A1F',
+                background: 'rgba(196,98,45,0.12)',
+                borderRadius: 4,
+              }}
+            >
+              DEMO DATA
+            </span>
+          )}
+        </div>
+        <h1
+          className="font-display"
+          style={{
+            margin: 0,
+            fontSize: 36,
+            fontWeight: 600,
+            letterSpacing: '-0.02em',
+            lineHeight: 1.15,
+            color: '#1A1612',
+          }}
+        >
+          Today&rsquo;s digest
+        </h1>
       </div>
-      <h1
-        className="font-display"
-        style={{
-          margin: 0,
-          fontSize: 36,
-          fontWeight: 600,
-          letterSpacing: '-0.02em',
-          lineHeight: 1.15,
-          color: '#1A1612',
-        }}
-      >
-        Today&rsquo;s digest
-      </h1>
+
+      {/* Right-side action buttons — Past digests + Preferences */}
+      <div style={{ display: 'flex', gap: 8, flexShrink: 0, marginTop: 4 }}>
+        <button
+          type="button"
+          disabled
+          title="Past digests — coming soon"
+          style={ghostButtonStyle}
+        >
+          <Archive style={{ width: 13, height: 13 }} aria-hidden />
+          Past digests
+        </button>
+        <button
+          type="button"
+          disabled
+          title="Preferences — coming soon"
+          style={ghostButtonStyle}
+        >
+          <SlidersHorizontal style={{ width: 13, height: 13 }} aria-hidden />
+          Preferences
+        </button>
+      </div>
     </div>
   )
+}
+
+const ghostButtonStyle: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 6,
+  padding: '7px 12px',
+  fontSize: 12,
+  fontWeight: 500,
+  color: '#5E5246',
+  background: '#FAF7F2',
+  border: '1px solid rgba(140,123,107,0.3)',
+  borderRadius: 7,
+  cursor: 'not-allowed',
+  opacity: 0.75,
+  fontFamily: 'var(--font-body)',
 }
 
 // ── Populated state ──────────────────────────────────────────────────────────

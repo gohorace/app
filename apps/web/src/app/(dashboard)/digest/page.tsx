@@ -21,11 +21,15 @@ export default async function DigestPage({
   searchParams: { demo?: string }
 }) {
   // ?demo=1 — design-review affordance. Skips the RPC + AI entirely and
-  // renders the design's canonical mock cast (Sarah / Marcus / David / Claire)
-  // so we can verify visuals on a preview where the test workspace has
-  // no recent score_history. The DEMO DATA chip in the topbar makes this
-  // unambiguous in screenshots.
-  if (searchParams.demo === '1') {
+  // renders the design's canonical mock cast (Priya / Sarah / Marcus /
+  // David / Claire) so we can verify visuals on a preview where the test
+  // workspace has no recent score_history. The DEMO DATA chip in the
+  // topbar makes this unambiguous in screenshots.
+  //
+  // Gated behind VERCEL_ENV — production deploys ignore the flag so users
+  // can never accidentally see mock data, regardless of URL.
+  const allowDemo = process.env.VERCEL_ENV !== 'production'
+  if (searchParams.demo === '1' && allowDemo) {
     return <DigestView model={demoModel()} />
   }
 
@@ -183,6 +187,7 @@ export default async function DigestPage({
       highIntent: signals.filter((s) => s.intent === 'high').length,
       newlyKnown,
     },
+    rail: realRail(),
   }
 
   return <DigestView model={model} />
@@ -195,6 +200,21 @@ export default async function DigestPage({
 
 function demoModel(): DigestViewModel {
   const signals: DigestSignal[] = [
+    // Lead card: the anonymous-becomes-known moment. Banner + tinted bg
+    // makes this the most visually weighted signal in the roster.
+    {
+      contactId: 'demo-priya-raman',
+      name: 'Priya Raman',
+      initials: 'PR',
+      suburb: 'Paddington, NSW',
+      timing: 'Identified 12 min ago',
+      intent: 'high',
+      guidance: 'contextual',
+      nudge: 'Horace had been watching this one for two weeks. She just put her name to it.',
+      tags: ['Newly identified', '14 sessions', '14 anonymous sessions'],
+      pillLabel: 'Newly known',
+      isAnonymousNowKnown: true,
+    },
     {
       contactId: 'demo-sarah-thompson',
       name: 'Sarah Thompson',
@@ -256,7 +276,47 @@ function demoModel(): DigestViewModel {
       highIntent: 2,
       newlyKnown: 1,
     },
+    rail: demoRail(),
     isDemo: true,
+  }
+}
+
+function demoRail() {
+  return {
+    lists: [
+      { name: 'Warming up',         count: 6,  accent: 'high' as const },
+      { name: 'Watch closely',      count: 4,  accent: 'high' as const },
+      { name: 'Quiet but circling', count: 8,  accent: 'low'  as const },
+      { name: 'Paddington vendors', count: 12, accent: 'none' as const },
+    ],
+    weekSoFar: [
+      { day: 'MON' as const, count: 3,    isToday: false },
+      { day: 'TUE' as const, count: 5,    isToday: false },
+      { day: 'WED' as const, count: 4,    isToday: true  },
+      { day: 'THU' as const, count: null, isToday: false },
+      { day: 'FRI' as const, count: null, isToday: false },
+    ],
+    weekNote: 'Quiet Thursday and Friday — Horace will tell you when something stirs.',
+  }
+}
+
+// Real-mode rail. Lists feature deferred (HOR-122 backlog) — render an
+// empty Lists card. Week-so-far data needs persisted digest history
+// (also deferred) — render the day strip with the current weekday
+// highlighted but no counts yet.
+function realRail() {
+  const todayShort = new Date()
+    .toLocaleDateString('en-AU', { weekday: 'short' })
+    .toUpperCase()
+    .slice(0, 3) as 'MON' | 'TUE' | 'WED' | 'THU' | 'FRI'
+  return {
+    lists: [], // empty → card shows "Lists coming soon" copy
+    weekSoFar: (['MON', 'TUE', 'WED', 'THU', 'FRI'] as const).map((day) => ({
+      day,
+      count: null,
+      isToday: day === todayShort,
+    })),
+    weekNote: 'Your week-at-a-glance lands here once Horace has a few days of digests under its belt.',
   }
 }
 
@@ -273,6 +333,7 @@ function emptyModel(): DigestViewModel {
     narrative: '',
     signals: [],
     stats: { worthAttention: 0, highIntent: 0, newlyKnown: 0 },
+    rail: realRail(),
   }
 }
 

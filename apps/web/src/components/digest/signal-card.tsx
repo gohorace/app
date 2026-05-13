@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { ListPlus, MoreHorizontal } from 'lucide-react'
+import { ListPlus, MoreHorizontal, Sparkles } from 'lucide-react'
 import { IntentBadge } from './intent-badge'
 import { GuidanceBadge } from './guidance-badge'
 import { INTENT_AVATAR_BG, type IntentLevel, type GuidanceMode } from '@/lib/design/intent'
@@ -21,6 +21,17 @@ export interface DigestSignal {
   nudge: string
   /** Tag chips — event-type labels, session counts, etc. */
   tags: string[]
+  /**
+   * When set, replaces the default intent label on the pill (e.g.
+   * "Newly known" on the anonymous-becomes-known variant).
+   */
+  pillLabel?: string
+  /**
+   * Renders the "ANONYMOUS, NOW KNOWN — …" banner inside the card boundary
+   * and switches the card background to a warm terracotta tint. Marks the
+   * card as the lead signal of the digest.
+   */
+  isAnonymousNowKnown?: boolean
 }
 
 interface SignalCardProps {
@@ -36,23 +47,50 @@ interface SignalCardProps {
  * `More` is the overflow (snooze / dismiss / not useful — all deferred).
  */
 export function SignalCard({ signal }: SignalCardProps) {
+  const isAnon = signal.isAnonymousNowKnown ?? false
   return (
     <Link
       href={`/contacts/${signal.contactId}`}
       className="signal-card"
       style={{
         display: 'flex',
-        gap: 16,
-        background: '#FAF7F2',
-        border: '1px solid rgba(140,123,107,0.2)',
+        flexDirection: 'column',
+        gap: 14,
+        background: isAnon ? 'rgba(196,98,45,0.06)' : '#FAF7F2',
+        border: isAnon
+          ? '1px solid rgba(196,98,45,0.22)'
+          : '1px solid rgba(140,123,107,0.2)',
         borderRadius: 12,
-        padding: '18px 20px',
+        padding: isAnon ? '14px 20px 18px' : '18px 20px',
         textDecoration: 'none',
         color: 'inherit',
         transition: 'box-shadow 180ms cubic-bezier(0.16,1,0.3,1)',
-        alignItems: 'stretch',
       }}
     >
+      {/* "Anonymous, now known" banner — only on the lead anon card */}
+      {isAnon && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            fontSize: 10,
+            fontWeight: 600,
+            letterSpacing: '0.08em',
+            textTransform: 'uppercase',
+            color: '#C4622D',
+            paddingBottom: 12,
+            borderBottom: '1px solid rgba(196,98,45,0.18)',
+            marginBottom: 2,
+          }}
+        >
+          <Sparkles style={{ width: 12, height: 12 }} aria-hidden />
+          Anonymous, now known — Horace had been watching this one for two weeks.
+        </div>
+      )}
+
+      {/* Inner row: avatar + content + actions */}
+      <div style={{ display: 'flex', gap: 16, alignItems: 'stretch' }}>
       {/* Avatar */}
       <div
         style={{
@@ -96,7 +134,7 @@ export function SignalCard({ signal }: SignalCardProps) {
           >
             {signal.name}
           </span>
-          <IntentBadge intent={signal.intent} />
+          <IntentBadge intent={signal.intent} label={signal.pillLabel} />
         </div>
 
         {/* Meta */}
@@ -228,6 +266,7 @@ export function SignalCard({ signal }: SignalCardProps) {
           <MoreHorizontal style={{ width: 13, height: 13 }} />
           More
         </button>
+      </div>
       </div>
     </Link>
   )
