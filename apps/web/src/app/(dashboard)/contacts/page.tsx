@@ -23,6 +23,16 @@ export default async function ContactsPage({
   const agentId = agent!.id
   const q = searchParams.q?.trim() ?? ''
 
+  // HOR-136: workspace default destination for tracked links. Surfaced in
+  // the edit-destination popover as the fallback when no override is set.
+  const { data: settings } = await admin
+    .from('agent_settings')
+    .select('website_url')
+    .eq('agent_id', agentId)
+    .maybeSingle()
+  const defaultLinkUrl = settings?.website_url ?? null
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.gohorace.com'
+
   // HOR-125: three reads in parallel.
   //  1. Rich list rows (get_contacts_list RPC) — same shape used by v0 grid,
   //     fallback if RPC is missing (older deploys).
@@ -43,6 +53,9 @@ export default async function ContactsPage({
     source:     string
     is_stitched: boolean
     residence_property_id: string | null
+    tracked_link_token: string | null
+    tracked_link_destination_url: string | null
+    tracked_link_last_clicked_at: string | null
   }
 
   // 1 — base list via RPC, fallback to plain contacts select.
@@ -65,6 +78,9 @@ export default async function ContactsPage({
       source:     r.source,
       is_stitched: r.is_stitched,
       residence_property_id: null, // filled in by query (2) below
+      tracked_link_token:           r.tracked_link_token,
+      tracked_link_destination_url: r.tracked_link_destination_url,
+      tracked_link_last_clicked_at: r.tracked_link_last_clicked_at,
     }))
   } else {
     const { data: fallback } = await admin
@@ -87,13 +103,22 @@ export default async function ContactsPage({
       source:     c.source,
       is_stitched: false,
       residence_property_id: c.residence_property_id,
+      tracked_link_token:           null,
+      tracked_link_destination_url: null,
+      tracked_link_last_clicked_at: null,
     }))
   }
 
   if (baseRows.length === 0) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-        <ContactsGrid contacts={[]} initialQ={q} agentId={agentId} />
+        <ContactsGrid
+          contacts={[]}
+          initialQ={q}
+          agentId={agentId}
+          appUrl={appUrl}
+          defaultLinkUrl={defaultLinkUrl}
+        />
       </div>
     )
   }
@@ -170,12 +195,21 @@ export default async function ContactsPage({
       is_stitched: r.is_stitched,
       roles,
       linked_properties: Array.from(linked.values()),
+      tracked_link_token:           r.tracked_link_token,
+      tracked_link_destination_url: r.tracked_link_destination_url,
+      tracked_link_last_clicked_at: r.tracked_link_last_clicked_at,
     }
   })
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-      <ContactsGrid contacts={contacts} initialQ={q} agentId={agentId} />
+      <ContactsGrid
+        contacts={contacts}
+        initialQ={q}
+        agentId={agentId}
+        appUrl={appUrl}
+        defaultLinkUrl={defaultLinkUrl}
+      />
     </div>
   )
 }
