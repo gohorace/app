@@ -1,12 +1,12 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { ActivityList } from '@/components/dashboard/activity-list'
+import { NotificationsList } from '@/components/dashboard/notifications-list'
 
 export const dynamic = 'force-dynamic'
 
 const PAGE_SIZE = 30
 
-export default async function ActivityPage() {
+export default async function NotificationsPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
@@ -32,7 +32,7 @@ export default async function ActivityPage() {
 
   return (
     <div className="flex flex-col h-full overflow-hidden" style={{ background: '#F5F0E8' }}>
-      <ActivityList
+      <NotificationsList
         initialItems={initialItems}
         initialCursor={initialCursor}
       />

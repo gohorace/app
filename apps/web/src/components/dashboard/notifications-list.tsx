@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import { format, formatDistanceToNow, isToday, isYesterday } from 'date-fns'
 import { Bell, CheckCheck } from 'lucide-react'
 
-type ActivityItem = {
+type NotificationItem = {
   id: string
   type: string
   contact_id: string | null
@@ -18,7 +18,7 @@ type ActivityItem = {
 }
 
 interface Props {
-  initialItems: ActivityItem[]
+  initialItems: NotificationItem[]
   initialCursor: string | null
 }
 
@@ -46,8 +46,8 @@ function dayLabel(date: Date): string {
   return format(date, 'EEEE d MMMM')
 }
 
-function groupByDay(items: ActivityItem[]): { label: string; items: ActivityItem[] }[] {
-  const groups = new Map<string, ActivityItem[]>()
+function groupByDay(items: NotificationItem[]): { label: string; items: NotificationItem[] }[] {
+  const groups = new Map<string, NotificationItem[]>()
   for (const item of items) {
     const key = format(new Date(item.sent_at), 'yyyy-MM-dd')
     if (!groups.has(key)) groups.set(key, [])
@@ -59,9 +59,9 @@ function groupByDay(items: ActivityItem[]): { label: string; items: ActivityItem
   }))
 }
 
-export function ActivityList({ initialItems, initialCursor }: Props) {
+export function NotificationsList({ initialItems, initialCursor }: Props) {
   const router = useRouter()
-  const [items, setItems] = useState<ActivityItem[]>(initialItems)
+  const [items, setItems] = useState<NotificationItem[]>(initialItems)
   const [cursor, setCursor] = useState<string | null>(initialCursor)
   const [loadingMore, setLoadingMore] = useState(false)
   const [, startTransition] = useTransition()
@@ -74,14 +74,14 @@ export function ActivityList({ initialItems, initialCursor }: Props) {
     setItems((prev) =>
       prev.map((i) => (i.id === id && !i.read_at ? { ...i, read_at: new Date().toISOString() } : i)),
     )
-    fetch(`/api/activity/${id}/read`, { method: 'POST' })
+    fetch(`/api/notifications/${id}/read`, { method: 'POST' })
       .then(() => startTransition(() => router.refresh()))
       .catch(() => { /* optimistic update stands; next refresh corrects */ })
   }, [router])
 
   const markAllRead = useCallback(() => {
     setItems((prev) => prev.map((i) => (i.read_at ? i : { ...i, read_at: new Date().toISOString() })))
-    fetch('/api/activity/mark-all-read', { method: 'POST' })
+    fetch('/api/notifications/mark-all-read', { method: 'POST' })
       .then(() => startTransition(() => router.refresh()))
       .catch(() => { /* optimistic update stands */ })
   }, [router])
@@ -90,9 +90,9 @@ export function ActivityList({ initialItems, initialCursor }: Props) {
     if (!cursor || loadingMore) return
     setLoadingMore(true)
     try {
-      const res = await fetch(`/api/activity?cursor=${encodeURIComponent(cursor)}`)
+      const res = await fetch(`/api/notifications?cursor=${encodeURIComponent(cursor)}`)
       if (!res.ok) return
-      const { items: more, nextCursor } = await res.json() as { items: ActivityItem[]; nextCursor: string | null }
+      const { items: more, nextCursor } = await res.json() as { items: NotificationItem[]; nextCursor: string | null }
       setItems((prev) => [...prev, ...more])
       setCursor(nextCursor)
     } finally {
@@ -116,7 +116,7 @@ export function ActivityList({ initialItems, initialCursor }: Props) {
             className="font-display"
             style={{ fontSize: '22px', fontWeight: 700, color: INK, letterSpacing: '-0.02em', margin: 0 }}
           >
-            Activity
+            Notifications
           </h1>
           <p style={{ fontSize: '12px', color: STONE, margin: '2px 0 0' }}>
             Everything Horace has flagged for you.
@@ -166,7 +166,7 @@ export function ActivityList({ initialItems, initialCursor }: Props) {
                 </h2>
                 <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
                   {group.items.map((item) => (
-                    <ActivityRow
+                    <NotificationRow
                       key={item.id}
                       item={item}
                       onClick={() => markRead(item.id)}
@@ -204,9 +204,9 @@ export function ActivityList({ initialItems, initialCursor }: Props) {
   )
 }
 
-function ActivityRow({ item, onClick }: { item: ActivityItem; onClick: () => void }) {
+function NotificationRow({ item, onClick }: { item: NotificationItem; onClick: () => void }) {
   const isUnread = !item.read_at
-  const href = item.url || (item.contact_id ? `/leads/${item.contact_id}` : null)
+  const href = item.url || (item.contact_id ? `/contacts/${item.contact_id}` : null)
 
   const inner = (
     <div

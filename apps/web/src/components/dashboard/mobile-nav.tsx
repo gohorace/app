@@ -2,20 +2,16 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Home, Users, Bell, Settings } from 'lucide-react'
+import { Sun, Users, MapPin, MoreHorizontal } from 'lucide-react'
 
 const TABS = [
-  { href: '/dashboard', label: 'Today',    icon: Home     },
-  { href: '/leads',     label: 'Contacts', icon: Users    },
-  { href: '/activity',  label: 'Activity', icon: Bell     },
-  { href: '/settings',  label: 'Profile',  icon: Settings },
-] as const
+  { href: '/digest',     label: 'Today',      icon: Sun            },
+  { href: '/contacts',   label: 'Contacts',   icon: Users          },
+  { href: '/properties', label: 'Properties', icon: MapPin         },
+  { href: '/settings',   label: 'More',       icon: MoreHorizontal },
+]
 
-interface Props {
-  unreadActivity?: number
-}
-
-export function MobileNav({ unreadActivity = 0 }: Props) {
+export function MobileNav() {
   const pathname = usePathname()
 
   return (
@@ -35,11 +31,7 @@ export function MobileNav({ unreadActivity = 0 }: Props) {
       }}
     >
       {TABS.map(({ href, label, icon: Icon }) => {
-        const isActive =
-          href === '/dashboard'
-            ? pathname === '/dashboard'
-            : pathname.startsWith(href)
-        const showBadge = href === '/activity' && unreadActivity > 0
+        const isActive = pathname === href || pathname.startsWith(`${href}/`)
 
         return (
           <Link
@@ -58,36 +50,13 @@ export function MobileNav({ unreadActivity = 0 }: Props) {
               transition: 'color 150ms',
             }}
           >
-            <div style={{ position: 'relative', display: 'flex' }}>
-              <Icon
-                style={{
-                  width: '22px',
-                  height: '22px',
-                  strokeWidth: 1.5,
-                }}
-              />
-              {showBadge && (
-                <span
-                  style={{
-                    position: 'absolute',
-                    top: '-3px',
-                    right: '-6px',
-                    minWidth: '14px',
-                    height: '14px',
-                    padding: '0 4px',
-                    borderRadius: '9999px',
-                    background: '#C4622D',
-                    color: '#FAF7F2',
-                    fontSize: '9px',
-                    fontWeight: 700,
-                    lineHeight: '14px',
-                    textAlign: 'center',
-                  }}
-                >
-                  {unreadActivity > 99 ? '99+' : unreadActivity}
-                </span>
-              )}
-            </div>
+            <Icon
+              style={{
+                width: '22px',
+                height: '22px',
+                strokeWidth: 1.5,
+              }}
+            />
             <span style={{
               fontSize: '10px',
               fontWeight: isActive ? 600 : 400,
