@@ -107,14 +107,31 @@ export const PROPERTY_STATUSES: readonly PropertyStatus[] = [
   'sold',
 ] as const
 
+/**
+ * Coerce a raw status string from the database into a valid PropertyStatus.
+ * Falls back to 'watching' for any value not in the V1 vocabulary. This is
+ * the runtime safety net for environments where the
+ * 20260514000001_property_state_v1.sql migration hasn't been applied yet —
+ * the DB may still hold legacy values (off_market, residence_only,
+ * under_offer, withdrawn, unknown) until the migration runs. Once every
+ * environment has migrated, all values are already in the new vocabulary
+ * and this is a no-op.
+ */
+export function coercePropertyStatus(raw: string | null | undefined): PropertyStatus {
+  if (raw && (PROPERTY_STATUSES as readonly string[]).includes(raw)) {
+    return raw as PropertyStatus
+  }
+  return 'watching'
+}
+
 export function StateBadge({
   status,
   size = 'sm',
 }: {
-  status: PropertyStatus | null | undefined
+  status: PropertyStatus | string | null | undefined
   size?: 'sm' | 'lg'
 }) {
-  const s = STATE_STYLE[status ?? 'watching']
+  const s = STATE_STYLE[coercePropertyStatus(status)]
   return (
     <span
       style={{

@@ -9,7 +9,7 @@ import {
 } from '@/components/properties/property-detail-view'
 import { deriveIdentity, makeInitials } from '@/lib/contacts/identity'
 import { getRoles } from '@/lib/contacts/roles'
-import type { EngagementValue, PropertyStatus } from '@/lib/design/badges'
+import { coercePropertyStatus, type EngagementValue } from '@/lib/design/badges'
 
 export const dynamic = 'force-dynamic'
 
@@ -189,7 +189,8 @@ export default async function PropertyDetailPage({
         id:             property.id,
         address,
         suburb:         property.suburb,
-        status:         (property.status as PropertyStatus | null) ?? null,
+        // HOR-135: see properties/page.tsx for the rationale.
+        status:         coercePropertyStatus(property.status),
         firstSeenAt:    property.first_seen_at,
         lastActivityAt: property.last_activity_at,
         notes,
