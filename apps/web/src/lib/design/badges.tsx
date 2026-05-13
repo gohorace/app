@@ -75,6 +75,151 @@ export function IdentityGradient({
   )
 }
 
+// ── State badge (properties) ──────────────────────────────────────────────────
+// Maps the existing `properties.status` enum onto the design's palette. The
+// design defines four labels (listed / appraising / watching / sold); our
+// schema has more (under_offer, withdrawn, off_market, residence_only,
+// unknown). We map onto the closest design intent — the new vocabulary
+// (appraising, watching) lands in a later epic with a migration.
+
+export type PropertyStatus =
+  | 'listed'
+  | 'under_offer'
+  | 'sold'
+  | 'withdrawn'
+  | 'off_market'
+  | 'residence_only'
+  | 'unknown'
+
+interface StateStyle {
+  label: string
+  dot:   string
+  bg:    string
+  fg:    string
+}
+
+export const STATE_STYLE: Record<PropertyStatus, StateStyle> = {
+  listed:         { label: 'Listed',      dot: '#C4622D', bg: 'rgba(196,98,45,0.12)',  fg: '#C4622D' },
+  under_offer:    { label: 'Under offer', dot: '#B5922A', bg: 'rgba(181,146,42,0.14)', fg: '#8A6A00' },
+  sold:           { label: 'Sold',        dot: '#8C7B6B', bg: 'rgba(140,123,107,0.16)', fg: '#5E5246' },
+  off_market:     { label: 'Off-market',  dot: '#3D5246', bg: 'rgba(61,82,70,0.12)',   fg: '#3D5246' },
+  withdrawn:      { label: 'Withdrawn',   dot: '#8C7B6B', bg: 'rgba(140,123,107,0.12)', fg: '#5E5246' },
+  residence_only: { label: 'Residence',   dot: '#8C7B6B', bg: 'rgba(140,123,107,0.1)',  fg: '#5E5246' },
+  unknown:        { label: '—',           dot: '#8C7B6B', bg: 'rgba(140,123,107,0.08)', fg: '#8C7B6B' },
+}
+
+export function StateBadge({
+  status,
+  size = 'sm',
+}: {
+  status: PropertyStatus | null | undefined
+  size?: 'sm' | 'lg'
+}) {
+  const s = STATE_STYLE[status ?? 'unknown'] ?? STATE_STYLE.unknown
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 6,
+        fontSize: size === 'lg' ? 12 : 11,
+        fontWeight: 500,
+        padding: size === 'lg' ? '4px 10px' : '3px 9px',
+        borderRadius: 9999,
+        background: s.bg,
+        color: s.fg,
+        whiteSpace: 'nowrap',
+      }}
+    >
+      <span
+        style={{
+          width: 6,
+          height: 6,
+          borderRadius: '50%',
+          background: s.dot,
+          flexShrink: 0,
+        }}
+      />
+      {s.label}
+    </span>
+  )
+}
+
+// ── Avatar stack (contacts linked to a property — mirrors PropertyThumbStack) ─
+
+export interface AvatarStackPerson {
+  id?: string
+  initials: string
+  identity?: IdentityState
+}
+
+export function AvatarStack({
+  people,
+  max = 3,
+}: {
+  people: AvatarStackPerson[]
+  max?: number
+}) {
+  if (!people || people.length === 0) {
+    return <span style={{ fontSize: 12, color: '#8C7B6B', fontStyle: 'italic' }}>anonymous only</span>
+  }
+  const shown = people.slice(0, max)
+  const extra = people.length - shown.length
+  return (
+    <div style={{ display: 'flex', alignItems: 'center' }}>
+      {shown.map((p, i) => {
+        const cfg = IDENTITY[p.identity ?? 'known']
+        return (
+          <div
+            key={p.id ?? i}
+            style={{
+              width: 22,
+              height: 22,
+              borderRadius: '50%',
+              background: cfg.bg,
+              color: cfg.fg,
+              fontSize: 9,
+              fontWeight: 600,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginLeft: i === 0 ? 0 : -7,
+              border: '2px solid #FAF7F2',
+              flexShrink: 0,
+              fontFamily: 'var(--font-body)',
+            }}
+            aria-hidden
+          >
+            {p.initials}
+          </div>
+        )
+      })}
+      {extra > 0 && (
+        <div
+          style={{
+            minWidth: 22,
+            height: 22,
+            padding: '0 5px',
+            borderRadius: 9999,
+            background: 'rgba(140,123,107,0.14)',
+            color: '#5E5246',
+            fontSize: 9,
+            fontWeight: 600,
+            marginLeft: -7,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            border: '2px solid #FAF7F2',
+            fontFamily: 'var(--font-mono)',
+          }}
+        >
+          +{extra}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Role badge (contacts) ─────────────────────────────────────────────────────
 // Three roles: Seller (durable past sale), Buyer (durable past purchase),
 // Engaged (transient — recent property_view events). Optional count when the
