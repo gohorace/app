@@ -1,7 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveResidence, type SelectedAddressInput } from '@/lib/contacts/residence'
+import { getRoles, withRoleAdded, withRoleRemoved } from '@/lib/contacts/roles'
+
+// Body shape for role mutations. Caller sends one of:
+//   - `{ add_role: { type, property_id, date? } }`         — append/replace
+//   - `{ remove_role_id: '<uuid>' }`                       — remove by id
+const AddRoleSchema = z.object({
+  type: z.enum(['seller', 'buyer']),
+  property_id: z.string().uuid(),
+  date: z.string().datetime({ offset: true }).optional(),
+})
 
 export async function GET(
   req: NextRequest,
@@ -26,7 +37,7 @@ export async function GET(
 
   const contactQuery = admin
     .from('contacts')
-    .select('id, first_name, last_name, full_name_raw, email, phone, score, last_seen_at, property_address, suburb, source, medium, deleted_at, residence_property_id')
+    .select('id, first_name, last_name, full_name_raw, email, phone, score, last_seen_at, property_address, suburb, source, medium, deleted_at, residence_property_id, metadata')
     .eq('id', params.id)
     .eq('agent_id', agent.id)
 
@@ -68,11 +79,35 @@ export async function GET(
     residenceProperty = property ?? null
   }
 
+  // Roles: parsed safely from metadata. For each role, fetch the linked
+  // property so the detail page can render the role-attached card without
+  // an extra round-trip.
+  const roles = getRoles(contact.metadata)
+  let roleProperties: Array<{
+    id: string
+    street_number: string | null
+    street_name: string | null
+    suburb: string | null
+    state: string | null
+    postcode: string | null
+    status: string | null
+  }> = []
+  if (roles.length > 0) {
+    const { data: props } = await admin
+      .from('properties')
+      .select('id, street_number, street_name, suburb, state, postcode, status')
+      .in('id', roles.map((r) => r.property_id))
+      .is('deleted_at', null)
+    roleProperties = props ?? []
+  }
+
   return NextResponse.json({
     contact,
     residence_property: residenceProperty,
     events: events ?? [],
     scoreHistory: scoreHistory ?? [],
+    roles,
+    role_properties: roleProperties,
   })
 }
 
@@ -104,6 +139,52 @@ export async function PATCH(
   const update: Record<string, unknown> = {}
   for (const key of allowed) {
     if (key in body) update[key] = body[key]
+  }
+
+  // HOR-125: role mutations via metadata.roles. Two shapes:
+  //   { add_role: { type: 'seller'|'buyer', property_id: uuid, date? } }
+  //   { remove_role_id: uuid }
+  // Both require reading the current metadata to compute the merged result —
+  // we don't want to clobber other metadata keys (e.g. CRM-sync fields).
+  const hasAddRole    = 'add_role' in body && body.add_role !== null
+  const hasRemoveRole = 'remove_role_id' in body && body.remove_role_id !== null
+  if (hasAddRole || hasRemoveRole) {
+    const { data: current, error: readErr } = await admin
+      .from('contacts')
+      .select('metadata')
+      .eq('id', params.id)
+      .eq('agent_id', agent.id)
+      .is('deleted_at', null)
+      .maybeSingle()
+
+    if (readErr || !current) {
+      return NextResponse.json(
+        { error: 'Contact not found or already deleted' },
+        { status: 404 },
+      )
+    }
+
+    let nextMetadata: Record<string, unknown> = (current.metadata as Record<string, unknown>) ?? {}
+
+    if (hasAddRole) {
+      const parsed = AddRoleSchema.safeParse(body.add_role)
+      if (!parsed.success) {
+        return NextResponse.json(
+          { error: 'Invalid add_role payload', details: parsed.error.format() },
+          { status: 400 },
+        )
+      }
+      nextMetadata = withRoleAdded(nextMetadata, parsed.data)
+    }
+    if (hasRemoveRole) {
+      const idCheck = z.string().uuid().safeParse(body.remove_role_id)
+      if (!idCheck.success) {
+        return NextResponse.json({ error: 'Invalid remove_role_id' }, { status: 400 })
+      }
+      nextMetadata = withRoleRemoved(nextMetadata, idCheck.data)
+    }
+
+    update.metadata = nextMetadata
   }
 
   // Handle residence separately. Three cases:

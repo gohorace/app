@@ -1,11 +1,34 @@
 'use client'
 
-import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { formatDistanceToNow } from 'date-fns'
-import { Search, Link2, Check, MoreHorizontal, Upload, X, AlertTriangle } from 'lucide-react'
-import { ContactDrawer } from './contact-drawer'
+import {
+  Search,
+  MoreHorizontal,
+  Plus,
+  BookmarkPlus,
+  List,
+  Activity,
+  Clock,
+  MapPin,
+  Tag,
+  ChevronDown,
+} from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import {
+  IdentityGradient,
+  RoleBadge,
+  EngagementIndicator,
+  PersonAvatar,
+  PropertyThumbStack,
+  toneFor,
+  type EngagementValue,
+} from '@/lib/design/badges'
+import { deriveIdentity, makeInitials } from '@/lib/contacts/identity'
+import { roleCounts, type ContactRoleEntry } from '@/lib/contacts/roles'
+import { intentForScore } from '@/lib/design/intent'
+import { AddContactDialog } from './add-contact-dialog'
 
 const ONLINE_MS = 5 * 60 * 1000 // 5 minutes
 
@@ -14,149 +37,118 @@ function isRecentlySeen(ts: string | null): boolean {
   return Date.now() - new Date(ts).getTime() < ONLINE_MS
 }
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// ── Public row type — what the server page hands us ──────────────────────────
 
-type Intent = 'high' | 'mid' | 'low' | 'none'
-
-export type ContactRow = {
-  id:               string
-  first_name:       string | null
-  last_name:        string | null
-  email:            string | null
-  phone:            string | null
-  score:            number
-  score_change_7d:  number
-  last_seen_at:     string | null
-  property_address: string | null
-  suburb:           string | null
-  source:           string
-  medium:           string | null
-  session_count:    number
-  last_event_type:  string | null
-  last_page_title:  string | null
-  tracked_link_token:           string | null
-  tracked_link_last_clicked_at: string | null
-  tracked_link_destination_url: string | null
-  is_stitched:                  boolean
+export interface ContactGridRow {
+  id: string
+  first_name: string | null
+  last_name: string | null
+  email: string | null
+  phone: string | null
+  score: number
+  score_change_7d: number
+  last_seen_at: string | null
+  suburb: string | null
+  source: string
+  is_stitched: boolean
+  /** Parsed roles from contacts.metadata. */
+  roles: ContactRoleEntry[]
+  /** Resolved linked properties (residence + role properties), deduped. */
+  linked_properties: Array<{ id: string; address: string }>
 }
-
-// ── Intent ────────────────────────────────────────────────────────────────────
-
-function getIntent(score: number): Intent {
-  if (score >= 50) return 'high'
-  if (score >= 20) return 'mid'
-  if (score >= 5)  return 'low'
-  return 'none'
-}
-
-const INTENT_LABEL: Record<Intent, string> = {
-  high: 'High', mid: 'Mid', low: 'Watching', none: 'Quiet',
-}
-const INTENT_FG: Record<Intent, string> = {
-  high: '#A5511E', mid: '#8A6A00', low: '#3D5246', none: '#6B5A4A',
-}
-const INTENT_BG: Record<Intent, string> = {
-  high: 'rgba(196,98,45,0.1)', mid: 'rgba(181,146,42,0.1)',
-  low:  'rgba(61,82,70,0.1)',  none: 'rgba(140,123,107,0.1)',
-}
-const INTENT_DOT: Record<Intent, string> = {
-  high: '#C4622D', mid: '#B5922A', low: '#3D5246', none: '#8C7B6B',
-}
-
-// ── Score trend ───────────────────────────────────────────────────────────────
-
-function TrendBadge({ delta }: { delta: number }) {
-  if (delta > 0) return (
-    <span style={{ fontSize: '11px', color: '#3D5246', fontFamily: 'var(--font-mono)' }}>↑{delta}</span>
-  )
-  if (delta < 0) return (
-    <span style={{ fontSize: '11px', color: '#8C7B6B', fontFamily: 'var(--font-mono)' }}>↓{Math.abs(delta)}</span>
-  )
-  return <span style={{ fontSize: '11px', color: 'rgba(140,123,107,0.4)', fontFamily: 'var(--font-mono)' }}>→</span>
-}
-
-// ── Last page label ───────────────────────────────────────────────────────────
-
-function lastPageLabel(eventType: string | null, title: string | null): string {
-  if (!eventType) return '—'
-  if (eventType === 'form_submit') return title ? `Enquiry: ${title}` : 'Submitted an enquiry'
-  if (eventType === 'property_view') return title ? title : 'Property listing'
-  return title || 'Your site'
-}
-
-// ── ContactsGrid ──────────────────────────────────────────────────────────────
 
 interface Props {
-  contacts:        ContactRow[]
-  initialQ?:       string
-  agentId:         string
-  defaultLinkUrl?: string | null
+  contacts: ContactGridRow[]
+  initialQ?: string
+  agentId: string
 }
 
-// Flex proportions — columns scale to fill available width.
-// sessions and lastSeen have minWidth so they don't collapse on narrow screens.
-const COL_FLEX = {
-  name:     3,
-  email:    2.5,
-  intent:   1.5,
-  lastPage: 2.5,
-  sessions: 1,
-  lastSeen: 1,
-  link:     1.2,
-}
-const COL_MIN: Partial<Record<keyof typeof COL_FLEX, string>> = {
-  name:     '160px',
-  email:    '160px',
-  intent:   '110px',
-  lastPage: '160px',
-  sessions: '70px',
-  lastSeen: '90px',
-  link:     '110px',
+type Tab = 'all' | 'known' | 'unidentified'
+
+interface SecondaryFilters {
+  role: 'All' | 'Sellers' | 'Buyers' | 'Engaged only'
+  list: 'All lists'
+  intensity: 'Any' | 'High' | 'Medium' | 'Low'
+  time: 'Active anytime'
+  property: 'Any property'
 }
 
-// Sum of COL_MIN values + horizontal padding (16px × 2). Forces the table
-// to keep a usable width on narrow viewports — the parent container scrolls
-// horizontally instead of compressing columns into unreadable slivers.
-const TABLE_MIN_WIDTH = '1002px'
+const DEFAULT_FILTERS: SecondaryFilters = {
+  role: 'All',
+  list: 'All lists',
+  intensity: 'Any',
+  time: 'Active anytime',
+  property: 'Any property',
+}
 
-export function ContactsGrid({ contacts, initialQ = '', agentId, defaultLinkUrl = null }: Props) {
-  const [search,     setSearch]     = useState(initialQ)
-  const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [onlineIds,  setOnlineIds]  = useState<Set<string>>(() => {
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function engagementForScore(score: number): EngagementValue {
+  const i = intentForScore(score)
+  if (i === 'high') return 3
+  if (i === 'mid')  return 2
+  if (i === 'low')  return 1
+  return 0
+}
+
+function lastSeenLabel(iso: string | null): string {
+  if (!iso) return '—'
+  const then = new Date(iso).getTime()
+  if (Number.isNaN(then)) return '—'
+  const diff = Date.now() - then
+  const minutes = Math.floor(diff / 60_000)
+  if (minutes < 1)   return 'Just now'
+  if (minutes < 60)  return `${minutes}m ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24)    return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  if (days === 1)    return 'Yesterday'
+  if (days < 7)      return `${days}d ago`
+  const weeks = Math.floor(days / 7)
+  if (weeks < 4)     return `${weeks}w ago`
+  return new Date(iso).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })
+}
+
+// ── Component ────────────────────────────────────────────────────────────────
+
+export function ContactsGrid({ contacts, initialQ = '', agentId }: Props) {
+  const router = useRouter()
+  const [search, setSearch] = useState(initialQ)
+  const [tab, setTab] = useState<Tab>('all')
+  const [filters, setFilters] = useState<SecondaryFilters>(DEFAULT_FILTERS)
+  const [addOpen, setAddOpen] = useState(false)
+
+  // Online status — same Realtime channel as v0 grid, simpler state shape.
+  const [onlineIds, setOnlineIds] = useState<Set<string>>(() => {
     const safe = Array.isArray(contacts) ? contacts : []
-    return new Set(safe.filter(c => isRecentlySeen(c.last_seen_at)).map(c => c.id))
+    return new Set(safe.filter((c) => isRecentlySeen(c.last_seen_at)).map((c) => c.id))
   })
-  const latestSeenRef = useRef<Map<string, string>>(new Map(
-    (Array.isArray(contacts) ? contacts : []).map(c => [c.id, c.last_seen_at ?? ''])
-  ))
+  const latestSeenRef = useRef<Map<string, string>>(
+    new Map((contacts ?? []).map((c) => [c.id, c.last_seen_at ?? ''])),
+  )
 
-  // Optimistic per-contact destination overrides so the modal save reflects
-  // immediately without a server round-trip.
-  const [destOverrides, setDestOverrides] = useState<Map<string, string | null>>(new Map())
-  const [copiedId,  setCopiedId]  = useState<string | null>(null)
-  const [editingId, setEditingId] = useState<string | null>(null)
-
-  // Supabase Realtime — watch for last_seen_at updates on this agent's contacts
   useEffect(() => {
     const supabase = createClient()
     const channel = supabase
       .channel('contacts-online')
       .on(
         'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'contacts', filter: `agent_id=eq.${agentId}` },
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'contacts',
+          filter: `agent_id=eq.${agentId}`,
+        },
         (payload) => {
           const row = payload.new as { id: string; last_seen_at: string | null }
           latestSeenRef.current.set(row.id, row.last_seen_at ?? '')
-          setOnlineIds(prev => {
+          setOnlineIds((prev) => {
             const next = new Set(prev)
-            if (isRecentlySeen(row.last_seen_at)) {
-              next.add(row.id)
-            } else {
-              next.delete(row.id)
-            }
+            if (isRecentlySeen(row.last_seen_at)) next.add(row.id)
+            else next.delete(row.id)
             return next
           })
-        }
+        },
       )
       .subscribe()
 
@@ -177,625 +169,775 @@ export function ContactsGrid({ contacts, initialQ = '', agentId, defaultLinkUrl 
     }
   }, [agentId])
 
-  const safeContacts = Array.isArray(contacts) ? contacts : []
+  const safeContacts = useMemo(() => (Array.isArray(contacts) ? contacts : []), [contacts])
+
+  // Identity per contact (memoised — used by tabs + rows)
+  const identityById = useMemo(() => {
+    const m = new Map<string, ReturnType<typeof deriveIdentity>>()
+    for (const c of safeContacts) m.set(c.id, deriveIdentity(c))
+    return m
+  }, [safeContacts])
+
+  const tabCounts = useMemo(() => {
+    let known = 0
+    let anon = 0
+    for (const c of safeContacts) {
+      const id = identityById.get(c.id)
+      if (id === 'anonymous') anon++
+      else known++
+    }
+    return { all: safeContacts.length, known, unidentified: anon }
+  }, [safeContacts, identityById])
 
   const filtered = useMemo(() => {
-    const q = search.toLowerCase().trim()
-    if (!q) return safeContacts
-    return safeContacts.filter(c =>
-      [c.first_name, c.last_name, c.email, c.suburb, c.property_address]
-        .join(' ').toLowerCase().includes(q)
-    )
-  }, [safeContacts, search])
+    let rows = safeContacts
 
-  const selectedIdx  = selectedId ? filtered.findIndex(c => c.id === selectedId) : -1
-  const selectedContact = selectedIdx >= 0 ? filtered[selectedIdx] : null
+    // Tab filter
+    if (tab === 'known') {
+      rows = rows.filter((c) => identityById.get(c.id) !== 'anonymous')
+    } else if (tab === 'unidentified') {
+      rows = rows.filter((c) => identityById.get(c.id) === 'anonymous')
+    }
 
-  const handleSelect = useCallback((id: string) => {
-    setSelectedId(prev => prev === id ? null : id)
-  }, [])
+    // Role filter (wired)
+    if (filters.role === 'Sellers') {
+      rows = rows.filter((c) => c.roles.some((r) => r.type === 'seller'))
+    } else if (filters.role === 'Buyers') {
+      rows = rows.filter((c) => c.roles.some((r) => r.type === 'buyer'))
+    } else if (filters.role === 'Engaged only') {
+      rows = rows.filter((c) => c.roles.length === 0 && c.score >= 5)
+    }
 
-  const handlePrev = useCallback(() => {
-    if (selectedIdx > 0) setSelectedId(filtered[selectedIdx - 1].id)
-  }, [selectedIdx, filtered])
+    // Intensity filter (wired)
+    if (filters.intensity !== 'Any') {
+      const target = filters.intensity === 'High' ? 3 : filters.intensity === 'Medium' ? 2 : 1
+      rows = rows.filter((c) => engagementForScore(c.score) === target)
+    }
 
-  const handleNext = useCallback(() => {
-    if (selectedIdx < filtered.length - 1) setSelectedId(filtered[selectedIdx + 1].id)
-  }, [selectedIdx, filtered])
+    // List + Time + Property dropdowns are rendered but inert in V1 (deferred).
+
+    // Search
+    const q = search.trim().toLowerCase()
+    if (q) {
+      rows = rows.filter((c) =>
+        [c.first_name, c.last_name, c.email, c.suburb]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase()
+          .includes(q),
+      )
+    }
+
+    return rows
+  }, [safeContacts, identityById, tab, filters, search])
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-
-      {/* Page header */}
-      <div style={{
-        padding: '16px 24px 12px',
-        borderBottom: '1px solid rgba(140,123,107,0.15)',
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        flexShrink: 0, background: '#F5F0E8',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: '12px' }}>
-          <h1 style={{ fontSize: '22px', fontWeight: 600, color: '#1A1612', fontFamily: 'var(--font-display)', letterSpacing: '-0.015em', margin: 0 }}>
-            Contacts
-          </h1>
-          <span style={{ fontSize: '12px', color: '#8C7B6B', background: 'rgba(140,123,107,0.1)', padding: '2px 8px', borderRadius: '4px', fontFamily: 'var(--font-mono)' }}>
-            {filtered.length}
-          </span>
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          {/* Search */}
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: '6px',
-            padding: '5px 10px',
-            background: 'rgba(140,123,107,0.08)',
-            border: '1px solid transparent',
-            borderRadius: '6px', width: '220px',
-          }}
-            className="contacts-search"
-          >
-            <Search style={{ width: '13px', height: '13px', color: '#8C7B6B', flexShrink: 0 }} />
-            <input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Search contacts…"
-              style={{
-                flex: 1, background: 'transparent', border: 'none', outline: 'none',
-                fontFamily: 'var(--font-body)', fontSize: '13px', color: '#1A1612',
-                minWidth: 0,
-              }}
-            />
-          </div>
-
-          {/* Import contacts */}
-          <Link
-            href="/import"
+      <div
+        style={{
+          flex: 1,
+          overflowY: 'auto',
+          padding: '28px 32px 80px',
+        }}
+      >
+        <div style={{ maxWidth: 1200 }}>
+          {/* Page header */}
+          <div
             style={{
-              display: 'inline-flex', alignItems: 'center', gap: '5px',
-              padding: '6px 10px', borderRadius: '6px',
-              background: 'rgba(196,98,45,0.1)', color: '#A5511E',
-              fontSize: '12.5px', fontWeight: 600, textDecoration: 'none',
-              border: '1px solid rgba(196,98,45,0.2)',
+              display: 'flex',
+              alignItems: 'flex-start',
+              justifyContent: 'space-between',
+              gap: 16,
+              marginBottom: 22,
             }}
           >
-            <Upload style={{ width: '12px', height: '12px' }} />
-            Import
-          </Link>
-        </div>
-      </div>
-
-      {/* Main area: grid + optional drawer */}
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
-
-        {/* Grid — horizontally scrolls when viewport is narrower than TABLE_MIN_WIDTH */}
-        <div style={{
-          flex: 1, overflow: 'auto', minWidth: 0,
-          WebkitOverflowScrolling: 'touch',
-        }}>
-          <div style={{ width: '100%', minWidth: TABLE_MIN_WIDTH }}>
-
-            {/* Column headers */}
-            <div style={{
-              display: 'flex', alignItems: 'center',
-              padding: '0 16px',
-              height: '36px',
-              background: '#FAF7F2',
-              borderBottom: '1px solid rgba(140,123,107,0.15)',
-              position: 'sticky', top: 0, zIndex: 2,
-            }}>
-              {[
-                { label: 'Name',      key: 'name'     as const },
-                { label: 'Email',     key: 'email'    as const },
-                { label: 'Signal',    key: 'intent'   as const },
-                { label: 'Last page', key: 'lastPage' as const },
-                { label: 'Sessions',  key: 'sessions' as const },
-                { label: 'Last seen', key: 'lastSeen' as const },
-                { label: 'Link',      key: 'link'     as const },
-              ].map(col => (
-                <div key={col.label} style={{
-                  flex: COL_FLEX[col.key],
-                  minWidth: COL_MIN[col.key] ?? 0,
-                  fontSize: '10px', fontWeight: 600,
-                  letterSpacing: '0.08em', textTransform: 'uppercase',
+            <div>
+              <h1
+                className="font-display"
+                style={{
+                  margin: 0,
+                  fontSize: 32,
+                  fontWeight: 600,
+                  letterSpacing: '-0.02em',
+                  color: '#1A1612',
+                }}
+              >
+                Contacts
+              </h1>
+              <p
+                style={{
+                  margin: '6px 0 0',
+                  fontSize: 13,
                   color: '#8C7B6B',
-                  fontFamily: 'var(--font-body)',
-                  paddingRight: '12px',
-                  display: 'flex', alignItems: 'center',
-                  overflow: 'hidden',
-                  whiteSpace: 'nowrap',
-                }}>
-                  {col.label}
-                </div>
-              ))}
+                  maxWidth: 560,
+                  lineHeight: 1.5,
+                }}
+              >
+                Your book — who&rsquo;s stirring, who&rsquo;s known, and who&rsquo;s resolving from
+                anonymous into named.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setAddOpen(true)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '8px 14px',
+                borderRadius: 7,
+                background: '#1A1612',
+                color: '#FAF7F2',
+                fontSize: 13,
+                fontWeight: 500,
+                border: '1px solid #1A1612',
+                cursor: 'pointer',
+                fontFamily: 'var(--font-body)',
+              }}
+            >
+              <Plus style={{ width: 14, height: 14 }} />
+              Add contact
+            </button>
+          </div>
+
+          {/* Tabs + search */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 14,
+              marginBottom: 12,
+              borderBottom: '1px solid rgba(140,123,107,0.16)',
+              flexWrap: 'wrap',
+            }}
+          >
+            <div style={{ display: 'flex', gap: 0 }}>
+              <TabButton label="All"          count={tabCounts.all}          active={tab === 'all'}          onClick={() => setTab('all')} />
+              <TabButton label="Known"        count={tabCounts.known}        active={tab === 'known'}        onClick={() => setTab('known')} />
+              <TabButton label="Unidentified" count={tabCounts.unidentified} active={tab === 'unidentified'} onClick={() => setTab('unidentified')} />
             </div>
 
-            {/* Empty states */}
-            {filtered.length === 0 && (
-              <div style={{ padding: '64px 24px', textAlign: 'center' }}>
-                <p style={{ fontSize: '14px', fontWeight: 500, color: '#1A1612', marginBottom: '6px' }}>
-                  {search
-                    ? `No contacts match "${search}"`
-                    : safeContacts.length === 0
-                      ? "Horace hasn't met anyone yet."
-                      : 'No contacts found.'}
-                </p>
-                {!search && safeContacts.length === 0 && (
-                  <>
-                    <p style={{ fontSize: '13px', color: '#8C7B6B', marginBottom: '20px' }}>
-                      Import your contacts so Horace can recognise them when they visit your site.
-                    </p>
-                    <Link
-                      href="/import"
-                      style={{
-                        display: 'inline-flex', alignItems: 'center', gap: '6px',
-                        padding: '8px 14px', borderRadius: '8px',
-                        background: '#C4622D', color: '#FAF7F2',
-                        fontSize: '13px', fontWeight: 600, textDecoration: 'none',
-                      }}
-                    >
-                      <Upload style={{ width: '14px', height: '14px' }} />
-                      Import contacts
-                    </Link>
-                  </>
-                )}
-              </div>
-            )}
-
-            {/* Rows */}
-            {filtered.map((contact, idx) => {
-              const intent    = getIntent(contact.score)
-              const name      = [contact.first_name, contact.last_name].filter(Boolean).join(' ') || '—'
-              const initials  = ((contact.first_name?.[0] ?? '') + (contact.last_name?.[0] ?? '')).toUpperCase() || (contact.email?.[0]?.toUpperCase() ?? '?')
-              const selected  = contact.id === selectedId
-              const isEven    = idx % 2 === 0
-              const isOnline  = onlineIds.has(contact.id)
-
-              return (
-                <div
-                  key={contact.id}
-                  onClick={() => handleSelect(contact.id)}
-                  style={{
-                    display: 'flex', alignItems: 'center',
-                    padding: '0 16px',
-                    height: '44px',
-                    background: selected
-                      ? 'rgba(196,98,45,0.06)'
-                      : isEven ? '#FAF7F2' : 'rgba(245,240,232,0.5)',
-                    borderBottom: '1px solid rgba(140,123,107,0.08)',
-                    cursor: 'pointer',
-                    transition: 'background 100ms',
-                    outline: selected ? '1px solid rgba(196,98,45,0.2)' : 'none',
-                    outlineOffset: '-1px',
-                  }}
-                  className="grid-row"
-                >
-                  {/* Name */}
-                  <div style={{ flex: COL_FLEX.name, minWidth: COL_MIN.name, display: 'flex', alignItems: 'center', gap: '9px', paddingRight: '12px', overflow: 'hidden' }}>
-                    <div style={{ position: 'relative', flexShrink: 0 }}>
-                      <div style={{
-                        width: '26px', height: '26px', borderRadius: '50%',
-                        background: INTENT_BG[intent], color: INTENT_FG[intent],
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: '10px', fontWeight: 700,
-                      }}>
-                        {initials.slice(0, 2)}
-                      </div>
-                      {isOnline && (
-                        <span style={{
-                          position: 'absolute', bottom: '0px', right: '0px',
-                          width: '8px', height: '8px', borderRadius: '50%',
-                          background: '#3DA361',
-                          border: '1.5px solid #FAF7F2',
-                          animation: 'online-pulse 2s ease-in-out infinite',
-                        }} />
-                      )}
-                      {!isOnline && contact.is_stitched && (
-                        <span
-                          title="Stitched — visits identified"
-                          style={{
-                            position: 'absolute', bottom: '-2px', right: '-2px',
-                            width: '11px', height: '11px', borderRadius: '50%',
-                            background: '#3D5246',
-                            border: '1.5px solid #FAF7F2',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          }}
-                        >
-                          <Check style={{ width: '7px', height: '7px', color: '#FAF7F2', strokeWidth: 4 }} />
-                        </span>
-                      )}
-                    </div>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: '13px', fontWeight: 600, color: '#1A1612', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {name}
-                      </div>
-                      {contact.property_address && (
-                        <div style={{ fontSize: '10.5px', color: '#C4622D', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: '0px' }}>
-                          {contact.property_address}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Email */}
-                  <div style={{ flex: COL_FLEX.email, minWidth: COL_MIN.email, paddingRight: '12px', overflow: 'hidden' }}>
-                    <span style={{ fontSize: '12.5px', color: '#5A4D40', fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>
-                      {contact.email ?? '—'}
-                    </span>
-                  </div>
-
-                  {/* Intent */}
-                  <div style={{ flex: COL_FLEX.intent, minWidth: 0, paddingRight: '12px', display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden' }}>
-                    <span style={{
-                      display: 'inline-flex', alignItems: 'center', gap: '5px',
-                      padding: '2px 8px', borderRadius: '4px',
-                      background: INTENT_BG[intent], color: INTENT_FG[intent],
-                      fontSize: '11.5px', fontWeight: 500,
-                    }}>
-                      <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: INTENT_DOT[intent], display: 'inline-block', flexShrink: 0 }} />
-                      {INTENT_LABEL[intent]}
-                    </span>
-                    <TrendBadge delta={contact.score_change_7d} />
-                  </div>
-
-                  {/* Last page */}
-                  <div style={{ flex: COL_FLEX.lastPage, minWidth: 0, paddingRight: '12px', overflow: 'hidden' }}>
-                    <span style={{ fontSize: '12.5px', color: contact.last_event_type ? '#1A1612' : 'rgba(140,123,107,0.4)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>
-                      {lastPageLabel(contact.last_event_type, contact.last_page_title)}
-                    </span>
-                  </div>
-
-                  {/* Sessions */}
-                  <div style={{ flex: COL_FLEX.sessions, minWidth: COL_MIN.sessions, paddingRight: '12px' }}>
-                    <span style={{ fontSize: '12.5px', color: contact.session_count > 0 ? '#1A1612' : 'rgba(140,123,107,0.4)', fontFamily: 'var(--font-mono)' }}>
-                      {contact.session_count > 0 ? contact.session_count : '—'}
-                    </span>
-                  </div>
-
-                  {/* Last seen */}
-                  <div style={{ flex: COL_FLEX.lastSeen, minWidth: COL_MIN.lastSeen }}>
-                    <span style={{ fontSize: '12px', color: '#8C7B6B', fontFamily: 'var(--font-mono)' }}>
-                      {contact.last_seen_at
-                        ? formatDistanceToNow(new Date(contact.last_seen_at), { addSuffix: false })
-                        : '—'}
-                    </span>
-                  </div>
-
-                  {/* Tracked link */}
-                  <div
-                    style={{ flex: COL_FLEX.link, minWidth: COL_MIN.link, paddingRight: '4px' }}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <TrackedLinkCell
-                      token={contact.tracked_link_token}
-                      lastClickedAt={contact.tracked_link_last_clicked_at}
-                      copied={copiedId === contact.id}
-                      onCopy={async () => {
-                        if (!contact.tracked_link_token) return
-                        const url = `${window.location.origin}/c/${contact.tracked_link_token}`
-                        try { await navigator.clipboard.writeText(url) } catch {}
-                        setCopiedId(contact.id)
-                        setTimeout(() => setCopiedId(prev => prev === contact.id ? null : prev), 1500)
-                      }}
-                      onEdit={() => setEditingId(contact.id)}
-                    />
-                  </div>
-                </div>
-              )
-            })}
+            <div
+              className="contacts-search"
+              style={{
+                marginLeft: 'auto',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '6px 10px',
+                background: '#FAF7F2',
+                border: '1px solid rgba(140,123,107,0.22)',
+                borderRadius: 6,
+                marginBottom: 6,
+              }}
+            >
+              <Search style={{ width: 13, height: 13, color: '#8C7B6B' }} />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search name, email…"
+                style={{
+                  border: 'none',
+                  outline: 'none',
+                  background: 'transparent',
+                  fontSize: 12,
+                  fontFamily: 'var(--font-body)',
+                  color: '#1A1612',
+                  width: 200,
+                }}
+              />
+            </div>
           </div>
-        </div>
 
-        {/* Drawer */}
-        {selectedContact && (
-          <ContactDrawer
-            key={selectedContact.id}
-            contactId={selectedContact.id}
-            preview={selectedContact}
-            isOnline={onlineIds.has(selectedContact.id)}
-            onClose={() => setSelectedId(null)}
-            onPrev={handlePrev}
-            onNext={handleNext}
-            hasPrev={selectedIdx > 0}
-            hasNext={selectedIdx < filtered.length - 1}
+          {/* Secondary filter chips */}
+          <SecondaryFilterBar
+            filters={filters}
+            onChange={(next) => setFilters((f) => ({ ...f, ...next }))}
+            resultCount={filtered.length}
+            totalCount={safeContacts.length}
           />
-        )}
-      </div>
 
-      {/* Footer count */}
-      <div style={{
-        padding: '7px 20px',
-        borderTop: '1px solid rgba(140,123,107,0.1)',
-        flexShrink: 0,
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      }}>
-        <span style={{ fontSize: '11px', color: '#8C7B6B' }}>
-          {search
-            ? `${filtered.length} result${filtered.length !== 1 ? 's' : ''}`
-            : `${safeContacts.length} contact${safeContacts.length !== 1 ? 's' : ''}`}
-        </span>
-      </div>
-
-      {/* Destination override modal */}
-      {editingId && (() => {
-        const editing = safeContacts.find(c => c.id === editingId)
-        if (!editing) return null
-        const override = destOverrides.has(editing.id)
-          ? destOverrides.get(editing.id) ?? null
-          : editing.tracked_link_destination_url
-        return (
-          <DestinationModal
-            contactId={editing.id}
-            contactName={[editing.first_name, editing.last_name].filter(Boolean).join(' ') || editing.email || 'this contact'}
-            currentDestination={override}
-            defaultUrl={defaultLinkUrl}
-            onClose={() => setEditingId(null)}
-            onSaved={(value) => {
-              setDestOverrides(prev => {
-                const next = new Map(prev)
-                next.set(editing.id, value)
-                return next
-              })
-              setEditingId(null)
+          {/* Table */}
+          <div
+            style={{
+              background: '#FAF7F2',
+              border: '1px solid rgba(140,123,107,0.2)',
+              borderRadius: 10,
+              overflow: 'hidden',
             }}
-          />
-        )
-      })()}
-    </div>
-  )
-}
+          >
+            <TableHead />
+            {filtered.length === 0 ? (
+              <EmptyState search={search} hasAnyContacts={safeContacts.length > 0} />
+            ) : (
+              filtered.map((c, idx) => (
+                <ContactRow
+                  key={c.id}
+                  contact={c}
+                  identity={identityById.get(c.id) ?? 'anonymous'}
+                  isOnline={onlineIds.has(c.id)}
+                  isLast={idx === filtered.length - 1}
+                  onClick={() => router.push(`/contacts/${c.id}`)}
+                />
+              ))
+            )}
+          </div>
 
-// ── Tracked-link cell ─────────────────────────────────────────────────────────
+          <p
+            style={{
+              marginTop: 20,
+              fontSize: 11,
+              color: '#8C7B6B',
+              fontStyle: 'italic',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+            }}
+          >
+            <span>Your people, your history. Behaviour belongs to you — sovereign across every tool you ever use.</span>
+          </p>
+        </div>
+      </div>
 
-interface TrackedLinkCellProps {
-  token:         string | null
-  lastClickedAt: string | null
-  copied:        boolean
-  onCopy:        () => void
-  onEdit:        () => void
-}
-
-function TrackedLinkCell({ token, lastClickedAt, copied, onCopy, onEdit }: TrackedLinkCellProps) {
-  if (!token) {
-    return <span style={{ fontSize: '11px', color: 'rgba(140,123,107,0.4)' }}>—</span>
-  }
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-      <button
-        type="button"
-        onClick={onCopy}
-        title={copied ? 'Copied!' : 'Copy tracked link'}
-        style={{
-          display: 'inline-flex', alignItems: 'center', gap: '4px',
-          padding: '4px 8px', borderRadius: '5px',
-          background: copied ? 'rgba(61,82,70,0.12)' : 'rgba(140,123,107,0.08)',
-          border: '1px solid transparent',
-          color: copied ? '#3D5246' : '#5A4D40',
-          fontSize: '11px', fontWeight: 600,
-          cursor: 'pointer',
-          transition: 'background 120ms',
-        }}
-      >
-        {copied ? (
-          <>
-            <Check style={{ width: '11px', height: '11px' }} />
-            Copied
-          </>
-        ) : (
-          <>
-            <Link2 style={{ width: '11px', height: '11px' }} />
-            Copy
-          </>
-        )}
-      </button>
-      <button
-        type="button"
-        onClick={onEdit}
-        title="Edit destination"
-        style={{
-          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-          width: '24px', height: '24px', borderRadius: '5px',
-          background: 'transparent', border: '1px solid transparent',
-          color: '#8C7B6B', cursor: 'pointer',
-        }}
-      >
-        <MoreHorizontal style={{ width: '12px', height: '12px' }} />
-      </button>
-      {lastClickedAt && (
-        <span
-          title={`Clicked ${formatDistanceToNow(new Date(lastClickedAt), { addSuffix: true })}`}
-          style={{ fontSize: '10.5px', color: '#8C7B6B', whiteSpace: 'nowrap', marginLeft: '2px' }}
-        >
-          {formatDistanceToNow(new Date(lastClickedAt), { addSuffix: false })}
-        </span>
+      {addOpen && (
+        <AddContactDialog
+          onClose={() => setAddOpen(false)}
+          onComplete={() => {
+            setAddOpen(false)
+            router.refresh()
+          }}
+        />
       )}
     </div>
   )
 }
 
-// ── Destination override modal ────────────────────────────────────────────────
+// ── Tab button ───────────────────────────────────────────────────────────────
 
-interface DestinationModalProps {
-  contactId:          string
-  contactName:        string
-  currentDestination: string | null
-  defaultUrl:         string | null
-  onClose:            () => void
-  onSaved:            (value: string | null) => void
+function TabButton({
+  label,
+  count,
+  active,
+  onClick,
+}: {
+  label: string
+  count: number
+  active: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 6,
+        padding: '10px 14px',
+        fontSize: 13,
+        fontWeight: 500,
+        color: active ? '#1A1612' : '#8C7B6B',
+        background: 'transparent',
+        border: 'none',
+        borderBottom: active ? '2px solid #C4622D' : '2px solid transparent',
+        cursor: 'pointer',
+        fontFamily: 'var(--font-body)',
+        marginBottom: -1,
+      }}
+    >
+      {label}
+      <span
+        style={{
+          fontFamily: 'var(--font-mono)',
+          fontSize: 10,
+          color: active ? '#C4622D' : '#8C7B6B',
+          background: active ? 'rgba(196,98,45,0.14)' : 'rgba(140,123,107,0.12)',
+          padding: '1px 7px',
+          borderRadius: 9999,
+        }}
+      >
+        {count}
+      </span>
+    </button>
+  )
 }
 
-function getHost(raw: string | null): string | null {
-  if (!raw) return null
-  try { return new URL(raw).host.toLowerCase() } catch { return null }
+// ── Secondary filter chips ────────────────────────────────────────────────────
+
+interface FilterChipProps {
+  label: string
+  Icon: typeof Tag
+  isActive: boolean
+  options: string[]
+  current: string
+  onSelect: (v: string) => void
+  disabledTooltip?: string
 }
 
-function DestinationModal({
-  contactId,
-  contactName,
-  currentDestination,
-  defaultUrl,
-  onClose,
-  onSaved,
-}: DestinationModalProps) {
-  const [value, setValue]   = useState(currentDestination ?? '')
-  const [saving, setSaving] = useState(false)
-  const [error, setError]   = useState<string | null>(null)
+function FilterChip({ label, Icon, isActive, options, current, onSelect, disabledTooltip }: FilterChipProps) {
+  const [open, setOpen] = useState(false)
+  const disabled = Boolean(disabledTooltip)
+  return (
+    <div style={{ position: 'relative' }}>
+      <button
+        type="button"
+        onClick={() => !disabled && setOpen((o) => !o)}
+        title={disabledTooltip}
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 6,
+          padding: '5px 11px',
+          borderRadius: 6,
+          fontSize: 11.5,
+          fontWeight: 500,
+          background: isActive ? 'rgba(196,98,45,0.08)' : '#FAF7F2',
+          color: isActive ? '#C4622D' : '#5E5246',
+          border: `1px solid ${isActive ? 'rgba(196,98,45,0.25)' : 'rgba(140,123,107,0.22)'}`,
+          cursor: disabled ? 'not-allowed' : 'pointer',
+          opacity: disabled ? 0.6 : 1,
+          fontFamily: 'var(--font-body)',
+        }}
+      >
+        <Icon style={{ width: 11, height: 11, opacity: 0.7 }} />
+        {label}: <span style={{ fontWeight: 600 }}>{current}</span>
+        <ChevronDown style={{ width: 11, height: 11, opacity: 0.5 }} />
+      </button>
+      {open && !disabled && (
+        <>
+          <div
+            style={{ position: 'fixed', inset: 0, zIndex: 15 }}
+            onClick={() => setOpen(false)}
+          />
+          <div
+            style={{
+              position: 'absolute',
+              top: 'calc(100% + 4px)',
+              left: 0,
+              zIndex: 20,
+              background: '#FAF7F2',
+              border: '1px solid rgba(140,123,107,0.22)',
+              borderRadius: 8,
+              boxShadow: '0 12px 32px rgba(26,22,18,0.18)',
+              padding: 4,
+              minWidth: 180,
+            }}
+          >
+            {options.map((opt) => (
+              <div
+                key={opt}
+                onClick={() => {
+                  onSelect(opt)
+                  setOpen(false)
+                }}
+                style={{
+                  padding: '7px 10px',
+                  fontSize: 12,
+                  color: '#1A1612',
+                  cursor: 'pointer',
+                  borderRadius: 5,
+                  background: current === opt ? 'rgba(196,98,45,0.08)' : 'transparent',
+                }}
+              >
+                {opt}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
 
-  const defaultHost = getHost(defaultUrl)
-  const currentHost = getHost(value || defaultUrl)
-  const offSite     = !!value && !!defaultHost && !!currentHost && currentHost !== defaultHost
+function SecondaryFilterBar({
+  filters,
+  onChange,
+  resultCount,
+  totalCount,
+}: {
+  filters: SecondaryFilters
+  onChange: (next: Partial<SecondaryFilters>) => void
+  resultCount: number
+  totalCount: number
+}) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        marginBottom: 14,
+        marginTop: 10,
+        flexWrap: 'wrap',
+      }}
+    >
+      <FilterChip
+        label="Role"
+        Icon={Tag}
+        isActive={filters.role !== 'All'}
+        current={filters.role}
+        options={['All', 'Sellers', 'Buyers', 'Engaged only']}
+        onSelect={(v) => onChange({ role: v as SecondaryFilters['role'] })}
+      />
+      <FilterChip
+        label="List"
+        Icon={List}
+        isActive={false}
+        current={filters.list}
+        options={['All lists']}
+        onSelect={() => {}}
+        disabledTooltip="Lists coming soon"
+      />
+      <FilterChip
+        label="Intensity"
+        Icon={Activity}
+        isActive={filters.intensity !== 'Any'}
+        current={filters.intensity}
+        options={['Any', 'High', 'Medium', 'Low']}
+        onSelect={(v) => onChange({ intensity: v as SecondaryFilters['intensity'] })}
+      />
+      <FilterChip
+        label="Time"
+        Icon={Clock}
+        isActive={false}
+        current={filters.time}
+        options={['Active anytime']}
+        onSelect={() => {}}
+        disabledTooltip="Time filter coming soon"
+      />
+      <FilterChip
+        label="Property"
+        Icon={MapPin}
+        isActive={false}
+        current={filters.property}
+        options={['Any property']}
+        onSelect={() => {}}
+        disabledTooltip="Property filter coming soon"
+      />
 
-  async function save(clear = false) {
-    setSaving(true)
-    setError(null)
-    const payload = clear
-      ? null
-      : value.trim() === '' ? null : value.trim()
+      <div
+        style={{
+          marginLeft: 'auto',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+        }}
+      >
+        <span
+          style={{
+            fontSize: 11,
+            color: '#8C7B6B',
+            fontFamily: 'var(--font-mono)',
+          }}
+        >
+          {resultCount} of {totalCount}
+        </span>
+        <button
+          type="button"
+          disabled
+          title="Lists coming soon"
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 5,
+            padding: '5px 9px',
+            borderRadius: 6,
+            background: 'transparent',
+            color: '#5E5246',
+            fontSize: 11,
+            fontWeight: 500,
+            border: '1px dashed rgba(140,123,107,0.3)',
+            cursor: 'not-allowed',
+            opacity: 0.55,
+            fontFamily: 'var(--font-body)',
+          }}
+        >
+          <BookmarkPlus style={{ width: 12, height: 12 }} />
+          Save as list
+        </button>
+      </div>
+    </div>
+  )
+}
 
-    try {
-      const res = await fetch(`/api/contacts/${contactId}/tracked-link`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ destination_url: payload }),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        setError(data.error ?? 'Failed to save')
-        setSaving(false)
-        return
-      }
-      onSaved(data.destination_url ?? null)
-    } catch {
-      setError('Network error — try again')
-      setSaving(false)
-    }
-  }
+// ── Table head ───────────────────────────────────────────────────────────────
+
+const COL_STYLES = {
+  avatar:    { width: 52,  flexGrow: 0, flexShrink: 0 },
+  contact:   { flex: 2.4,  minWidth: 200 },
+  roles:     { flex: 1.6,  minWidth: 140 },
+  suburb:    { flex: 1,    minWidth: 100 },
+  engagement:{ flex: 1.1,  minWidth: 120 },
+  properties:{ flex: 1.4,  minWidth: 130 },
+  lastSeen:  { flex: 0.9,  minWidth: 80 },
+  overflow:  { width: 36,  flexGrow: 0, flexShrink: 0 },
+} as const
+
+function TableHead() {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 14,
+        padding: '11px 18px',
+        borderBottom: '1px solid rgba(140,123,107,0.18)',
+        background: 'rgba(245,240,232,0.5)',
+        fontSize: 10,
+        fontWeight: 600,
+        letterSpacing: '0.08em',
+        textTransform: 'uppercase',
+        color: '#8C7B6B',
+      }}
+    >
+      <span style={COL_STYLES.avatar} />
+      <span style={COL_STYLES.contact}>Contact</span>
+      <span style={COL_STYLES.roles}>Roles</span>
+      <span style={COL_STYLES.suburb}>Suburb</span>
+      <span style={COL_STYLES.engagement}>Engagement</span>
+      <span style={COL_STYLES.properties}>Linked properties</span>
+      <span style={COL_STYLES.lastSeen}>Last seen</span>
+      <span style={COL_STYLES.overflow} />
+    </div>
+  )
+}
+
+// ── Row ───────────────────────────────────────────────────────────────────────
+
+function ContactRow({
+  contact,
+  identity,
+  isOnline,
+  isLast,
+  onClick,
+}: {
+  contact: ContactGridRow
+  identity: ReturnType<typeof deriveIdentity>
+  isOnline: boolean
+  isLast: boolean
+  onClick: () => void
+}) {
+  const isAnon = identity === 'anonymous'
+  const counts = roleCounts(contact.roles)
+  const initials = makeInitials(contact)
+  const name =
+    [contact.first_name, contact.last_name].filter(Boolean).join(' ') ||
+    contact.email ||
+    `Visitor · ${contact.id.slice(0, 4)}`
+  const subline = isAnon
+    ? `Tracked · ${contact.source}`
+    : contact.email ?? contact.phone ?? contact.suburb ?? '—'
+
+  const linkedThumbs = contact.linked_properties.map((p) => ({
+    address: p.address,
+    tone: toneFor(p.id),
+  }))
 
   return (
     <div
-      onClick={onClose}
+      role="link"
+      tabIndex={0}
+      className="grid-row"
+      onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onClick()
+        }
+      }}
       style={{
-        position: 'fixed', inset: 0, zIndex: 50,
-        background: 'rgba(26,22,18,0.4)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: '16px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 14,
+        padding: '14px 18px',
+        borderBottom: isLast ? 'none' : '1px solid rgba(140,123,107,0.1)',
+        cursor: 'pointer',
+        transition: 'background 120ms',
       }}
     >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          width: '100%', maxWidth: '460px',
-          background: '#FAF7F2', borderRadius: '12px',
-          border: '1px solid rgba(140,123,107,0.2)',
-          boxShadow: '0 20px 60px rgba(26,22,18,0.25)',
-          overflow: 'hidden',
-        }}
-      >
-        <div style={{
-          padding: '16px 20px',
-          borderBottom: '1px solid rgba(140,123,107,0.12)',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        }}>
-          <div>
-            <p style={{ fontSize: '14px', fontWeight: 600, color: '#1A1612', margin: 0 }}>
-              Tracked link destination
-            </p>
-            <p style={{ fontSize: '11.5px', color: '#8C7B6B', margin: '2px 0 0' }}>
-              for {contactName}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
+      {/* Avatar */}
+      <div style={{ ...COL_STYLES.avatar, position: 'relative' }}>
+        <PersonAvatar
+          initials={initials}
+          identity={identity}
+          size={44}
+          anonymous={isAnon}
+        />
+        {isOnline && !isAnon && (
+          <span
+            title="Online now"
             style={{
-              padding: '4px', borderRadius: '6px', background: 'transparent',
-              border: '1px solid transparent', color: '#8C7B6B', cursor: 'pointer',
-            }}
-          >
-            <X style={{ width: '15px', height: '15px' }} />
-          </button>
-        </div>
-
-        <div style={{ padding: '18px 20px' }}>
-          <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 600, color: '#5A4D40', marginBottom: '6px' }}>
-            Destination URL
-          </label>
-          <input
-            type="url"
-            inputMode="url"
-            placeholder={defaultUrl ?? 'https://yourdomain.com'}
-            autoCapitalize="off"
-            autoCorrect="off"
-            spellCheck={false}
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            style={{
-              width: '100%', padding: '8px 10px',
-              fontSize: '13px', fontFamily: 'var(--font-mono)',
-              border: '1px solid rgba(140,123,107,0.3)',
-              borderRadius: '6px',
-              background: '#FFFFFF', color: '#1A1612',
-              outline: 'none',
+              position: 'absolute',
+              bottom: 0,
+              right: 4,
+              width: 10,
+              height: 10,
+              borderRadius: '50%',
+              background: '#3DA361',
+              border: '2px solid #FAF7F2',
+              animation: 'online-pulse 2s ease-in-out infinite',
             }}
           />
-          <p style={{ fontSize: '11px', color: '#8C7B6B', marginTop: '6px' }}>
-            {value.trim() === ''
-              ? defaultUrl
-                ? <>Leave blank to use default: <span style={{ fontFamily: 'var(--font-mono)' }}>{defaultUrl}</span></>
-                : <>No default site URL set yet — <Link href="/settings/tracked-links" style={{ color: '#A5511E' }}>configure one</Link>.</>
-              : 'This URL will receive the click and is where stitching happens.'}
-          </p>
+        )}
+      </div>
 
-          {offSite && (
-            <div style={{
-              marginTop: '10px',
-              display: 'flex', gap: '8px', alignItems: 'flex-start',
-              padding: '10px',
-              background: 'rgba(196,98,45,0.08)',
-              border: '1px solid rgba(196,98,45,0.2)',
-              borderRadius: '6px',
-            }}>
-              <AlertTriangle style={{ width: '14px', height: '14px', color: '#A5511E', flexShrink: 0, marginTop: '1px' }} />
-              <p style={{ fontSize: '11.5px', color: '#5A4D40', margin: 0, lineHeight: 1.4 }}>
-                This URL is outside your tracked site ({defaultHost}). Clicks will redirect there but won&apos;t stitch the contact — the tracker has to be installed on the destination domain.
-              </p>
-            </div>
-          )}
-
-          {error && (
-            <p style={{ fontSize: '11.5px', color: '#A5511E', marginTop: '10px' }}>{error}</p>
-          )}
-
-          <div style={{ display: 'flex', gap: '8px', marginTop: '16px', justifyContent: 'flex-end' }}>
-            {currentDestination && (
-              <button
-                type="button"
-                disabled={saving}
-                onClick={() => save(true)}
-                style={{
-                  padding: '7px 12px', borderRadius: '6px',
-                  background: 'transparent', border: '1px solid rgba(140,123,107,0.3)',
-                  color: '#5A4D40', fontSize: '12.5px', fontWeight: 600,
-                  cursor: saving ? 'default' : 'pointer',
-                }}
-              >
-                Reset to default
-              </button>
-            )}
-            <button
-              type="button"
-              disabled={saving}
-              onClick={() => save(false)}
-              style={{
-                padding: '7px 14px', borderRadius: '6px',
-                background: '#C4622D', border: '1px solid #C4622D',
-                color: '#FAF7F2', fontSize: '12.5px', fontWeight: 600,
-                cursor: saving ? 'default' : 'pointer',
-              }}
-            >
-              {saving ? 'Saving…' : 'Save destination'}
-            </button>
-          </div>
+      {/* Contact (name + identity gradient + subline) */}
+      <div style={{ ...COL_STYLES.contact, minWidth: 0 }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            flexWrap: 'wrap',
+            marginBottom: 3,
+          }}
+        >
+          <span
+            style={{
+              fontSize: 14,
+              fontWeight: 600,
+              color: isAnon ? '#5E5246' : '#1A1612',
+              fontStyle: isAnon ? 'italic' : 'normal',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              minWidth: 0,
+            }}
+          >
+            {name}
+          </span>
+          <IdentityGradient state={identity} />
+        </div>
+        <div
+          style={{
+            fontSize: 12,
+            color: '#8C7B6B',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}
+        >
+          {subline}
         </div>
       </div>
+
+      {/* Roles */}
+      <div style={{ ...COL_STYLES.roles, display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+        {counts.seller > 0 && <RoleBadge role="seller" count={counts.seller} />}
+        {counts.buyer  > 0 && <RoleBadge role="buyer"  count={counts.buyer}  />}
+        {counts.seller === 0 && counts.buyer === 0 && contact.score >= 5 && (
+          <RoleBadge role="engaged" />
+        )}
+        {counts.seller === 0 && counts.buyer === 0 && contact.score < 5 && !isAnon && (
+          <span style={{ fontSize: 11, color: '#8C7B6B', fontStyle: 'italic' }}>—</span>
+        )}
+      </div>
+
+      {/* Suburb */}
+      <div style={{ ...COL_STYLES.suburb, fontSize: 12, color: '#5E5246' }}>
+        {contact.suburb ?? <span style={{ color: '#8C7B6B' }}>—</span>}
+      </div>
+
+      {/* Engagement */}
+      <div style={{ ...COL_STYLES.engagement, display: 'flex', alignItems: 'center' }}>
+        <EngagementIndicator value={engagementForScore(contact.score)} showLabel />
+      </div>
+
+      {/* Linked properties */}
+      <div style={{ ...COL_STYLES.properties, display: 'flex', alignItems: 'center', gap: 10 }}>
+        {linkedThumbs.length > 0 ? (
+          <>
+            <PropertyThumbStack properties={linkedThumbs} />
+            <span style={{ fontSize: 12, color: '#5E5246' }}>{linkedThumbs.length}</span>
+          </>
+        ) : (
+          <span style={{ fontSize: 12, color: '#8C7B6B', fontStyle: 'italic' }}>none yet</span>
+        )}
+      </div>
+
+      {/* Last seen */}
+      <div
+        style={{
+          ...COL_STYLES.lastSeen,
+          fontFamily: 'var(--font-mono)',
+          fontSize: 11,
+          color: '#5E5246',
+        }}
+      >
+        {lastSeenLabel(contact.last_seen_at)}
+      </div>
+
+      {/* Overflow */}
+      <div style={{ ...COL_STYLES.overflow, display: 'flex', justifyContent: 'flex-end' }}>
+        <button
+          type="button"
+          aria-label="More — coming soon"
+          title="More — coming soon"
+          onClick={(e) => {
+            e.stopPropagation()
+          }}
+          style={{
+            background: 'transparent',
+            border: 'none',
+            color: '#8C7B6B',
+            cursor: 'default',
+            padding: 4,
+            borderRadius: 4,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <MoreHorizontal style={{ width: 14, height: 14 }} />
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ── Empty state ──────────────────────────────────────────────────────────────
+
+function EmptyState({ search, hasAnyContacts }: { search: string; hasAnyContacts: boolean }) {
+  return (
+    <div style={{ padding: '48px 24px', textAlign: 'center', background: '#FAF7F2' }}>
+      <p
+        style={{
+          fontSize: 13,
+          fontWeight: 500,
+          color: '#5E5246',
+          marginBottom: 6,
+        }}
+      >
+        {search
+          ? `No contacts match "${search}"`
+          : !hasAnyContacts
+            ? "Horace hasn't met anyone yet."
+            : 'No contacts match this filter.'}
+      </p>
+      {!search && !hasAnyContacts && (
+        <p style={{ fontSize: 12, color: '#8C7B6B', marginBottom: 18 }}>
+          Import your contacts so Horace can recognise them when they visit your site.
+        </p>
+      )}
+      {!search && !hasAnyContacts && (
+        <Link
+          href="/import"
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            padding: '8px 14px',
+            borderRadius: 8,
+            background: '#C4622D',
+            color: '#FAF7F2',
+            fontSize: 13,
+            fontWeight: 600,
+            textDecoration: 'none',
+          }}
+        >
+          Import contacts
+        </Link>
+      )}
     </div>
   )
 }
