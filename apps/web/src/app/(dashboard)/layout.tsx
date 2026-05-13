@@ -41,9 +41,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   const workspaceName = workspace?.name ?? 'My Agency'
 
-  // High-intent signal count for the rail badge (admin client bypasses RLS for read-only count).
+  // Attention count for the bell badge (admin client bypasses RLS for read-only count).
+  // V1 definition: contacts with score >= 50. Will expand to include unhandled Worth-watching /
+  // Newly-known prompts when those surfaces ship.
   const admin = createAdminClient()
-  const { count: highSignalCount } = await admin
+  const { count: attentionCount } = await admin
     .from('contacts')
     .select('*', { count: 'exact', head: true })
     .eq('agent_id', agent.id)
@@ -64,7 +66,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           agentFirstName={agent.first_name}
           agentLastName={agent.last_name}
           avatarUrl={agent.avatar_url}
-          highSignalCount={highSignalCount ?? 0}
+          attentionCount={attentionCount ?? 0}
           trialDaysLeft={trialDaysLeft}
         />
       </div>

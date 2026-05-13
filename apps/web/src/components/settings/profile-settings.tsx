@@ -3,7 +3,7 @@
 import { useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ChevronRight, Bell, Code, BarChart2, Key, LogOut, Building2, Link2, Inbox, Users, Camera, Loader2 } from 'lucide-react'
+import { ChevronRight, Bell, Code, BarChart2, Key, LogOut, Building2, Link2, Inbox, Users, Camera, Loader2, Upload, LifeBuoy } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { InstallPrompt } from './install-prompt'
 
@@ -24,6 +24,8 @@ const NAV_ITEMS = [
   { href: '/settings/snippet',        label: 'Install snippet',    icon: Code,      desc: 'Website tracking code' },
   { href: '/settings/scoring',        label: 'Scoring rules',      icon: BarChart2, desc: 'How intent points are awarded' },
   { href: '/settings/api-tokens',     label: 'API & integrations', icon: Key,       desc: 'Tokens for MCP and outreach' },
+  { href: '/import',                  label: 'Import contacts',    icon: Upload,    desc: 'Bring contacts in from a CSV' },
+  { href: '/help',                    label: 'Help & guides',      icon: LifeBuoy,  desc: 'Walkthroughs and answers' },
 ]
 
 export function ProfileSettings({ agentId, firstName, lastName, email, avatarUrl, workspaceName }: ProfileSettingsProps) {

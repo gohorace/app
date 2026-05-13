@@ -2,13 +2,13 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Eye, Users, Inbox, MoreHorizontal } from 'lucide-react'
+import { Sun, Users, MapPin, MoreHorizontal } from 'lucide-react'
 
 const TABS = [
-  { href: '/dashboard', label: 'Signals',  icon: Eye             },
-  { href: '/contacts',  label: 'Contacts', icon: Users           },
-  { href: '/digest',    label: 'Digest',   icon: Inbox           },
-  { href: '/settings',  label: 'More',     icon: MoreHorizontal  },
+  { href: '/digest',     label: 'Today',      icon: Sun            },
+  { href: '/contacts',   label: 'Contacts',   icon: Users          },
+  { href: '/properties', label: 'Properties', icon: MapPin         },
+  { href: '/settings',   label: 'More',       icon: MoreHorizontal },
 ]
 
 export function MobileNav() {
@@ -31,10 +31,7 @@ export function MobileNav() {
       }}
     >
       {TABS.map(({ href, label, icon: Icon }) => {
-        const isActive =
-          href === '/dashboard'
-            ? pathname === '/dashboard'
-            : pathname.startsWith(href)
+        const isActive = pathname === href || pathname.startsWith(`${href}/`)
 
         return (
           <Link

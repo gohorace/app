@@ -2,14 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import {
-  Eye,
-  Users,
-  Home,
-  Inbox,
-  Settings,
-  LifeBuoy,
-} from 'lucide-react'
+import { Sun, Users, MapPin, Bell, Settings } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -18,20 +11,38 @@ type NavItem = {
   href: string
   label: string
   icon: React.ElementType
+  badgeFrom?: 'attention'
+}
+
+type NavSection = {
+  label: string | null
+  items: NavItem[]
 }
 
 // ── Nav definitions ───────────────────────────────────────────────────────────
+// IA per V1 design: Today / Data / Notifications / Account. Signals (/dashboard)
+// is retired and redirects to /digest. Help + Import live under Settings now.
 
-const ATTENTION_NAV: NavItem[] = [
-  { href: '/dashboard',      label: 'Signals',    icon: Eye   },
-  { href: '/contacts',       label: 'Contacts',   icon: Users },
-  { href: '/properties/new', label: 'Properties', icon: Home  },
-  { href: '/digest',         label: 'Digest',     icon: Inbox },
-]
-
-const ACCOUNT_NAV: NavItem[] = [
-  { href: '/settings', label: 'Settings', icon: Settings },
-  { href: '/help',     label: 'Help',     icon: LifeBuoy },
+const NAV_SECTIONS: NavSection[] = [
+  {
+    label: null,
+    items: [{ href: '/digest', label: 'Today', icon: Sun }],
+  },
+  {
+    label: 'Data',
+    items: [
+      { href: '/contacts',   label: 'Contacts',   icon: Users  },
+      { href: '/properties', label: 'Properties', icon: MapPin },
+    ],
+  },
+  {
+    label: null,
+    items: [{ href: '/notifications', label: 'Notifications', icon: Bell, badgeFrom: 'attention' }],
+  },
+  {
+    label: 'Account',
+    items: [{ href: '/settings', label: 'Settings', icon: Settings }],
+  },
 ]
 
 // ── Sidebar ───────────────────────────────────────────────────────────────────
@@ -41,7 +52,7 @@ interface SidebarProps {
   agentFirstName?: string | null
   agentLastName?: string | null
   avatarUrl?: string | null
-  highSignalCount?: number
+  attentionCount?: number
   trialDaysLeft?: number | null
 }
 
@@ -50,7 +61,7 @@ export function Sidebar({
   agentFirstName,
   agentLastName,
   avatarUrl,
-  highSignalCount = 0,
+  attentionCount = 0,
   trialDaysLeft = null,
 }: SidebarProps) {
   const pathname = usePathname()
@@ -60,8 +71,7 @@ export function Sidebar({
   const fullName = [agentFirstName, agentLastName].filter(Boolean).join(' ') || orgName
 
   function isActive(href: string) {
-    if (href === '/dashboard') return pathname === '/dashboard'
-    return pathname.startsWith(href)
+    return pathname === href || pathname.startsWith(`${href}/`)
   }
 
   return (
@@ -85,27 +95,20 @@ export function Sidebar({
 
       {/* ── Nav ── */}
       <nav className="flex-1 overflow-y-auto px-0">
-        <SectionLabel>Worth your attention</SectionLabel>
-        {ATTENTION_NAV.map(({ href, label, icon }) => (
-          <NavLink
-            key={href}
-            href={href}
-            label={label}
-            icon={icon}
-            active={isActive(href)}
-            badge={href === '/dashboard' && highSignalCount > 0 ? highSignalCount : null}
-          />
-        ))}
-
-        <SectionLabel className="mt-4">Account</SectionLabel>
-        {ACCOUNT_NAV.map(({ href, label, icon }) => (
-          <NavLink
-            key={href}
-            href={href}
-            label={label}
-            icon={icon}
-            active={isActive(href)}
-          />
+        {NAV_SECTIONS.map((section, si) => (
+          <div key={si} className={si === 0 ? undefined : 'mt-4'}>
+            {section.label && <SectionLabel>{section.label}</SectionLabel>}
+            {section.items.map(({ href, label, icon, badgeFrom }) => (
+              <NavLink
+                key={href}
+                href={href}
+                label={label}
+                icon={icon}
+                active={isActive(href)}
+                badge={badgeFrom === 'attention' && attentionCount > 0 ? attentionCount : null}
+              />
+            ))}
+          </div>
         ))}
       </nav>
 

@@ -100,9 +100,71 @@
     --shadow-lg:  0 8px 32px rgba(26,22,18,0.16), 0 4px 8px rgba(26,22,18,0.08);
 
     /* ── Animation ── */
-    --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-    --duration-fast: 180ms;
-    --duration-base: 280ms;
+    --ease-out:       cubic-bezier(0.16, 1, 0.3, 1);
+    --ease-in-out:    cubic-bezier(0.4, 0, 0.2, 1);
+    --ease-in:        cubic-bezier(0.4, 0, 1, 1);
+    --duration-micro: 120ms;
+    --duration-fast:  180ms;
+    --duration-base:  280ms;
+    --duration-slow:  400ms;
+
+    /* ── Additional shadows ── */
+    --shadow-xs:  0 1px 2px rgba(26,22,18,0.06);
+    --shadow-xl:  0 16px 48px rgba(26,22,18,0.2), 0 8px 16px rgba(26,22,18,0.1);
+
+    /* ── Additional semantic backgrounds / borders ── */
+    --bg-ink:           var(--color-ink);
+    --bg-accent:        var(--color-terracotta);
+    --bg-success-dim:   var(--color-moss-dim);
+    --bg-selected:      var(--color-terracotta-dim);
+
+    /* ── Spacing scale (8px grid) ── */
+    --space-1:   4px;
+    --space-2:   8px;
+    --space-3:   12px;
+    --space-4:   16px;
+    --space-6:   24px;
+    --space-8:   32px;
+    --space-12:  48px;
+    --space-16:  64px;
+    --space-24:  96px;
+    --space-32:  128px;
+
+    /* ── Type scale (rem, 16px root) ── */
+    --text-xs:    0.75rem;     /* 12px */
+    --text-sm:    0.875rem;    /* 14px */
+    --text-base:  1rem;        /* 16px */
+    --text-md:    1.125rem;    /* 18px */
+    --text-lg:    1.25rem;     /* 20px */
+    --text-xl:    1.5rem;      /* 24px */
+    --text-2xl:   2rem;        /* 32px */
+    --text-3xl:   2.75rem;     /* 44px */
+    --text-4xl:   3.5rem;      /* 56px */
+
+    /* ── Line heights ── */
+    --leading-none:    1;
+    --leading-tight:   1.2;
+    --leading-snug:    1.35;
+    --leading-normal:  1.5;
+    --leading-relaxed: 1.65;
+    --leading-loose:   1.8;
+
+    /* ── Font weights ── */
+    --weight-light:    300;
+    --weight-regular:  400;
+    --weight-medium:   500;
+    --weight-semibold: 600;
+    --weight-bold:     700;
+
+    /* ── Z-index scale ── */
+    --z-below:    -1;
+    --z-base:      0;
+    --z-raised:   10;
+    --z-dropdown: 100;
+    --z-sticky:   200;
+    --z-overlay:  300;
+    --z-modal:    400;
+    --z-toast:    500;
   }
 
   /* No dark mode override — Horace is warm/light-first. Dark surfaces are
