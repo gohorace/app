@@ -26,6 +26,48 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveResidence, type SelectedAddressInput } from '@/lib/contacts/residence'
 
+/**
+ * HOR-125 — GET /api/properties
+ *
+ * Lists properties in the caller's workspace. Used by:
+ *  - Add Contact modal's role picker (Seller/Buyer of which property?)
+ *  - Future: Properties list page (HOR-126)
+ *
+ * Excludes soft-deleted rows. No pagination yet — caps at 100 results.
+ * If a workspace grows past 100 properties we'll add a `?q=` search param
+ * and cursor pagination.
+ */
+export async function GET(_req: NextRequest) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const admin = createAdminClient()
+  const { data: agent } = await admin
+    .from('agents')
+    .select('workspace_id')
+    .eq('user_id', user.id)
+    .maybeSingle()
+
+  if (!agent || !agent.workspace_id) {
+    return NextResponse.json({ error: 'No workspace for user' }, { status: 400 })
+  }
+
+  const { data: properties, error } = await admin
+    .from('properties')
+    .select('id, street_number, street_name, suburb, state, postcode, status, last_activity_at')
+    .eq('workspace_id', agent.workspace_id)
+    .is('deleted_at', null)
+    .order('last_activity_at', { ascending: false, nullsFirst: false })
+    .limit(100)
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+
+  return NextResponse.json({ properties: properties ?? [] })
+}
+
 export async function POST(req: NextRequest) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
