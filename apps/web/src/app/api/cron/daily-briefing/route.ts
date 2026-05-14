@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { revalidateTag } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { buildDailyBriefingEmail } from '@/lib/notifications/email'
+import type { DigestInspection, DigestInspectionScan } from '@/lib/notifications/email'
 import { generateContactInsight, generateBriefingNarrative } from '@/lib/ai/briefing'
 import type { LeadWithInsight, ContactEvent } from '@/lib/ai/briefing'
 
@@ -114,7 +115,36 @@ export async function GET(request: NextRequest) {
         ? await generateBriefingNarrative(anthropic, agentName, leads, 'today')
         : `${leads.length} contact${leads.length === 1 ? '' : 's'} worth your attention today.`
 
-      const { subject, html } = buildDailyBriefingEmail(agentName, leadsWithInsights, narrative, appUrl)
+      // HOR-155: pull yesterday's Doorstep inspections so the email can
+      // render the "Open homes yesterday" section. Lookback is 24h from
+      // cron fire — `daily_briefing_hour` (default 17:00 local) means
+      // the agent gets a summary of the inspections that ran in the
+      // 24 hours prior. The RPC silently returns [] if Doorstep wasn't
+      // used, so this is safe for agents who never run inspections.
+      const inspectionsSince = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: rawInspections } = await (admin.rpc as any)(
+        'get_daily_briefing_inspections',
+        { p_agent_id: settings.agent_id, p_since: inspectionsSince },
+      )
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const inspections: DigestInspection[] = (rawInspections as any[] ?? []).map((row) => ({
+        inspection_id: row.inspection_id,
+        inspection_type: row.inspection_type,
+        address: row.address,
+        scheduled_at: row.scheduled_at,
+        scan_count: row.scan_count,
+        revisit_count: row.revisit_count,
+        scans: (row.scans ?? []) as DigestInspectionScan[],
+      }))
+
+      const { subject, html } = buildDailyBriefingEmail(
+        agentName,
+        leadsWithInsights,
+        narrative,
+        appUrl,
+        inspections,
+      )
 
       // Prefer briefing_emails list, fall back to agent_email
       const recipients: string[] = Array.isArray(settings.briefing_emails) && settings.briefing_emails.length > 0
