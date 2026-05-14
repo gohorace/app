@@ -224,7 +224,11 @@ export default async function ListsPage() {
               background: '#FAF7F2',
               border: '1px solid rgba(140,123,107,0.2)',
               borderRadius: 10,
-              overflow: 'hidden',
+              // HOR-168: intentionally not `overflow: hidden` — the
+              // RowOverflowMenu popover renders below its trigger via
+              // position:absolute and would otherwise be clipped. The last
+              // row has no border-bottom, so nothing bleeds past the
+              // rounded corners visually.
             }}
           >
             {savedLists.map((l, idx) => (
