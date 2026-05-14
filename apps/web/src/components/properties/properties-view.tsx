@@ -42,7 +42,7 @@ export interface PropertyGridRow {
   totalLinkedCount: number
 }
 
-type Tab = 'all' | 'listed' | 'off_market' | 'sold'
+type Tab = 'all' | 'listed' | 'appraising' | 'watching' | 'sold'
 
 interface SecondaryFilters {
   list:      'All lists'
@@ -81,16 +81,18 @@ export function PropertiesView({ properties, initialQ = '', defaultModalOpen = f
   const tabCounts = useMemo(() => ({
     all:        properties.length,
     listed:     properties.filter((p) => p.status === 'listed').length,
-    off_market: properties.filter((p) => p.status === 'off_market').length,
+    appraising: properties.filter((p) => p.status === 'appraising').length,
+    watching:   properties.filter((p) => p.status === 'watching').length,
     sold:       properties.filter((p) => p.status === 'sold').length,
   }), [properties])
 
   const filtered = useMemo(() => {
     let rows = properties
 
-    if (tab === 'listed')     rows = rows.filter((p) => p.status === 'listed')
-    else if (tab === 'off_market') rows = rows.filter((p) => p.status === 'off_market')
-    else if (tab === 'sold')  rows = rows.filter((p) => p.status === 'sold')
+    if (tab === 'listed')          rows = rows.filter((p) => p.status === 'listed')
+    else if (tab === 'appraising') rows = rows.filter((p) => p.status === 'appraising')
+    else if (tab === 'watching')   rows = rows.filter((p) => p.status === 'watching')
+    else if (tab === 'sold')       rows = rows.filter((p) => p.status === 'sold')
 
     if (filters.intensity !== 'Any') {
       const target = filters.intensity === 'High' ? 3 : filters.intensity === 'Medium' ? 2 : 1
@@ -189,7 +191,8 @@ export function PropertiesView({ properties, initialQ = '', defaultModalOpen = f
             <div style={{ display: 'flex', gap: 0 }}>
               <TabButton label="All"        count={tabCounts.all}        active={tab === 'all'}        onClick={() => setTab('all')} />
               <TabButton label="Listed"     count={tabCounts.listed}     active={tab === 'listed'}     onClick={() => setTab('listed')} />
-              <TabButton label="Off-market" count={tabCounts.off_market} active={tab === 'off_market'} onClick={() => setTab('off_market')} />
+              <TabButton label="Appraising" count={tabCounts.appraising} active={tab === 'appraising'} onClick={() => setTab('appraising')} />
+              <TabButton label="Watching"   count={tabCounts.watching}   active={tab === 'watching'}   onClick={() => setTab('watching')} />
               <TabButton label="Sold"       count={tabCounts.sold}       active={tab === 'sold'}       onClick={() => setTab('sold')} />
             </div>
 
@@ -791,20 +794,28 @@ function EmptyState({
   hasAny: boolean
   search: string
 }) {
+  // Two-line empty-state pattern: acknowledge the quiet + what Horace does next.
+  const line1 = search
+    ? `Nothing matches "${search}" yet.`
+    : !hasAny
+      ? 'Your patch is empty so far.'
+      : 'Nothing matches this view yet.'
+  const line2 = search
+    ? 'Try a different search, or add a property.'
+    : !hasAny
+      ? 'Add the addresses you want signals on — Horace fills in the rest.'
+      : 'Adjust filters above, or add a property.'
+
   return (
     <div style={{ padding: '48px 24px', textAlign: 'center', background: '#FAF7F2' }}>
       <p style={{ fontSize: 13, fontWeight: 500, color: '#5E5246', marginBottom: 6 }}>
-        {search
-          ? `No properties match "${search}"`
-          : !hasAny
-            ? "No properties yet."
-            : 'Nothing in this view yet.'}
+        {line1}
+      </p>
+      <p style={{ fontSize: 12, color: '#8C7B6B', marginBottom: !hasAny && !search ? 18 : 0 }}>
+        {line2}
       </p>
       {!search && !hasAny && (
         <>
-          <p style={{ fontSize: 12, color: '#8C7B6B', marginBottom: 18 }}>
-            Add an address you want signals on — Horace fills in the rest.
-          </p>
           <button
             type="button"
             onClick={onAdd}
@@ -827,9 +838,6 @@ function EmptyState({
             Add property
           </button>
         </>
-      )}
-      {!search && hasAny && (
-        <p style={{ fontSize: 12, color: '#8C7B6B' }}>Adjust the filters above, or add a property.</p>
       )}
     </div>
   )

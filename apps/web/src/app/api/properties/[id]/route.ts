@@ -14,19 +14,14 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getRoles } from '@/lib/contacts/roles'
 
-const PropertyStatusEnum = z.enum([
-  'listed',
-  'under_offer',
-  'sold',
-  'withdrawn',
-  'off_market',
-  'residence_only',
-  'unknown',
-])
+// HOR-135 — V1 relationship-first vocabulary. Migration
+// 20260514000001_property_state_v1.sql tightens the CHECK constraint to
+// exactly these four values.
+const PropertyStatusEnum = z.enum(['listed', 'appraising', 'watching', 'sold'])
 
 // Notes deferred: the properties table has no metadata column today, so we
-// can't persist them without a migration. The PATCH endpoint accepts and
-// ignores `notes` for now — a follow-up will add the column and wire it.
+// can't persist them without a migration. The PATCH endpoint accepts only
+// `status` — notes land with HOR-130.
 const PatchSchema = z.object({
   status: PropertyStatusEnum.optional(),
 })

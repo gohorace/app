@@ -186,7 +186,7 @@ export type Database = {
           suburb: string | null; state: string | null; postcode: string | null
           address_hash: string
           property_type: 'house' | 'unit' | 'townhouse' | 'land' | 'commercial' | 'unknown' | null
-          status: 'listed' | 'under_offer' | 'sold' | 'withdrawn' | 'off_market' | 'residence_only' | 'unknown' | null
+          status: 'listed' | 'appraising' | 'watching' | 'sold' | null
           listing_agent_id: string | null
           external_ids: Json
           first_seen_at: string; last_activity_at: string
@@ -198,7 +198,7 @@ export type Database = {
           suburb?: string | null; state?: string | null; postcode?: string | null
           address_hash: string
           property_type?: 'house' | 'unit' | 'townhouse' | 'land' | 'commercial' | 'unknown' | null
-          status?: 'listed' | 'under_offer' | 'sold' | 'withdrawn' | 'off_market' | 'residence_only' | 'unknown' | null
+          status?: 'listed' | 'appraising' | 'watching' | 'sold' | null
           listing_agent_id?: string | null
           external_ids?: Json
           first_seen_at?: string; last_activity_at?: string
@@ -210,7 +210,7 @@ export type Database = {
           suburb?: string | null; state?: string | null; postcode?: string | null
           address_hash?: string
           property_type?: 'house' | 'unit' | 'townhouse' | 'land' | 'commercial' | 'unknown' | null
-          status?: 'listed' | 'under_offer' | 'sold' | 'withdrawn' | 'off_market' | 'residence_only' | 'unknown' | null
+          status?: 'listed' | 'appraising' | 'watching' | 'sold' | null
           listing_agent_id?: string | null
           external_ids?: Json
           first_seen_at?: string; last_activity_at?: string

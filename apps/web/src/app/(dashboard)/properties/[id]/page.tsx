@@ -9,7 +9,7 @@ import {
 } from '@/components/properties/property-detail-view'
 import { deriveIdentity, makeInitials } from '@/lib/contacts/identity'
 import { getRoles } from '@/lib/contacts/roles'
-import type { EngagementValue, PropertyStatus } from '@/lib/design/badges'
+import { coercePropertyStatus, type EngagementValue } from '@/lib/design/badges'
 
 export const dynamic = 'force-dynamic'
 
@@ -132,17 +132,17 @@ export default async function PropertyDetailPage({
       sessions:   1, // accurate session count needs identity_map join; coarse for V1
     }))
 
-  // Most active known contact for "Call …" CTA — pick highest score with a phone.
+  // Most active known contact for the primary "View most active contact"
+  // CTA (HOR-135). Highest score across linked contacts. Phone no longer
+  // required — the agent navigates to the contact's detail page and dials
+  // from there (CRM-boundary language).
   const topContact = (() => {
-    const candidates = linked
-      .filter((c) => c.phone)
-      .sort((a, b) => b.score - a.score)
+    const candidates = [...linked].sort((a, b) => b.score - a.score)
     if (candidates.length === 0) return null
     const c = candidates[0]
     return {
       id:        c.id,
       firstName: c.first_name,
-      phone:     c.phone,
     }
   })()
 
@@ -189,7 +189,8 @@ export default async function PropertyDetailPage({
         id:             property.id,
         address,
         suburb:         property.suburb,
-        status:         (property.status as PropertyStatus | null) ?? null,
+        // HOR-135: see properties/page.tsx for the rationale.
+        status:         coercePropertyStatus(property.status),
         firstSeenAt:    property.first_seen_at,
         lastActivityAt: property.last_activity_at,
         notes,

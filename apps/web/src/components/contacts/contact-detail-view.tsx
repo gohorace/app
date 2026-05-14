@@ -271,19 +271,28 @@ export function ContactDetailView({
             </div>
 
             {/* Actions */}
+            {/*
+              HOR-135: CRM-boundary language. The button label says "View
+              phone number" — Horace shows the affordance; the agent dials
+              from their device. Behaviour is still a tel: handoff (an OS
+              action, not a Horace one), which is fine; only the label
+              moves off the "Call X" framing.
+            */}
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {contact.phone ? (
-                <a
-                  href={`tel:${contact.phone}`}
-                  style={primaryBtnStyle}
-                >
+                <a href={`tel:${contact.phone}`} style={primaryBtnStyle}>
                   <Phone style={{ width: 13, height: 13 }} />
-                  Call {firstName?.split(' ')[0]}
+                  View phone number
                 </a>
               ) : (
-                <button type="button" disabled style={{ ...primaryBtnStyle, opacity: 0.5, cursor: 'not-allowed' }} title="No phone number on file">
+                <button
+                  type="button"
+                  disabled
+                  style={{ ...primaryBtnStyle, opacity: 0.5, cursor: 'not-allowed' }}
+                  title="No phone number on file"
+                >
                   <Phone style={{ width: 13, height: 13 }} />
-                  Call {firstName?.split(' ')[0]}
+                  View phone number
                 </button>
               )}
               {!isAnon && (
@@ -406,9 +415,14 @@ export function ContactDetailView({
           />
 
           {filteredTimeline.length === 0 ? (
-            <p style={{ fontSize: 13, color: '#8C7B6B', textAlign: 'center', padding: '20px 0' }}>
-              Nothing here yet.
-            </p>
+            <div style={{ textAlign: 'center', padding: '24px 0' }}>
+              <p style={{ fontSize: 13, color: '#5E5246', fontWeight: 500, margin: '0 0 4px' }}>
+                Quiet so far.
+              </p>
+              <p style={{ fontSize: 12, color: '#8C7B6B', margin: 0 }}>
+                Horace is watching every visit — you&rsquo;ll see them land here.
+              </p>
+            </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               {filteredTimeline.map((row, i) => {

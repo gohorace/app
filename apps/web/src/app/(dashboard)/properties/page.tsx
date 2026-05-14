@@ -6,7 +6,7 @@ import {
 } from '@/components/properties/properties-view'
 import { getRoles } from '@/lib/contacts/roles'
 import { deriveIdentity, makeInitials } from '@/lib/contacts/identity'
-import type { PropertyStatus, EngagementValue } from '@/lib/design/badges'
+import { coercePropertyStatus, type EngagementValue } from '@/lib/design/badges'
 
 export const dynamic = 'force-dynamic'
 
@@ -135,7 +135,10 @@ export default async function PropertiesPage({
       id: p.id,
       address,
       suburb: p.suburb,
-      status: (p.status as PropertyStatus | null) ?? null,
+      // HOR-135: coerce legacy DB values (off_market, residence_only, etc.)
+      // to the new vocabulary at the boundary. Removes the runtime
+      // dependency on the migration having already been applied.
+      status: coercePropertyStatus(p.status),
       beds: null,   // not in schema
       baths: null,  // not in schema
       land: null,   // not in schema

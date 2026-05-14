@@ -76,46 +76,62 @@ export function IdentityGradient({
 }
 
 // ── State badge (properties) ──────────────────────────────────────────────────
-// Maps the existing `properties.status` enum onto the design's palette. The
-// design defines four labels (listed / appraising / watching / sold); our
-// schema has more (under_offer, withdrawn, off_market, residence_only,
-// unknown). We map onto the closest design intent — the new vocabulary
-// (appraising, watching) lands in a later epic with a migration.
+// V1 relationship-first vocabulary (HOR-135). Every state describes the
+// agent's view of the property, not the property's market status. The
+// migration in 20260514000001_property_state_v1.sql swaps the CHECK
+// constraint to exactly these four values.
 
-export type PropertyStatus =
-  | 'listed'
-  | 'under_offer'
-  | 'sold'
-  | 'withdrawn'
-  | 'off_market'
-  | 'residence_only'
-  | 'unknown'
+export type PropertyStatus = 'listed' | 'appraising' | 'watching' | 'sold'
 
 interface StateStyle {
   label: string
   dot:   string
   bg:    string
   fg:    string
+  /** One-line guidance used by the Change-state dropdown and Add modal. */
+  desc:  string
 }
 
 export const STATE_STYLE: Record<PropertyStatus, StateStyle> = {
-  listed:         { label: 'Listed',      dot: '#C4622D', bg: 'rgba(196,98,45,0.12)',  fg: '#C4622D' },
-  under_offer:    { label: 'Under offer', dot: '#B5922A', bg: 'rgba(181,146,42,0.14)', fg: '#8A6A00' },
-  sold:           { label: 'Sold',        dot: '#8C7B6B', bg: 'rgba(140,123,107,0.16)', fg: '#5E5246' },
-  off_market:     { label: 'Off-market',  dot: '#3D5246', bg: 'rgba(61,82,70,0.12)',   fg: '#3D5246' },
-  withdrawn:      { label: 'Withdrawn',   dot: '#8C7B6B', bg: 'rgba(140,123,107,0.12)', fg: '#5E5246' },
-  residence_only: { label: 'Residence',   dot: '#8C7B6B', bg: 'rgba(140,123,107,0.1)',  fg: '#5E5246' },
-  unknown:        { label: '—',           dot: '#8C7B6B', bg: 'rgba(140,123,107,0.08)', fg: '#8C7B6B' },
+  listed:     { label: 'Listed',     dot: '#C4622D', bg: 'rgba(196,98,45,0.12)',  fg: '#C4622D', desc: 'Your stock — actively on the market' },
+  appraising: { label: 'Appraising', dot: '#B5922A', bg: 'rgba(181,146,42,0.14)', fg: '#8A6A00', desc: 'Active appraisal pitch in progress'  },
+  watching:   { label: 'Watching',   dot: '#3D5246', bg: 'rgba(61,82,70,0.12)',   fg: '#3D5246', desc: "Not yours — but you're tracking it"  },
+  sold:       { label: 'Sold',       dot: '#8C7B6B', bg: 'rgba(140,123,107,0.16)', fg: '#5E5246', desc: 'A past listing — they sold with you' },
+}
+
+/** Ordered for picker UIs (Add modal, Change-state dropdown). */
+export const PROPERTY_STATUSES: readonly PropertyStatus[] = [
+  'listed',
+  'appraising',
+  'watching',
+  'sold',
+] as const
+
+/**
+ * Coerce a raw status string from the database into a valid PropertyStatus.
+ * Falls back to 'watching' for any value not in the V1 vocabulary. This is
+ * the runtime safety net for environments where the
+ * 20260514000001_property_state_v1.sql migration hasn't been applied yet —
+ * the DB may still hold legacy values (off_market, residence_only,
+ * under_offer, withdrawn, unknown) until the migration runs. Once every
+ * environment has migrated, all values are already in the new vocabulary
+ * and this is a no-op.
+ */
+export function coercePropertyStatus(raw: string | null | undefined): PropertyStatus {
+  if (raw && (PROPERTY_STATUSES as readonly string[]).includes(raw)) {
+    return raw as PropertyStatus
+  }
+  return 'watching'
 }
 
 export function StateBadge({
   status,
   size = 'sm',
 }: {
-  status: PropertyStatus | null | undefined
+  status: PropertyStatus | string | null | undefined
   size?: 'sm' | 'lg'
 }) {
-  const s = STATE_STYLE[status ?? 'unknown'] ?? STATE_STYLE.unknown
+  const s = STATE_STYLE[coercePropertyStatus(status)]
   return (
     <span
       style={{
@@ -344,21 +360,31 @@ export function EngagementIndicator({
 }
 
 // ── Person avatar (initials, intent-tinted) ───────────────────────────────────
-// When `anonymous`, renders a dashed-circle eye icon instead of initials.
-// Otherwise tints the bg using the identity palette (matching the gradient).
+// Renders a dashed-circle eye icon when identity is 'anonymous' or 'email'
+// (HOR-135: don't imply we know the agent's first name when we only have an
+// email like email+arnold@andytwomey.com). Otherwise tints the bg using the
+// identity palette and shows initials.
+//
+// The explicit `anonymous` prop is preserved as an override for callers that
+// know better (e.g. stitched-but-still-unconfirmed visitors). Anyone passing
+// `identity={deriveIdentity(contact)}` gets the right behaviour for free.
 
 export function PersonAvatar({
   initials,
   identity = 'known',
   size = 32,
-  anonymous = false,
+  anonymous,
 }: {
   initials: string
   identity?: IdentityState
   size?: number
   anonymous?: boolean
 }) {
-  if (anonymous) {
+  const showAnonShape =
+    anonymous === true ||
+    (anonymous !== false && (identity === 'anonymous' || identity === 'email'))
+
+  if (showAnonShape) {
     return (
       <div
         style={{

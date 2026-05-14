@@ -16,9 +16,9 @@
  * how many contacts (if any) already reference the property so the UI
  * can surface a "this address is already linked to X" message.
  *
- * Note: we kept status='residence_only' rather than introducing a new
- * 'manual' enum value. No current consumer queries on status, and we can
- * add the value later if a filtering surface needs it.
+ * HOR-135: resolve_residence_property() now inserts new rows with
+ * status='watching' (was 'residence_only'). Callers that want a
+ * different state (Listed / Appraising / Sold) PATCH after create.
  */
 
 import { NextRequest, NextResponse } from 'next/server'

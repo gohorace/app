@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, ArrowRight, Check, Loader2, X, Eye, Home as HomeIcon, Archive, FileEdit } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Check, Loader2, X, Eye, Home as HomeIcon, Archive, Edit3 } from 'lucide-react'
 import {
   AddressAutocomplete,
   type SelectedAddress,
@@ -37,19 +37,19 @@ export function AddPropertyModal({ onClose, onComplete }: AddPropertyModalProps)
   const router = useRouter()
   const [step, setStep] = useState<Step>('input')
   const [residence, setResidence] = useState<SelectedAddress | null>(null)
-  const [chosenStatus, setChosenStatus] = useState<PropertyStatus>('off_market')
+  const [chosenStatus, setChosenStatus] = useState<PropertyStatus>('watching')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const canSubmit = !isAddressEmpty(residence) && !saving
 
-  // Three relationship buckets, mapped to the existing enum until we ship
-  // the new vocabulary. Order matches the design: Listed / Off-market /
-  // Sold (we collapse Appraising/Watching → Off-market for now).
-  const stateOptions: Array<{ id: PropertyStatus; label: string; desc: string; Icon: typeof Eye }> = [
-    { id: 'listed',     label: 'Listed',     desc: 'On the market right now',         Icon: HomeIcon },
-    { id: 'off_market', label: 'Off-market', desc: 'On your radar — not yours yet',   Icon: Eye },
-    { id: 'sold',       label: 'Sold',       desc: 'A past listing of yours',         Icon: Archive },
+  // V1 relationship-first vocabulary (HOR-135). Four states; the picker
+  // surfaces the same icons used elsewhere (Home / Edit / Eye / Archive).
+  const stateOptions: Array<{ id: PropertyStatus; Icon: typeof Eye }> = [
+    { id: 'listed',     Icon: HomeIcon },
+    { id: 'appraising', Icon: Edit3    },
+    { id: 'watching',   Icon: Eye      },
+    { id: 'sold',       Icon: Archive  },
   ]
 
   async function handleSave() {
@@ -57,6 +57,9 @@ export function AddPropertyModal({ onClose, onComplete }: AddPropertyModalProps)
     setSaving(true)
     setError(null)
 
+    // POST /api/properties calls resolve_residence_property() which now
+    // inserts new rows with status='watching' (HOR-135). If the agent
+    // picked a different state, PATCH it onto the resulting row.
     const createRes = await fetch('/api/properties', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -72,9 +75,7 @@ export function AddPropertyModal({ onClose, onComplete }: AddPropertyModalProps)
 
     const propertyId: string = createData.id
 
-    // POST /api/properties always sets status='residence_only' for now.
-    // Patch the chosen status onto it via the new PATCH endpoint.
-    if (chosenStatus !== 'residence_only') {
+    if (chosenStatus !== 'watching') {
       await fetch(`/api/properties/${propertyId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -224,10 +225,10 @@ export function AddPropertyModal({ onClose, onComplete }: AddPropertyModalProps)
                           marginBottom: 3,
                         }}
                       >
-                        {opt.label}
+                        {STATE_STYLE[opt.id].label}
                       </div>
                       <div style={{ fontSize: 11, color: '#8C7B6B', lineHeight: 1.4 }}>
-                        {opt.desc}
+                        {STATE_STYLE[opt.id].desc}
                       </div>
                     </div>
                     {isOn && <Check style={{ width: 16, height: 16, color: '#C4622D', flexShrink: 0 }} />}
