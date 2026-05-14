@@ -51,7 +51,11 @@ export async function GET(
 
   const { data: property } = await admin
     .from('properties')
-    .select('id, street_number, street_name, suburb, state, postcode, property_type, status, first_seen_at, last_activity_at, metadata, created_at, updated_at')
+    // HOR-130: metadata column added by 20260514000002 migration.
+    // Excluded from this select for graceful behaviour pre-migration —
+    // callers wanting notes should query separately (the detail page
+    // already does this defensively).
+    .select('id, street_number, street_name, suburb, state, postcode, property_type, status, first_seen_at, last_activity_at, created_at, updated_at')
     .eq('id', params.id)
     .eq('workspace_id', agent.workspace_id)
     .is('deleted_at', null)
