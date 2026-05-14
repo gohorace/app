@@ -2,6 +2,26 @@ import type { LeadWithInsight } from '@/lib/ai/briefing'
 
 export type { LeadWithInsight }
 
+// ── HOR-155 — Doorstep digest section types ──────────────────────────────────
+
+/** One row per scan from the daily-briefing inspections RPC. */
+export interface DigestInspectionScan {
+  name: string
+  captured_at: string
+  has_revisit: boolean
+}
+
+/** One row per inspection the agent ran in the lookback window. */
+export interface DigestInspection {
+  inspection_id: string
+  inspection_type: string
+  address: string
+  scheduled_at: string
+  scan_count: number
+  revisit_count: number
+  scans: DigestInspectionScan[]
+}
+
 // ── Shared design tokens (email-safe hex values) ──────────────────────────────
 
 const T = {
@@ -175,6 +195,63 @@ function contactCard(lead: LeadWithInsight, appUrl: string, isFirst: boolean): s
     </tr>`
 }
 
+// ── HOR-155 — Doorstep digest block ──────────────────────────────────────────
+
+function formatScheduledForEmail(iso: string): string {
+  try {
+    return new Intl.DateTimeFormat('en-AU', {
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    }).format(new Date(iso))
+  } catch {
+    return iso
+  }
+}
+
+function inspectionBlock(insp: DigestInspection): string {
+  const time = formatScheduledForEmail(insp.scheduled_at)
+  const scanSummary = insp.scan_count === 0
+    ? 'No sign-ins.'
+    : insp.scan_count === 1
+      ? `1 scan. ${insp.revisit_count > 0 ? '1 already back on your site.' : 'No revisit yet.'}`
+      : `${insp.scan_count} scans. ${insp.revisit_count > 0 ? `${insp.revisit_count} already back on your site.` : 'No revisits yet.'}`
+
+  const scanList = insp.scans.length === 0 ? '' : `
+    <ul style="margin:8px 0 0;padding:0 0 0 18px;list-style:disc;color:${T.charcoal};font-size:13px;line-height:1.7;">
+      ${insp.scans.map((s) => `
+        <li>
+          <span style="color:${T.charcoal};">${escapeHtml(s.name || 'Anonymous')}</span>
+          <span style="color:${T.stone};"> — ${s.has_revisit ? 'back on your site' : 'no revisit yet'}</span>
+        </li>
+      `).join('')}
+    </ul>
+  `
+
+  return `
+    <div style="margin-bottom:16px;padding:14px 16px;background:${T.cream};border:1px solid ${T.border};border-radius:8px;">
+      <p style="margin:0 0 4px;font-size:14px;font-weight:500;color:${T.charcoal};">
+        ${escapeHtml(insp.address)}
+        <span style="color:${T.stone};font-weight:400;"> — ${escapeHtml(time)}</span>
+      </p>
+      <p style="margin:0;font-size:13px;color:${T.stone};">${escapeHtml(scanSummary)}</p>
+      ${scanList}
+    </div>
+  `
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
 // ── Daily briefing email ──────────────────────────────────────────────────────
 
 export function buildDailyBriefingEmail(
@@ -182,6 +259,8 @@ export function buildDailyBriefingEmail(
   leads: LeadWithInsight[],
   narrative: string,
   appUrl: string,
+  /** HOR-155: inspections from the previous 24h. Empty array = section omitted. */
+  inspections: DigestInspection[] = [],
 ): { subject: string; html: string } {
   const agentFirst = agentName.split(' ')[0] || agentName
 
@@ -197,10 +276,25 @@ export function buildDailyBriefingEmail(
     </div>
   `
 
+  // HOR-155 — "Open homes yesterday" block. Heading stays "Open homes"
+  // (the specific event the prospect attended) even though the agent
+  // surface elsewhere uses "Inspections" — v1 only writes
+  // inspection_type='open_home', and the prospect-facing event copy is
+  // the right register here.
+  const inspectionsSection = inspections.length === 0 ? '' : `
+    <div style="margin-top:32px;padding-top:24px;border-top:1px solid ${T.border};">
+      <p style="margin:0 0 14px;font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:${T.stone};">
+        Open homes yesterday
+      </p>
+      ${inspections.map((insp) => inspectionBlock(insp)).join('')}
+    </div>
+  `
+
   const emptyState = `
     <p style="margin:0 0 24px;font-size:14px;color:${T.stone};line-height:1.6;font-style:italic;">
       &ldquo;${narrative}&rdquo;
     </p>
+    ${inspectionsSection}
     ${signOff}
   `
 
@@ -216,6 +310,8 @@ export function buildDailyBriefingEmail(
         ${leads.map((lead, i) => contactCard(lead, appUrl, i === 0)).join('')}
       </tbody>
     </table>
+
+    ${inspectionsSection}
 
     <!-- View all CTA -->
     <div style="margin-top:24px;padding-top:20px;border-top:1px solid ${T.border};text-align:center;">
