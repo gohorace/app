@@ -45,8 +45,16 @@ export default async function DigestPage({
     .maybeSingle()
 
   if (!agent) {
-    return <DigestView model={emptyModel()} />
+    return <DigestView model={emptyModel(null)} />
   }
+
+  // HOR-138: workspace site URL for the "Post on social" activity prompt.
+  const { data: settings } = await admin
+    .from('agent_settings')
+    .select('website_url')
+    .eq('agent_id', agent.id)
+    .maybeSingle()
+  const websiteUrl = settings?.website_url ?? null
 
   const agentName =
     [agent.first_name, agent.last_name].filter(Boolean).join(' ') ||
@@ -60,7 +68,7 @@ export default async function DigestPage({
   const leads = rawLeads ?? []
 
   if (leads.length === 0) {
-    return <DigestView model={emptyModel()} />
+    return <DigestView model={emptyModel(websiteUrl)} />
   }
 
   // ── Enrich each lead in parallel: events + suburb + AI insight ───────────
@@ -188,6 +196,7 @@ export default async function DigestPage({
       newlyKnown,
     },
     rail: realRail(),
+    websiteUrl,
   }
 
   return <DigestView model={model} />
@@ -277,6 +286,7 @@ function demoModel(): DigestViewModel {
       newlyKnown: 1,
     },
     rail: demoRail(),
+    websiteUrl: 'https://jamesreid.com.au',
     isDemo: true,
   }
 }
@@ -322,7 +332,7 @@ function realRail() {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function emptyModel(): DigestViewModel {
+function emptyModel(websiteUrl: string | null): DigestViewModel {
   return {
     dateLabel: new Date().toLocaleDateString('en-AU', {
       weekday: 'long',
@@ -334,6 +344,7 @@ function emptyModel(): DigestViewModel {
     signals: [],
     stats: { worthAttention: 0, highIntent: 0, newlyKnown: 0 },
     rail: realRail(),
+    websiteUrl,
   }
 }
 
