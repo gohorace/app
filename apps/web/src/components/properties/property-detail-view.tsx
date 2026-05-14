@@ -15,6 +15,7 @@ import {
   TrendingUp,
   UserPlus,
 } from 'lucide-react'
+import { AttachContactDialog } from './attach-contact-dialog'
 import {
   EngagementIndicator,
   PersonAvatar,
@@ -90,6 +91,8 @@ export function PropertyDetailView({
 }: PropertyDetailViewProps) {
   const router = useRouter()
   const [filter, setFilter] = useState<TimelineFilter>('all')
+  // HOR-137: Attach contact dialog (mirrors AttachRoleDialog, inverted).
+  const [attachOpen, setAttachOpen] = useState(false)
 
   const tone = toneFor(property.id)
   const filtered = useMemo(() => {
@@ -274,9 +277,8 @@ export function PropertyDetailView({
               <ChangeStatusButton propertyId={property.id} currentStatus={property.status} onChanged={() => router.refresh()} />
               <button
                 type="button"
-                disabled
-                title="Attach contact — coming with merge / lists"
-                style={{ ...secondaryBtnStyle, opacity: 0.55, cursor: 'not-allowed' }}
+                onClick={() => setAttachOpen(true)}
+                style={secondaryBtnStyle}
               >
                 <UserPlus style={{ width: 13, height: 13 }} />
                 Attach contact
@@ -585,6 +587,14 @@ export function PropertyDetailView({
           Your relationships, your history. The property is shared — your view of it is sovereign.
         </p>
       </div>
+
+      {attachOpen && (
+        <AttachContactDialog
+          propertyId={property.id}
+          propertyAddress={property.address}
+          onClose={() => setAttachOpen(false)}
+        />
+      )}
     </div>
   )
 }

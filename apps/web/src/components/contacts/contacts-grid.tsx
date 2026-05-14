@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
   Search,
-  MoreHorizontal,
   Plus,
   BookmarkPlus,
   List,
@@ -15,6 +14,7 @@ import {
   Tag,
   ChevronDown,
 } from 'lucide-react'
+import { RowOverflowMenu, ExternalLink, Trash2 } from '@/components/dashboard/row-overflow-menu'
 import { createClient } from '@/lib/supabase/client'
 import {
   IdentityGradient,
@@ -76,12 +76,30 @@ interface Props {
 
 type Tab = 'all' | 'known' | 'unidentified'
 
+type TimeWindow = 'Active anytime' | 'Today' | 'This week' | 'This month' | 'Ever'
+const TIME_WINDOWS: TimeWindow[] = ['Active anytime', 'Today', 'This week', 'This month', 'Ever']
+
 interface SecondaryFilters {
   role: 'All' | 'Sellers' | 'Buyers' | 'Engaged only'
   list: 'All lists'
   intensity: 'Any' | 'High' | 'Medium' | 'Low'
-  time: 'Active anytime'
-  property: 'Any property'
+  time: TimeWindow
+  property: string  // 'Any property' or a property id from the row data
+}
+
+const HOR_137_TIME_WINDOW_MS: Record<Exclude<TimeWindow, 'Active anytime' | 'Ever'>, number> = {
+  'Today':      24 * 60 * 60 * 1000,
+  'This week':  7  * 24 * 60 * 60 * 1000,
+  'This month': 30 * 24 * 60 * 60 * 1000,
+}
+
+function passesTimeWindow(lastSeenIso: string | null, window: TimeWindow): boolean {
+  if (window === 'Active anytime') return true
+  if (window === 'Ever') return Boolean(lastSeenIso)
+  if (!lastSeenIso) return false
+  const then = new Date(lastSeenIso).getTime()
+  if (Number.isNaN(then)) return false
+  return Date.now() - then <= HOR_137_TIME_WINDOW_MS[window]
 }
 
 const DEFAULT_FILTERS: SecondaryFilters = {
@@ -128,6 +146,10 @@ export function ContactsGrid({ contacts, initialQ = '', agentId, defaultLinkUrl,
   const [tab, setTab] = useState<Tab>('all')
   const [filters, setFilters] = useState<SecondaryFilters>(DEFAULT_FILTERS)
   const [addOpen, setAddOpen] = useState(false)
+  // HOR-137: optimistic soft-delete — drop the row from the grid immediately
+  // and let router.refresh() catch up on next nav. Listed after the realtime
+  // useState block in render order so the diff stays small.
+  const [deletedIds, setDeletedIds] = useState<Set<string>>(() => new Set())
 
   // Online status — same Realtime channel as v0 grid, simpler state shape.
   const [onlineIds, setOnlineIds] = useState<Set<string>>(() => {
@@ -180,7 +202,10 @@ export function ContactsGrid({ contacts, initialQ = '', agentId, defaultLinkUrl,
     }
   }, [agentId])
 
-  const safeContacts = useMemo(() => (Array.isArray(contacts) ? contacts : []), [contacts])
+  const safeContacts = useMemo(
+    () => (Array.isArray(contacts) ? contacts : []).filter((c) => !deletedIds.has(c.id)),
+    [contacts, deletedIds],
+  )
 
   // Identity per contact (memoised — used by tabs + rows)
   const identityById = useMemo(() => {
@@ -199,6 +224,25 @@ export function ContactsGrid({ contacts, initialQ = '', agentId, defaultLinkUrl,
     }
     return { all: safeContacts.length, known, unidentified: anon }
   }, [safeContacts, identityById])
+
+  // HOR-137: unique linked-property options for the Property filter chip.
+  // Built from rows in scope (post-base, pre-filter) so we don't suggest
+  // properties no contact in this workspace references.
+  const propertyOptions = useMemo(() => {
+    const byId = new Map<string, string>()
+    for (const c of safeContacts) {
+      for (const p of c.linked_properties) {
+        if (!byId.has(p.id)) byId.set(p.id, p.address)
+      }
+    }
+    const sorted = Array.from(byId.entries()).sort((a, b) =>
+      a[1].localeCompare(b[1]),
+    )
+    return [
+      { id: 'Any property', label: 'Any property' },
+      ...sorted.map(([id, label]) => ({ id, label })),
+    ]
+  }, [safeContacts])
 
   const filtered = useMemo(() => {
     let rows = safeContacts
@@ -225,7 +269,19 @@ export function ContactsGrid({ contacts, initialQ = '', agentId, defaultLinkUrl,
       rows = rows.filter((c) => engagementForScore(c.score) === target)
     }
 
-    // List + Time + Property dropdowns are rendered but inert in V1 (deferred).
+    // Time window filter (HOR-137 — client-side over last_seen_at)
+    if (filters.time !== 'Active anytime') {
+      rows = rows.filter((c) => passesTimeWindow(c.last_seen_at, filters.time))
+    }
+
+    // Property filter (HOR-137 — client-side over linked_properties)
+    if (filters.property !== 'Any property') {
+      rows = rows.filter((c) =>
+        c.linked_properties.some((p) => p.id === filters.property),
+      )
+    }
+
+    // List dropdown is rendered but inert in V1 (Lists feature deferred).
 
     // Search
     const q = search.trim().toLowerCase()
@@ -363,6 +419,7 @@ export function ContactsGrid({ contacts, initialQ = '', agentId, defaultLinkUrl,
           {/* Secondary filter chips */}
           <SecondaryFilterBar
             filters={filters}
+            propertyOptions={propertyOptions}
             onChange={(next) => setFilters((f) => ({ ...f, ...next }))}
             resultCount={filtered.length}
             totalCount={safeContacts.length}
@@ -391,6 +448,11 @@ export function ContactsGrid({ contacts, initialQ = '', agentId, defaultLinkUrl,
                   appUrl={appUrl}
                   defaultLinkUrl={defaultLinkUrl}
                   onClick={() => router.push(`/contacts/${c.id}`)}
+                  onSoftDelete={(id) => setDeletedIds((prev) => {
+                    const next = new Set(prev)
+                    next.add(id)
+                    return next
+                  })}
                 />
               ))
             )}
@@ -564,15 +626,24 @@ function FilterChip({ label, Icon, isActive, options, current, onSelect, disable
 
 function SecondaryFilterBar({
   filters,
+  propertyOptions,
   onChange,
   resultCount,
   totalCount,
 }: {
   filters: SecondaryFilters
+  propertyOptions: Array<{ id: string; label: string }>
   onChange: (next: Partial<SecondaryFilters>) => void
   resultCount: number
   totalCount: number
 }) {
+  // Property chip uses id-as-value, address-as-label. Find the address for
+  // the current selection so the chip surfaces something readable.
+  const currentPropertyLabel =
+    filters.property === 'Any property'
+      ? 'Any property'
+      : (propertyOptions.find((p) => p.id === filters.property)?.label ?? 'Any property')
+  const propertyLabelToId = new Map(propertyOptions.map((p) => [p.label, p.id]))
   return (
     <div
       style={{
@@ -612,20 +683,21 @@ function SecondaryFilterBar({
       <FilterChip
         label="Time"
         Icon={Clock}
-        isActive={false}
+        isActive={filters.time !== 'Active anytime'}
         current={filters.time}
-        options={['Active anytime']}
-        onSelect={() => {}}
-        disabledTooltip="Time filter coming soon"
+        options={TIME_WINDOWS}
+        onSelect={(v) => onChange({ time: v as TimeWindow })}
       />
       <FilterChip
         label="Property"
         Icon={MapPin}
-        isActive={false}
-        current={filters.property}
-        options={['Any property']}
-        onSelect={() => {}}
-        disabledTooltip="Property filter coming soon"
+        isActive={filters.property !== 'Any property'}
+        current={currentPropertyLabel}
+        options={propertyOptions.map((p) => p.label)}
+        onSelect={(label) => {
+          const id = propertyLabelToId.get(label) ?? 'Any property'
+          onChange({ property: id })
+        }}
       />
 
       <div
@@ -727,6 +799,7 @@ function ContactRow({
   appUrl,
   defaultLinkUrl,
   onClick,
+  onSoftDelete,
 }: {
   contact: ContactGridRow
   identity: ReturnType<typeof deriveIdentity>
@@ -735,6 +808,7 @@ function ContactRow({
   appUrl: string
   defaultLinkUrl: string | null
   onClick: () => void
+  onSoftDelete: (id: string) => void
 }) {
   const isAnon = identity === 'anonymous'
   const counts = roleCounts(contact.roles)
@@ -898,29 +972,32 @@ function ContactRow({
         />
       </div>
 
-      {/* Overflow */}
+      {/* Overflow (HOR-137 — Open in new tab / Soft delete) */}
       <div style={{ ...COL_STYLES.overflow, display: 'flex', justifyContent: 'flex-end' }}>
-        <button
-          type="button"
-          aria-label="More — coming soon"
-          title="More — coming soon"
-          onClick={(e) => {
-            e.stopPropagation()
-          }}
-          style={{
-            background: 'transparent',
-            border: 'none',
-            color: '#8C7B6B',
-            cursor: 'default',
-            padding: 4,
-            borderRadius: 4,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <MoreHorizontal style={{ width: 14, height: 14 }} />
-        </button>
+        <RowOverflowMenu
+          triggerLabel={name}
+          actions={[
+            {
+              id: 'open-new-tab',
+              label: 'Open in new tab',
+              Icon: ExternalLink,
+              onSelect: () => {
+                window.open(`/contacts/${contact.id}`, '_blank', 'noopener')
+              },
+            },
+            {
+              id: 'soft-delete',
+              label: 'Delete contact',
+              Icon: Trash2,
+              destructive: true,
+              onSelect: async () => {
+                if (!window.confirm(`Delete ${name}? You can restore them within 30 days.`)) return
+                const res = await fetch(`/api/contacts/${contact.id}`, { method: 'DELETE' })
+                if (res.ok) onSoftDelete(contact.id)
+              },
+            },
+          ]}
+        />
       </div>
     </div>
   )

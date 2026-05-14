@@ -10,11 +10,11 @@ import {
   List,
   Map,
   MapPin,
-  MoreHorizontal,
   Plus,
   Search,
   Tag,
 } from 'lucide-react'
+import { RowOverflowMenu, ExternalLink, Trash2 } from '@/components/dashboard/row-overflow-menu'
 import {
   AvatarStack,
   EngagementIndicator,
@@ -44,10 +44,13 @@ export interface PropertyGridRow {
 
 type Tab = 'all' | 'listed' | 'appraising' | 'watching' | 'sold'
 
+type TimeWindow = 'Active anytime' | 'Today' | 'This week' | 'This month' | 'Ever'
+const TIME_WINDOWS: TimeWindow[] = ['Active anytime', 'Today', 'This week', 'This month', 'Ever']
+
 interface SecondaryFilters {
   list:      'All lists'
   intensity: 'Any' | 'High' | 'Medium' | 'Low'
-  time:      'Active anytime'
+  time:      TimeWindow
   suburb:    string  // 'All suburbs' or a suburb name
 }
 
@@ -56,6 +59,21 @@ const DEFAULT_FILTERS: SecondaryFilters = {
   intensity: 'Any',
   time:      'Active anytime',
   suburb:    'All suburbs',
+}
+
+const HOR_137_TIME_WINDOW_MS: Record<Exclude<TimeWindow, 'Active anytime' | 'Ever'>, number> = {
+  'Today':      24 * 60 * 60 * 1000,
+  'This week':  7  * 24 * 60 * 60 * 1000,
+  'This month': 30 * 24 * 60 * 60 * 1000,
+}
+
+function passesTimeWindow(lastActivityIso: string | null, window: TimeWindow): boolean {
+  if (window === 'Active anytime') return true
+  if (window === 'Ever') return Boolean(lastActivityIso)
+  if (!lastActivityIso) return false
+  const then = new Date(lastActivityIso).getTime()
+  if (Number.isNaN(then)) return false
+  return Date.now() - then <= HOR_137_TIME_WINDOW_MS[window]
 }
 
 interface Props {
@@ -71,23 +89,29 @@ export function PropertiesView({ properties, initialQ = '', defaultModalOpen = f
   const [tab, setTab] = useState<Tab>('all')
   const [filters, setFilters] = useState<SecondaryFilters>(DEFAULT_FILTERS)
   const [addOpen, setAddOpen] = useState(defaultModalOpen)
+  // HOR-137: optimistic soft-delete state (mirrors the Contacts grid).
+  const [deletedIds, setDeletedIds] = useState<Set<string>>(() => new Set())
+  const visibleProperties = useMemo(
+    () => properties.filter((p) => !deletedIds.has(p.id)),
+    [properties, deletedIds],
+  )
 
   const suburbOptions = useMemo(() => {
     const set = new Set<string>()
-    for (const p of properties) if (p.suburb) set.add(p.suburb)
+    for (const p of visibleProperties) if (p.suburb) set.add(p.suburb)
     return ['All suburbs', ...Array.from(set).sort()]
-  }, [properties])
+  }, [visibleProperties])
 
   const tabCounts = useMemo(() => ({
-    all:        properties.length,
-    listed:     properties.filter((p) => p.status === 'listed').length,
-    appraising: properties.filter((p) => p.status === 'appraising').length,
-    watching:   properties.filter((p) => p.status === 'watching').length,
-    sold:       properties.filter((p) => p.status === 'sold').length,
-  }), [properties])
+    all:        visibleProperties.length,
+    listed:     visibleProperties.filter((p) => p.status === 'listed').length,
+    appraising: visibleProperties.filter((p) => p.status === 'appraising').length,
+    watching:   visibleProperties.filter((p) => p.status === 'watching').length,
+    sold:       visibleProperties.filter((p) => p.status === 'sold').length,
+  }), [visibleProperties])
 
   const filtered = useMemo(() => {
-    let rows = properties
+    let rows = visibleProperties
 
     if (tab === 'listed')          rows = rows.filter((p) => p.status === 'listed')
     else if (tab === 'appraising') rows = rows.filter((p) => p.status === 'appraising')
@@ -101,6 +125,10 @@ export function PropertiesView({ properties, initialQ = '', defaultModalOpen = f
     if (filters.suburb !== 'All suburbs') {
       rows = rows.filter((p) => p.suburb === filters.suburb)
     }
+    // HOR-137: time window filter against last_activity_at
+    if (filters.time !== 'Active anytime') {
+      rows = rows.filter((p) => passesTimeWindow(p.lastActivityAt, filters.time))
+    }
 
     const q = search.trim().toLowerCase()
     if (q) {
@@ -110,7 +138,7 @@ export function PropertiesView({ properties, initialQ = '', defaultModalOpen = f
     }
 
     return rows
-  }, [properties, tab, filters, search])
+  }, [visibleProperties, tab, filters, search])
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
@@ -233,7 +261,7 @@ export function PropertiesView({ properties, initialQ = '', defaultModalOpen = f
             suburbOptions={suburbOptions}
             onChange={(next) => setFilters((f) => ({ ...f, ...next }))}
             resultCount={filtered.length}
-            totalCount={properties.length}
+            totalCount={visibleProperties.length}
           />
 
           {/* Table */}
@@ -247,13 +275,18 @@ export function PropertiesView({ properties, initialQ = '', defaultModalOpen = f
           >
             <TableHead />
             {filtered.length === 0 ? (
-              <EmptyState onAdd={() => setAddOpen(true)} hasAny={properties.length > 0} search={search} />
+              <EmptyState onAdd={() => setAddOpen(true)} hasAny={visibleProperties.length > 0} search={search} />
             ) : (
               filtered.map((p, idx) => (
                 <PropertyRow
                   key={p.id}
                   property={p}
                   isLast={idx === filtered.length - 1}
+                  onSoftDelete={(id) => setDeletedIds((prev) => {
+                    const next = new Set(prev)
+                    next.add(id)
+                    return next
+                  })}
                   onClick={() => router.push(`/properties/${p.id}`)}
                 />
               ))
@@ -549,11 +582,10 @@ function SecondaryFilterBar({
       <FilterChip
         label="Time"
         Icon={Clock}
-        isActive={false}
+        isActive={filters.time !== 'Active anytime'}
         current={filters.time}
-        options={['Active anytime']}
-        onSelect={() => {}}
-        disabledTooltip="Time filter coming soon"
+        options={TIME_WINDOWS}
+        onSelect={(v) => onChange({ time: v as TimeWindow })}
       />
       <FilterChip
         label="Suburb"
@@ -655,10 +687,12 @@ function PropertyRow({
   property,
   isLast,
   onClick,
+  onSoftDelete,
 }: {
   property: PropertyGridRow
   isLast: boolean
   onClick: () => void
+  onSoftDelete: (id: string) => void
 }) {
   const tone = toneFor(property.id)
   return (
@@ -760,26 +794,34 @@ function PropertyRow({
         {relativeWhen(property.lastActivityAt)}
       </div>
 
+      {/* Overflow (HOR-137 — Open in new tab / Soft delete) */}
       <div style={{ ...COL.overflow, display: 'flex', justifyContent: 'flex-end' }}>
-        <button
-          type="button"
-          aria-label="More — coming soon"
-          title="More — coming soon"
-          onClick={(e) => e.stopPropagation()}
-          style={{
-            background: 'transparent',
-            border: 'none',
-            color: '#8C7B6B',
-            cursor: 'default',
-            padding: 4,
-            borderRadius: 4,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <MoreHorizontal style={{ width: 14, height: 14 }} />
-        </button>
+        <RowOverflowMenu
+          triggerLabel={property.address}
+          actions={[
+            {
+              id: 'open-new-tab',
+              label: 'Open in new tab',
+              Icon: ExternalLink,
+              onSelect: () => {
+                window.open(`/properties/${property.id}`, '_blank', 'noopener')
+              },
+            },
+            {
+              id: 'soft-delete',
+              label: 'Delete property',
+              Icon: Trash2,
+              destructive: true,
+              onSelect: async () => {
+                if (!window.confirm(
+                  `Delete ${property.address}? Soft delete — restorable later.`,
+                )) return
+                const res = await fetch(`/api/properties/${property.id}`, { method: 'DELETE' })
+                if (res.ok) onSoftDelete(property.id)
+              },
+            },
+          ]}
+        />
       </div>
     </div>
   )

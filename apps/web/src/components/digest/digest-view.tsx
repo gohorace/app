@@ -1,4 +1,5 @@
 import Image from 'next/image'
+import Link from 'next/link'
 import { Archive, SlidersHorizontal } from 'lucide-react'
 import { SignalCard, type DigestSignal } from './signal-card'
 import { DigestRail, type DigestRailData } from './digest-rail'
@@ -156,15 +157,19 @@ function PageTopbar({ dateLabel, isDemo }: { dateLabel: string; isDemo?: boolean
           <Archive style={{ width: 13, height: 13 }} aria-hidden />
           Past digests
         </button>
-        <button
-          type="button"
-          disabled
-          title="Preferences — coming soon"
-          style={ghostButtonStyle}
+        <Link
+          href="/settings/notifications"
+          title="Notification preferences"
+          style={{
+            ...ghostButtonStyle,
+            opacity: 1,
+            cursor: 'pointer',
+            textDecoration: 'none',
+          }}
         >
           <SlidersHorizontal style={{ width: 13, height: 13 }} aria-hidden />
           Preferences
-        </button>
+        </Link>
       </div>
     </div>
   )
