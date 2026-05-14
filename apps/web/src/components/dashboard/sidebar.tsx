@@ -39,10 +39,11 @@ const NAV_SECTIONS: NavSection[] = [
       { href: '/contacts',    label: 'Contacts',    icon: Users      },
       { href: '/lists',       label: 'Lists',       icon: ListChecks },
       { href: '/properties',  label: 'Properties',  icon: MapPin     },
-      // HOR-148: Doorstep v1 — agent-facing label is "Open homes" while
-      // inspection_type only takes 'open_home'. v2 adds 'private' and
-      // we'll rename to "Inspections" then.
-      { href: '/inspections', label: 'Open homes',  icon: DoorOpen   },
+      // HOR-148: Doorstep agent surface. Label is "Inspections" —
+      // forward-looking, covers open homes today and private inspections
+      // in v2 without a rename. Prospect-facing copy on /i/<token>
+      // stays "open home" because that's the specific event they attend.
+      { href: '/inspections', label: 'Inspections', icon: DoorOpen   },
     ],
   },
   {

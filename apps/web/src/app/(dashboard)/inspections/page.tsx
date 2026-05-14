@@ -1,18 +1,16 @@
 /**
- * HOR-148 — /inspections (Open homes list)
+ * HOR-148 — /inspections (agent list view)
  *
- * Agent's list view of Doorstep inspections. Two sections:
- *   - Upcoming (scheduled_at >= now)
- *   - Past     (scheduled_at < now)
+ * Two sections: Upcoming (`scheduled_at >= now`) and Past. Each row is a
+ * Link to the inspection detail page where the QR lives. Scan counts
+ * and revisit indicators land on the detail page (HOR-150 full) — too
+ * noisy here, and the agent's main use of this surface is "is the
+ * 11am one set up?" not "how did Tuesday's one perform?".
  *
- * Each row shows property address, scheduled time, and the public QR
- * URL (`horace.app/i/<token>`) ready to copy. Scan counts and revisit
- * indicators land on the detail page (HOR-150) — too noisy for the
- * list view, and the agent's main use of this surface is "is the open
- * home for 11am set up?" not "how did Tuesday's one perform?".
- *
- * v1 only writes inspection_type='open_home', so user-facing labels say
- * "open home" throughout. v2 (private inspections) branches the wording.
+ * Agent-facing copy says "inspection" (forward-looking — covers open
+ * homes today, private inspections in v2). Prospect-facing copy on
+ * /i/<token> still says "open home" because that's the specific event
+ * the prospect is attending.
  */
 
 import { redirect } from 'next/navigation'
@@ -21,6 +19,7 @@ import { Plus } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { listForAgent } from '@/lib/inspections/repo'
+import { inspectionOrigin } from '@/lib/inspections/origin'
 import type { Inspection } from '@/lib/inspections/types'
 
 export const dynamic = 'force-dynamic'
@@ -57,9 +56,11 @@ function formatScheduledAt(iso: string): string {
   }).format(new Date(iso))
 }
 
+// Origin shared with the create + qr endpoints so a preview-minted
+// inspection's surfaces all point back at the same deploy.
+const ORIGIN = inspectionOrigin()
 function publicUrl(token: string): string {
-  const origin = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '') ?? 'https://horace.app'
-  return `${origin}/i/${token}`
+  return `${ORIGIN}/i/${token}`
 }
 
 export default async function InspectionsPage() {
@@ -124,11 +125,11 @@ export default async function InspectionsPage() {
             className="font-display"
             style={{ fontSize: 28, fontWeight: 500, color: '#3D332B', marginBottom: 8 }}
           >
-            Open homes
+            Inspections
           </h1>
           <p style={{ fontSize: 14, color: '#5E5246', maxWidth: 540 }}>
-            Each open home gets a private sign-in QR. Print it, prop it on the bench, and Horace
-            will turn every scan into a tagged contact you can follow up.
+            Each inspection gets a private sign-in QR. Show it on your phone or print it for the
+            bench — every scan turns into a tagged contact you can follow up.
           </p>
         </div>
         <Link
@@ -148,7 +149,7 @@ export default async function InspectionsPage() {
           }}
         >
           <Plus style={{ width: 14, height: 14 }} />
-          New open home
+          New inspection
         </Link>
       </div>
 
@@ -176,10 +177,10 @@ function EmptyState() {
       }}
     >
       <p style={{ fontSize: 13, fontWeight: 500, color: '#5E5246', marginBottom: 6 }}>
-        Horace hasn&rsquo;t hosted any open homes for you yet.
+        Horace hasn&rsquo;t hosted any inspections for you yet.
       </p>
       <p style={{ fontSize: 12, color: '#8C7B6B', marginBottom: 18 }}>
-        Set one up and Horace will give you a sign-in QR for the bench.
+        Set one up and Horace will mint a private sign-in QR for it.
       </p>
       <Link
         href="/inspections/new"
@@ -197,7 +198,7 @@ function EmptyState() {
         }}
       >
         <Plus style={{ width: 14, height: 14 }} />
-        New open home
+        New inspection
       </Link>
     </div>
   )
