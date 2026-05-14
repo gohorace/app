@@ -31,6 +31,7 @@ import { hashPairingToken, looksLikePairingToken } from '@/lib/pairing/tokens'
 import { deviceLabelFromUA } from '@/lib/pairing/device-label'
 import { headers } from 'next/headers'
 import { PairingBootstrap } from './pairing-bootstrap'
+import { IOSInstallGuide } from '@/components/mobile/ios-install-guide'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -136,7 +137,7 @@ export default async function MobilePairingInstall({ params }: Props) {
         </p>
 
         {/* Platform-specific slot — real components land in HOR-163 (iOS) and HOR-164 (Android). */}
-        <PlatformSlot platform={platform} />
+        <PlatformSlot platform={platform} token={token} />
 
         <p
           style={{
@@ -153,17 +154,27 @@ export default async function MobilePairingInstall({ params }: Props) {
   )
 }
 
-function PlatformSlot({ platform }: { platform: 'ios' | 'android' | 'other' }) {
-  // Placeholder bodies for HOR-160. Each gets replaced wholesale:
-  //   • iOS slot      → <IOSInstallGuide>           (HOR-163)
-  //   • Android slot  → <AndroidInstallPrompt>      (HOR-164)
-  //   • other slot    → <UnsupportedBrowserCopy>    (HOR-164)
+function PlatformSlot({
+  platform,
+  token,
+}: {
+  platform: 'ios' | 'android' | 'other'
+  token: string
+}) {
+  if (platform === 'ios') {
+    return <IOSInstallGuide />
+  }
+
+  // HOR-164 fills in the Android and unsupported branches; we keep
+  // the placeholders here so the page renders cleanly on those
+  // platforms in the meantime. `token` is threaded down for HOR-164
+  // to use without another prop drill.
+  void token
+
   const message =
-    platform === 'ios'
-      ? 'Tap the Share icon, then Add to Home Screen. Open Horace from your home screen, then allow notifications.'
-      : platform === 'android'
-        ? 'Install Horace, then allow notifications when prompted.'
-        : "Push isn't supported in this browser. Open this link in Safari or Chrome to continue."
+    platform === 'android'
+      ? 'Install Horace, then allow notifications when prompted.'
+      : "Push isn't supported in this browser. Open this link in Safari or Chrome to continue."
 
   return (
     <div
@@ -176,7 +187,7 @@ function PlatformSlot({ platform }: { platform: 'ios' | 'android' | 'other' }) {
     >
       <p style={{ margin: 0, fontSize: 15, lineHeight: 1.5 }}>{message}</p>
       <p style={{ marginTop: 12, fontSize: 12, opacity: 0.6 }}>
-        Install components coming soon (HOR-163 / HOR-164).
+        Install flow coming soon (HOR-164).
       </p>
     </div>
   )

@@ -1,0 +1,84 @@
+/* HOR-163 / HOR-164 — shared styles for the phone-side install
+ * components. Lives in components/mobile/ rather than alongside
+ * the onboarding components because it's a distinct surface
+ * (rendered on the phone, not the desktop wizard).
+ */
+
+.guide {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.step {
+  display: flex;
+  gap: 14px;
+  padding: 14px;
+  background: var(--color-cream, #FAF7F2);
+  border: 1px solid var(--color-border, #E4DCDA);
+  border-radius: 12px;
+}
+
+.stepBullet {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--color-terracotta, #C4622D);
+  color: var(--color-cream, #FAF7F2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.stepBody {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.stepTitle {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 2px;
+  color: var(--color-ink, #1A1A1A);
+}
+
+.stepCopy {
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--color-stone, #6B6B6B);
+}
+
+.standaloneBanner {
+  padding: 14px 16px;
+  background: var(--color-cream, #FAF7F2);
+  border: 1px solid var(--color-border, #E4DCDA);
+  border-left: 3px solid var(--color-terracotta, #C4622D);
+  border-radius: 0 10px 10px 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--color-ink, #1A1A1A);
+}
+
+/* Reserved for HOR-164 / HOR-165. Stubbed here so additions don't
+ * cause module CSS warnings in the next slice. */
+
+.installAction {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.installButton {
+  align-self: flex-start;
+}
