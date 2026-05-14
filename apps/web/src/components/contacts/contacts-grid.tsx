@@ -32,6 +32,7 @@ import { AddContactDialog } from './add-contact-dialog'
 import { TrackedLinkCell } from './tracked-link-cell'
 import { AddToListSheet } from '@/components/lists/add-to-list-sheet'
 import { useLists } from '@/lib/lists/use-lists'
+import { BUILTIN_LISTS, type BuiltinListSlug } from '@/lib/lists/builtin'
 
 const ONLINE_MS = 5 * 60 * 1000 // 5 minutes
 
@@ -74,13 +75,17 @@ interface Props {
   defaultLinkUrl: string | null
   /** Public app URL — used to build the tracked link `${appUrl}/c/${token}`. */
   appUrl: string
-  /** HOR-143: when set, the grid renders inside a list context — header
-   *  shows "Viewing list: <name>" with a Clear affordance; manual lists
-   *  also have their rows pre-scoped to membership by the page. */
+  /** HOR-143/HOR-144: when set, the grid renders inside a list context —
+   *  header shows the list banner. Three kinds:
+   *   • manual       → rows pre-scoped to membership by the page
+   *   • saved_filter → filter_state hydrates the secondary filter bar
+   *   • builtin      → rows pre-scoped by score threshold (Warming up /
+   *                    Watch closely). id is the slug, not a uuid.
+   */
   selectedList?: {
     id: string
     name: string
-    kind: 'manual' | 'saved_filter'
+    kind: 'manual' | 'saved_filter' | 'builtin'
     filter_state: SavedFilterState | null
   } | null
 }
@@ -279,8 +284,12 @@ export function ContactsGrid({ contacts, initialQ = '', agentId, defaultLinkUrl,
   // Save-as-list dialog can call it without instantiating a second hook.
   const { lists, createList } = useLists()
 
-  // HOR-143: list chip options. Manual lists first (alphabetical), then
-  // saved_filter lists. "All lists" is the clear option.
+  // HOR-143/HOR-144: list chip options. Built-ins first (live counts are
+  // out of scope for the chip — overview page handles those), then manual,
+  // then saved_filter. We encode the choice with a kind hint so the
+  // navigation helper writes the right query-string key (?list_id vs
+  // ?builtin) without parsing the label back out.
+  type ListChoice = { kind: 'all' } | { kind: 'list'; id: string } | { kind: 'builtin'; slug: BuiltinListSlug }
   const listOptions = useMemo(() => {
     const manual = lists
       .filter((l) => l.kind === 'manual')
@@ -289,27 +298,47 @@ export function ContactsGrid({ contacts, initialQ = '', agentId, defaultLinkUrl,
       .filter((l) => l.kind === 'saved_filter')
       .sort((a, b) => a.name.localeCompare(b.name))
     return [
-      { id: null as string | null, label: 'All lists' },
-      ...manual.map((l) => ({ id: l.id as string | null, label: l.name })),
-      ...saved.map((l) => ({ id: l.id as string | null, label: `★ ${l.name}` })),
+      { choice: { kind: 'all' } as ListChoice, label: 'All lists' },
+      ...BUILTIN_LISTS.map((b) => ({
+        choice: { kind: 'builtin' as const, slug: b.slug } as ListChoice,
+        label: `◇ ${b.name}`,
+      })),
+      ...manual.map((l) => ({ choice: { kind: 'list' as const, id: l.id } as ListChoice, label: l.name })),
+      ...saved.map((l) => ({ choice: { kind: 'list' as const, id: l.id } as ListChoice, label: `★ ${l.name}` })),
     ]
   }, [lists])
 
-  const currentListLabel =
-    listOptions.find((o) => o.id === (selectedList?.id ?? null))?.label ?? 'All lists'
+  const currentListLabel = useMemo(() => {
+    if (!selectedList) return 'All lists'
+    const match = listOptions.find((o) => {
+      if (o.choice.kind === 'all') return false
+      if (o.choice.kind === 'builtin' && selectedList.kind === 'builtin') {
+        return o.choice.slug === selectedList.id
+      }
+      if (o.choice.kind === 'list' && selectedList.kind !== 'builtin') {
+        return o.choice.id === selectedList.id
+      }
+      return false
+    })
+    return match?.label ?? selectedList.name
+  }, [listOptions, selectedList])
 
-  function handleSelectList(id: string | null) {
-    // Preserve the search query so the user doesn't lose their typed
-    // text when they pivot to a list view (which then re-applies search
-    // after hydration).
+  function handleSelectChoice(choice: ListChoice) {
     const params = new URLSearchParams()
-    if (id) params.set('list_id', id)
+    if (choice.kind === 'list') params.set('list_id', choice.id)
+    if (choice.kind === 'builtin') params.set('builtin', choice.slug)
     if (search.trim()) params.set('q', search.trim())
     const qs = params.toString()
     router.push(qs ? `/contacts?${qs}` : '/contacts')
     // The page does an SSR round-trip — clear any in-flight selection so
     // we don't carry stale ticks to a different list's rows.
     setSelected(new Set())
+  }
+
+  // Convenience for the banner's Clear button + anywhere else that wants
+  // "drop back to the unscoped view".
+  function clearListSelection() {
+    handleSelectChoice({ kind: 'all' })
   }
 
   const safeContacts = useMemo(
@@ -602,17 +631,23 @@ export function ContactsGrid({ contacts, initialQ = '', agentId, defaultLinkUrl,
                   color: '#C4622D',
                 }}
               >
-                {selectedList.kind === 'saved_filter' ? 'Saved view' : 'List'}
+                {selectedList.kind === 'saved_filter'
+                  ? 'Saved view'
+                  : selectedList.kind === 'builtin'
+                  ? 'Built-in'
+                  : 'List'}
               </span>
               <span style={{ fontWeight: 500 }}>{selectedList.name}</span>
               <span style={{ color: '#8C7B6B' }}>
                 {selectedList.kind === 'saved_filter'
                   ? '· filters hydrated from this view'
+                  : selectedList.kind === 'builtin'
+                  ? '· computed live from intent score'
                   : '· showing only members'}
               </span>
               <button
                 type="button"
-                onClick={() => handleSelectList(null)}
+                onClick={clearListSelection}
                 style={{
                   marginLeft: 'auto',
                   background: 'transparent',
@@ -638,7 +673,7 @@ export function ContactsGrid({ contacts, initialQ = '', agentId, defaultLinkUrl,
             totalCount={safeContacts.length}
             listOptions={listOptions}
             currentListLabel={currentListLabel}
-            onSelectList={handleSelectList}
+            onSelectChoice={handleSelectChoice}
             saveAsListDisabled={!hasActiveFilter}
             onSaveAsList={() => setSaveOpen(true)}
           />
@@ -1087,6 +1122,13 @@ function FilterChip({ label, Icon, isActive, options, current, onSelect, disable
   )
 }
 
+// Re-declared at the bar's seam so the chip props don't have to import
+// the inner ListChoice from the function scope above.
+type ListChipChoice =
+  | { kind: 'all' }
+  | { kind: 'list'; id: string }
+  | { kind: 'builtin'; slug: BuiltinListSlug }
+
 function SecondaryFilterBar({
   filters,
   propertyOptions,
@@ -1095,7 +1137,7 @@ function SecondaryFilterBar({
   totalCount,
   listOptions,
   currentListLabel,
-  onSelectList,
+  onSelectChoice,
   saveAsListDisabled,
   onSaveAsList,
 }: {
@@ -1104,12 +1146,12 @@ function SecondaryFilterBar({
   onChange: (next: Partial<SecondaryFilters>) => void
   resultCount: number
   totalCount: number
-  // HOR-143: List filter is the only chip that drives a URL change (and
-  // therefore a server re-fetch). The grid owns the labels, the parent
-  // owns navigation.
-  listOptions: Array<{ id: string | null; label: string }>
+  // HOR-143/HOR-144: List chip drives a URL change (and SSR re-fetch).
+  // Built-ins and real lists share the dropdown — the choice object tells
+  // the parent which query-string key to write.
+  listOptions: Array<{ choice: ListChipChoice; label: string }>
   currentListLabel: string
-  onSelectList: (id: string | null) => void
+  onSelectChoice: (choice: ListChipChoice) => void
   saveAsListDisabled: boolean
   onSaveAsList: () => void
 }) {
@@ -1147,7 +1189,7 @@ function SecondaryFilterBar({
         options={listOptions.map((o) => o.label)}
         onSelect={(label) => {
           const match = listOptions.find((o) => o.label === label)
-          onSelectList(match?.id ?? null)
+          if (match) onSelectChoice(match.choice)
         }}
       />
       <FilterChip
