@@ -21,6 +21,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { qrPngBuffer, buildQrFilename } from '@/lib/inspections/qr'
+import { inspectionOrigin } from '@/lib/inspections/origin'
 
 export const dynamic = 'force-dynamic'
 
@@ -73,9 +74,7 @@ export async function GET(req: NextRequest, ctx: Ctx) {
     .eq('id', inspection.property_id)
     .maybeSingle()
 
-  const origin =
-    process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '') ?? new URL(req.url).origin
-  const publicUrl = `${origin}/i/${inspection.token}`
+  const publicUrl = `${inspectionOrigin(req)}/i/${inspection.token}`
 
   let png: Buffer
   try {
