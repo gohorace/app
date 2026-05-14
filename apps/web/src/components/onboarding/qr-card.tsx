@@ -17,10 +17,17 @@ interface Props {
 }
 
 export function QRCard({ qrDataUrl, qrUrl }: Props) {
-  // Strip the protocol from the display URL — `horace.co/m/pair_…`
-  // is more readable than the full https:// form, and the QR still
-  // encodes the full URL.
-  const displayUrl = qrUrl.replace(/^https?:\/\//, '')
+  // Show only the host on the card. The QR carries the full token;
+  // the visible URL is a trust-signal ("yes, this is a Horace URL"),
+  // not a debug surface. The 43-char base64url token rendered in
+  // monospace under the QR read as noise rather than reassurance.
+  const host = (() => {
+    try {
+      return new URL(qrUrl).host
+    } catch {
+      return qrUrl.replace(/^https?:\/\//, '').split('/')[0]
+    }
+  })()
 
   return (
     <div className={styles.qrCard}>
@@ -37,7 +44,7 @@ export function QRCard({ qrDataUrl, qrUrl }: Props) {
         <span className={styles.qrAccent} aria-hidden />
       </div>
       <div className={styles.qrCaption}>Scan with your phone camera</div>
-      <div className={styles.qrSubCaption}>{displayUrl}</div>
+      <div className={styles.qrSubCaption}>{host}</div>
     </div>
   )
 }
