@@ -23,11 +23,19 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import QRCode from 'qrcode'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { mintPairingToken, TOKEN_TTL_SECONDS } from '@/lib/pairing/tokens'
 
 export const runtime = 'nodejs'
+
+// Visual tokens for the QR. Match the Horace palette — dark on cream
+// rather than pure black on white. Kept inline (rather than imported
+// from a tokens module) because qrcode's API takes string hex codes
+// and these are tightly coupled to this single render context.
+const QR_DARK = '#1A1A1A'
+const QR_LIGHT = '#FAF6EF'
 
 export async function POST(_req: NextRequest) {
   const supabase = await createClient()
@@ -76,5 +84,14 @@ export async function POST(_req: NextRequest) {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? ''
   const qrUrl = `${appUrl}/m/${plaintext}`
 
-  return NextResponse.json({ token: plaintext, expiresAt, qrUrl })
+  // Server-side QR render. Keeps `qrcode` off the client bundle and
+  // avoids a round-trip from the client to fetch the image. 256×256
+  // matches the visual spec (printed inside a card at 1× display).
+  const qrDataUrl = await QRCode.toDataURL(qrUrl, {
+    width: 256,
+    margin: 1,
+    color: { dark: QR_DARK, light: QR_LIGHT },
+  })
+
+  return NextResponse.json({ token: plaintext, expiresAt, qrUrl, qrDataUrl })
 }
