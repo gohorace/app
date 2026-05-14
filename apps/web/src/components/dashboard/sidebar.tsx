@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Sun, Users, MapPin, Bell, Settings, ListChecks } from 'lucide-react'
+import { Sun, Users, MapPin, Bell, Settings, ListChecks, DoorOpen } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -36,9 +36,13 @@ const NAV_SECTIONS: NavSection[] = [
   {
     label: 'Data',
     items: [
-      { href: '/contacts',   label: 'Contacts',   icon: Users      },
-      { href: '/lists',      label: 'Lists',      icon: ListChecks },
-      { href: '/properties', label: 'Properties', icon: MapPin     },
+      { href: '/contacts',    label: 'Contacts',    icon: Users      },
+      { href: '/lists',       label: 'Lists',       icon: ListChecks },
+      { href: '/properties',  label: 'Properties',  icon: MapPin     },
+      // HOR-148: Doorstep v1 — agent-facing label is "Open homes" while
+      // inspection_type only takes 'open_home'. v2 adds 'private' and
+      // we'll rename to "Inspections" then.
+      { href: '/inspections', label: 'Open homes',  icon: DoorOpen   },
     ],
   },
   {
