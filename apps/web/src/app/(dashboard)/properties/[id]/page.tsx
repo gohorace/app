@@ -30,6 +30,11 @@ export default async function PropertyDetailPage({
 
   if (!agent?.workspace_id) notFound()
 
+  // HOR-130: the `metadata` column is provisioned by the
+  // 20260514000002_property_metadata.sql migration. Until that's applied
+  // everywhere, request it via a separate read so the main page never
+  // 404s on a missing-column error. Once the migration is universal we
+  // can fold metadata back into the main select.
   const { data: property } = await admin
     .from('properties')
     .select('id, street_number, street_name, suburb, status, first_seen_at, last_activity_at')
@@ -179,9 +184,25 @@ export default async function PropertyDetailPage({
     recent7d.length >= 4 ? 2 :
     recent7d.length >= 1 ? 1 : 0
 
-  // Notes not yet persistable (no metadata column on properties — see
-  // /api/properties/[id] route). Wired into the view shape for future use.
-  const notes = null
+  // HOR-130: notes persist on properties.metadata.notes. Best-effort read —
+  // if the migration hasn't been applied yet, we silently fall back to null
+  // (the editor will surface a Save failed pill if the agent tries to write).
+  let notes: string | null = null
+  try {
+    const { data: metaRow, error: metaErr } = await admin
+      .from('properties')
+      .select('metadata')
+      .eq('id', params.id)
+      .eq('workspace_id', agent.workspace_id)
+      .is('deleted_at', null)
+      .maybeSingle()
+    if (!metaErr && metaRow) {
+      const meta = (metaRow.metadata as Record<string, unknown> | null) ?? null
+      notes = (meta?.notes as string | undefined) ?? null
+    }
+  } catch {
+    // metadata column not yet provisioned — defaults stay null.
+  }
 
   return (
     <PropertyDetailView

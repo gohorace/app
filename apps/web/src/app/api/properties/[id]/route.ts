@@ -19,11 +19,11 @@ import { getRoles } from '@/lib/contacts/roles'
 // exactly these four values.
 const PropertyStatusEnum = z.enum(['listed', 'appraising', 'watching', 'sold'])
 
-// Notes deferred: the properties table has no metadata column today, so we
-// can't persist them without a migration. The PATCH endpoint accepts only
-// `status` — notes land with HOR-130.
+// HOR-130: per-property notes stored at metadata.notes. Hard-capped at
+// 2000 chars to keep the JSONB row a sensible size.
 const PatchSchema = z.object({
   status: PropertyStatusEnum.optional(),
+  notes:  z.string().max(2000).nullable().optional(),
 })
 
 async function resolveAgent(userId: string) {
@@ -51,6 +51,10 @@ export async function GET(
 
   const { data: property } = await admin
     .from('properties')
+    // HOR-130: metadata column added by 20260514000002 migration.
+    // Excluded from this select for graceful behaviour pre-migration —
+    // callers wanting notes should query separately (the detail page
+    // already does this defensively).
     .select('id, street_number, street_name, suburb, state, postcode, property_type, status, first_seen_at, last_activity_at, created_at, updated_at')
     .eq('id', params.id)
     .eq('workspace_id', agent.workspace_id)
@@ -117,6 +121,33 @@ export async function PATCH(
   const update: Record<string, unknown> = {}
   if (parsed.data.status !== undefined) {
     update.status = parsed.data.status
+  }
+
+  // HOR-130: notes round-trip through metadata.notes. Read-modify-write
+  // to preserve any other keys callers might add to metadata later.
+  if (parsed.data.notes !== undefined) {
+    const { data: current, error: readErr } = await admin
+      .from('properties')
+      .select('metadata')
+      .eq('id', params.id)
+      .eq('workspace_id', agent.workspace_id)
+      .is('deleted_at', null)
+      .maybeSingle()
+
+    if (readErr || !current) {
+      return NextResponse.json({ error: 'Property not found' }, { status: 404 })
+    }
+
+    const base = (current.metadata && typeof current.metadata === 'object')
+      ? { ...(current.metadata as Record<string, unknown>) }
+      : {}
+    const trimmed = parsed.data.notes?.trim()
+    if (parsed.data.notes === null || !trimmed) {
+      delete base.notes
+    } else {
+      base.notes = trimmed
+    }
+    update.metadata = base
   }
 
   if (Object.keys(update).length === 0) {

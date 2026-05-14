@@ -16,6 +16,7 @@ import {
   UserPlus,
 } from 'lucide-react'
 import { AttachContactDialog } from './attach-contact-dialog'
+import { NotesPanel } from '@/components/dashboard/notes-panel'
 import {
   EngagementIndicator,
   PersonAvatar,
@@ -353,6 +354,13 @@ export function PropertyDetailView({
             </div>
           </div>
         </div>
+
+        {/* Notes (HOR-130) */}
+        <NotesPanel
+          endpoint={`/api/properties/${property.id}`}
+          initial={property.notes}
+          placeholder="e.g. Pitching for the listing next Thursday. Owners renovated kitchen last spring. Wife works in real estate so she'll ask sharp questions."
+        />
 
         {/* Contacts panel */}
         <section style={panelStyle}>
@@ -700,6 +708,9 @@ function GroupLabel({
     </div>
   )
 }
+
+// NotesPanel moved to components/dashboard/notes-panel.tsx (HOR-130 follow-up)
+// so Contact Detail can reuse it.
 
 function ChangeStatusButton({
   propertyId,

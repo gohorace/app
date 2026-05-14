@@ -27,6 +27,7 @@ import {
 import type { IdentityState } from '@/lib/design/badges'
 import { eventLabel, eventUrl, formatEventUrl, type MergedEvent } from '@/lib/contacts/events'
 import { AttachRoleDialog } from './attach-role-dialog'
+import { NotesPanel } from '@/components/dashboard/notes-panel'
 
 export interface ContactDetailViewProps {
   contact: {
@@ -40,6 +41,9 @@ export interface ContactDetailViewProps {
     identifiedAt: string | null
     score:        number
     source:       string
+    /** Free-text notes on the contact. Persisted on contacts.notes (legacy
+     *  column already in the schema — no migration needed). */
+    notes:        string | null
   }
   identity: IdentityState
   initials: string
@@ -383,6 +387,16 @@ export function ContactDetailView({
             </div>
           )}
         </section>
+
+        {/* Notes (HOR-130 follow-up — Contacts share the same panel) */}
+        {!isAnon && (
+          <NotesPanel
+            endpoint={`/api/contacts/${contact.id}`}
+            initial={contact.notes}
+            subtitle="A space for yourself. Horace keeps them with the contact — visible to everyone in your workspace."
+            placeholder="e.g. Met at the Paddington open this weekend. Their lease is up in November. Husband Andrew — call him Drew."
+          />
+        )}
 
         {/* Timeline */}
         <section style={panelStyle}>

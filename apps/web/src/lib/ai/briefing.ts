@@ -31,6 +31,7 @@ export async function generateContactInsight(
   client: Anthropic,
   agentName: string,
   contact: {
+    contact_id?: string  // optional, used for stable fallback-variant selection
     first_name: string | null
     last_name: string | null
     email: string | null
@@ -87,12 +88,12 @@ Respond in JSON only:
     const parsed = JSON.parse(text) as { why_now: string; action: string }
 
     return {
-      why_now: parsed.why_now ?? fallbackInsight(name).why_now,
-      action:  parsed.action  ?? fallbackInsight(name).action,
+      why_now: parsed.why_now ?? fallbackInsight(name, contact.contact_id).why_now,
+      action:  parsed.action  ?? fallbackInsight(name, contact.contact_id).action,
     }
   } catch (err) {
     console.error(`[briefing-ai] Failed to generate insight for ${name}:`, err)
-    return fallbackInsight(name)
+    return fallbackInsight(name, contact.contact_id)
   }
 }
 
@@ -158,13 +159,60 @@ Respond with the narrative text only, no JSON, no quotes.`
   }
 }
 
-function fallbackInsight(name: string): ContactInsight {
+// ── Fallback copy (HOR-128) ──────────────────────────────────────────────────
+// Used when ANTHROPIC_API_KEY is unset, Anthropic errors, or rate-limits us.
+// Three variants per kind so the empty-AI case doesn't feel monotonous across
+// a roster. Picked deterministically from a stable key (contact_id for
+// per-contact insights, lead_count + window for the narrative) so the same
+// contact gets the same fallback across reloads — no jarring re-shuffling.
+
+const FALLBACK_WHY_NOW: ReadonlyArray<(name: string) => string> = [
+  (name) => `${name} stirred on your site recently — the kind of return that often precedes a conversation.`,
+  (name) => `Quiet signal from ${name} — they came back. Horace is watching to see what they linger on next.`,
+  (name) => `${name} brushed past your site again. Worth a soft nudge before they move on.`,
+]
+
+const FALLBACK_ACTION: ReadonlyArray<(firstName: string) => string> = [
+  (first) => `Drop ${first} a line — open with whatever they were last looking at.`,
+  (first) => `Reach out to ${first} this week. Light touch, no pitch.`,
+  (first) => `A short call with ${first} would tell you more than any guess could.`,
+]
+
+const FALLBACK_NARRATIVE: ReadonlyArray<(count: number, windowLabel: string) => string> = [
+  (count, w) => `${count} contact${count === 1 ? '' : 's'} worth your attention ${w}. Horace has been watching.`,
+  (count, w) => `Quiet ${w}, but ${count} ${count === 1 ? 'person' : 'people'} came around. Worth a closer look.`,
+  (count, w) => `${count} familiar ${count === 1 ? 'face' : 'faces'} on the site ${w}. The moment's there if you want it.`,
+]
+
+/**
+ * Stable, content-addressable pick across an array of variants. Keeps the
+ * same contact on the same variant across reloads, but spreads variants
+ * across a roster of contacts.
+ */
+function pickVariant<T>(variants: ReadonlyArray<T>, key: string): T {
+  let hash = 0
+  for (let i = 0; i < key.length; i++) hash = ((hash << 5) - hash) + key.charCodeAt(i)
+  return variants[Math.abs(hash) % variants.length]
+}
+
+function fallbackInsight(name: string, contactId?: string): ContactInsight {
+  const first = name.split(' ')[0] || name
+  const key = contactId ?? name
+  // Log once per fallback hit so a key-missing situation is visible in
+  // Vercel logs. Grep target: '[ai:fallback]'.
+  console.log('[ai:fallback] contact-insight', { name, key })
   return {
-    why_now: `${name} has been active on your website recently.`,
-    action:  `Follow up with ${name} to check in.`,
+    why_now: pickVariant(FALLBACK_WHY_NOW, key)(name),
+    action:  pickVariant(FALLBACK_ACTION,  key)(first),
   }
 }
 
 function fallbackNarrative(count: number, windowLabel: string): string {
-  return `${count} contact${count === 1 ? '' : 's'} worth your attention ${windowLabel}. Horace has been watching.`
+  // Hash on the roster size + window so the same shape of morning gets a
+  // consistent narrative — but two different mornings can land on different
+  // variants. Predictable enough to not feel random, varied enough to not
+  // feel canned.
+  console.log('[ai:fallback] narrative', { count, windowLabel })
+  const key = `${count}:${windowLabel}`
+  return pickVariant(FALLBACK_NARRATIVE, key)(count, windowLabel)
 }

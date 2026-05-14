@@ -1,3 +1,4 @@
+import { unstable_cache } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { DigestView, type DigestViewModel } from '@/components/digest/digest-view'
@@ -7,6 +8,7 @@ import {
   generateContactInsight,
   generateBriefingNarrative,
   type ContactEvent,
+  type ContactInsight,
 } from '@/lib/ai/briefing'
 
 // Server component — always fresh. Calls the same RPCs the daily-briefing
@@ -117,7 +119,12 @@ export default async function DigestPage({
       }))
 
       const insight = anthropic
-        ? await generateContactInsight(anthropic, agentName, lead, events).catch(() => null)
+        ? await getCachedInsight({
+            agentId: agent.id,
+            agentName,
+            lead,
+            events,
+          }).catch(() => null)
         : null
 
       const displayName =
@@ -143,20 +150,20 @@ export default async function DigestPage({
     }),
   )
 
-  // ── Generate Horace narrative (best-effort) ──────────────────────────────
+  // ── Generate Horace narrative (best-effort, cached) ─────────────────────
   const narrative = anthropic
-    ? await generateBriefingNarrative(
-        anthropic,
+    ? await getCachedNarrative({
+        agentId: agent.id,
         agentName,
-        enriched.map((l) => ({
-          first_name: l.firstName,
-          last_name:  l.lastName,
-          score:      l.score,
+        leads: enriched.map((l) => ({
+          contactId:    l.contactId,
+          first_name:   l.firstName,
+          last_name:    l.lastName,
+          score:        l.score,
           score_change: l.scoreChange,
           topEventType: l.topEventType,
         })),
-        'today',
-      ).catch(() => '')
+      }).catch(() => '')
     : ''
 
   // ── Shape the view-model ─────────────────────────────────────────────────
@@ -416,4 +423,97 @@ function friendlyEventLabel(e: ContactEvent): string | null {
     case 'campaign_click': return 'Campaign click'
     default: return null
   }
+}
+
+// ─── AI insight caching (HOR-127) ────────────────────────────────────────────
+// `unstable_cache` keys are content-addressable on values that change when
+// the contact's status changes (score, score_change, last_seen_at). New
+// activity invalidates the cache organically; repeat /digest loads inside a
+// stable window hit cache and skip Anthropic.
+//
+// Tags are `digest:<agent_id>` so the daily-briefing cron can issue a
+// single `revalidateTag('digest:' + agent_id)` to warm the next morning's
+// roster after it sends.
+
+interface InsightArgs {
+  agentId: string
+  agentName: string
+  lead: {
+    contact_id:   string
+    first_name:   string | null
+    last_name:    string | null
+    email:        string | null
+    score:        number
+    score_change: number
+    last_seen_at: string | null
+  }
+  events: ContactEvent[]
+}
+
+async function getCachedInsight(args: InsightArgs): Promise<ContactInsight> {
+  const apiKey = process.env.ANTHROPIC_API_KEY!
+  // Capture primitives so the cache key array is stable; the Anthropic
+  // client is constructed lazily inside the cached function.
+  const { agentId, agentName, lead, events } = args
+  const cached = unstable_cache(
+    async () => {
+      const Anthropic = (await import('@anthropic-ai/sdk')).default
+      const anthropic = new Anthropic({ apiKey })
+      return generateContactInsight(anthropic, agentName, lead, events)
+    },
+    [
+      'digest-insight-v1',
+      lead.contact_id,
+      String(lead.score),
+      String(lead.score_change ?? 0),
+      lead.last_seen_at ?? '',
+    ],
+    { tags: [`digest:${agentId}`], revalidate: 86400 },
+  )
+  return cached()
+}
+
+interface NarrativeArgs {
+  agentId: string
+  agentName: string
+  leads: Array<{
+    contactId:    string
+    first_name:   string | null
+    last_name:    string | null
+    score:        number
+    score_change: number
+    topEventType: string | null
+  }>
+}
+
+async function getCachedNarrative(args: NarrativeArgs): Promise<string> {
+  const apiKey = process.env.ANTHROPIC_API_KEY!
+  const { agentId, agentName, leads } = args
+  // Stable hash across the ordered roster — same contacts + same top events
+  // means same narrative.
+  const rosterKey = leads
+    .map((l) => `${l.contactId}:${l.score}:${l.topEventType ?? ''}`)
+    .join('|')
+
+  const cached = unstable_cache(
+    async () => {
+      const Anthropic = (await import('@anthropic-ai/sdk')).default
+      const anthropic = new Anthropic({ apiKey })
+      return generateBriefingNarrative(
+        anthropic,
+        agentName,
+        leads.map((l) => ({
+          first_name:   l.first_name,
+          last_name:    l.last_name,
+          score:        l.score,
+          score_change: l.score_change,
+          topEventType: l.topEventType,
+        })),
+        'today',
+      )
+    },
+    ['digest-narrative-v1', agentId, rosterKey],
+    { tags: [`digest:${agentId}`], revalidate: 86400 },
+  )
+  return cached()
 }

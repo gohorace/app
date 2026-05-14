@@ -160,6 +160,11 @@ export default async function ContactDetailPage({ params }: { params: { id: stri
         identifiedAt: contact.identified_at,
         score:        contact.score,
         source:       contact.source,
+        // Notes persist on contacts.metadata.notes (the types file claims a
+        // top-level `notes` column but the migrations never created one;
+        // metadata has been on contacts since the original schema so it's
+        // the safe home).
+        notes:        ((contact.metadata as Record<string, unknown> | null)?.notes as string | undefined) ?? null,
       }}
       identity={identity}
       initials={initials}

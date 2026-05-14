@@ -189,6 +189,7 @@ export type Database = {
           status: 'listed' | 'appraising' | 'watching' | 'sold' | null
           listing_agent_id: string | null
           external_ids: Json
+          metadata: Json
           first_seen_at: string; last_activity_at: string
           created_at: string; updated_at: string; deleted_at: string | null
         }
@@ -201,6 +202,7 @@ export type Database = {
           status?: 'listed' | 'appraising' | 'watching' | 'sold' | null
           listing_agent_id?: string | null
           external_ids?: Json
+          metadata?: Json
           first_seen_at?: string; last_activity_at?: string
           created_at?: string; updated_at?: string; deleted_at?: string | null
         }
@@ -213,6 +215,7 @@ export type Database = {
           status?: 'listed' | 'appraising' | 'watching' | 'sold' | null
           listing_agent_id?: string | null
           external_ids?: Json
+          metadata?: Json
           first_seen_at?: string; last_activity_at?: string
           created_at?: string; updated_at?: string; deleted_at?: string | null
         }
