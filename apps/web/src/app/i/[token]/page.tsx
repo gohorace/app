@@ -74,6 +74,21 @@ export default async function PublicCapturePage({ params }: PageProps) {
   // here keeps the 404 surface consistent if the helper signature shifts.
   if (data.inspection.status === 'cancelled') notFound()
 
+  // HOR-158 — scan telemetry. A structured log line per server render
+  // gives us the denominator for scan-to-submit conversion via Vercel
+  // log search (`doorstep_event=inspection_page_view inspection_id=...`).
+  // Cheap: no DB write, no second fetch. Caveat: prefetch + cancelled
+  // visits also log, so the metric will read slightly hot — fine for v1.
+  console.log(
+    JSON.stringify({
+      doorstep_event: 'inspection_page_view',
+      inspection_id: data.inspection.id,
+      inspection_type: data.inspection.inspection_type,
+      workspace_id: data.workspace.id,
+      ts: new Date().toISOString(),
+    }),
+  )
+
   const agentFirstName = data.agent.first_name?.trim() || 'the agent'
   const fullName = [data.agent.first_name, data.agent.last_name].filter(Boolean).join(' ').trim() ||
     'Your agent'
