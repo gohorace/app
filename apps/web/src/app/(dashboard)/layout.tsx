@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { Sidebar } from '@/components/dashboard/sidebar'
 import { MobileNav } from '@/components/dashboard/mobile-nav'
+import { PairingOverlay } from '@/components/dashboard/pairing-overlay'
 import { requireActiveSubscription } from '@/lib/billing/gate'
 
 export const dynamic = 'force-dynamic'
@@ -90,6 +91,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <div className="md:hidden">
         <MobileNav />
       </div>
+
+      {/* HOR-165 — iOS PWA standalone fallback. Renders the push
+        * permission prompt only if a pairing is in flight AND the
+        * page is running in standalone display mode. Inert in all
+        * other contexts. */}
+      <PairingOverlay />
     </div>
   )
 }
