@@ -26,6 +26,7 @@ const config: Config = {
           terracotta: '#C4622D',
           'terracotta-text': '#A85220',
           ember:      '#E8956D',
+          ochre:      '#B5922A', /* mid-intent / high-intent moment accent — matches INTENT_PALETTE.mid */
           moss:       '#3D5246',
         },
         border: 'hsl(var(--border))',

@@ -4,6 +4,7 @@ import { Archive, SlidersHorizontal } from 'lucide-react'
 import { SignalCard, type DigestSignal } from './signal-card'
 import { DigestRail, type DigestRailData } from './digest-rail'
 import { ActivityPrompts } from './activity-prompts'
+import { BellButton } from '@/components/dashboard/bell-button'
 
 export interface DigestViewModel {
   /** Human date the digest is for ("Wednesday, 13 May"). Computed server-side. */
@@ -26,6 +27,12 @@ export interface DigestViewModel {
   websiteUrl: string | null
   /** When true, a "DEMO DATA" chip renders so reviewers know this is mock. */
   isDemo?: boolean
+  /**
+   * Bell badge count — high-intent contacts + unread notifications.
+   * Drives the BellButton in the topbar. Computed by the page from
+   * `fetchAttentionCount`.
+   */
+  attentionCount?: number
 }
 
 interface DigestViewProps {
@@ -67,7 +74,11 @@ export function DigestView({ model }: DigestViewProps) {
             maxWidth: 760,
           }}
         >
-          <PageTopbar dateLabel={model.dateLabel} isDemo={model.isDemo} />
+          <PageTopbar
+            dateLabel={model.dateLabel}
+            isDemo={model.isDemo}
+            attentionCount={model.attentionCount ?? 0}
+          />
           {model.signals.length === 0
             ? <EmptyState websiteUrl={model.websiteUrl} />
             : <PopulatedState model={model} />}
@@ -82,7 +93,15 @@ export function DigestView({ model }: DigestViewProps) {
 
 // ── Page-level topbar (crumb + h1 + right-side actions) ─────────────────────
 
-function PageTopbar({ dateLabel, isDemo }: { dateLabel: string; isDemo?: boolean }) {
+function PageTopbar({
+  dateLabel,
+  isDemo,
+  attentionCount,
+}: {
+  dateLabel: string
+  isDemo?: boolean
+  attentionCount: number
+}) {
   return (
     <div
       style={{
@@ -149,8 +168,8 @@ function PageTopbar({ dateLabel, isDemo }: { dateLabel: string; isDemo?: boolean
         </h1>
       </div>
 
-      {/* Right-side action buttons — Past digests + Preferences */}
-      <div style={{ display: 'flex', gap: 8, flexShrink: 0, marginTop: 4 }}>
+      {/* Right-side action buttons — Past digests + Preferences + bell */}
+      <div style={{ display: 'flex', gap: 8, flexShrink: 0, marginTop: 4, alignItems: 'center' }}>
         <button
           type="button"
           disabled
@@ -173,6 +192,9 @@ function PageTopbar({ dateLabel, isDemo }: { dateLabel: string; isDemo?: boolean
           <SlidersHorizontal style={{ width: 13, height: 13 }} aria-hidden />
           Preferences
         </Link>
+        {/* Bell — opens the Notifications slide-over on desktop, links to
+            /notifications on mobile. */}
+        <BellButton attentionCount={attentionCount} />
       </div>
     </div>
   )
