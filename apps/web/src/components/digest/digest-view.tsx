@@ -21,6 +21,9 @@ export interface DigestViewModel {
   }
   /** Right-rail content. */
   rail: DigestRailData
+  /** Workspace website URL — used by the empty-state ActivityPrompts to seed
+   *  the "Post on social" copy. Null when the agent hasn't set their site yet. */
+  websiteUrl: string | null
   /** When true, a "DEMO DATA" chip renders so reviewers know this is mock. */
   isDemo?: boolean
 }
@@ -66,7 +69,7 @@ export function DigestView({ model }: DigestViewProps) {
         >
           <PageTopbar dateLabel={model.dateLabel} isDemo={model.isDemo} />
           {model.signals.length === 0
-            ? <EmptyState />
+            ? <EmptyState websiteUrl={model.websiteUrl} />
             : <PopulatedState model={model} />}
         </div>
 
@@ -403,7 +406,7 @@ function DigestStats({ stats }: { stats: DigestViewModel['stats'] }) {
 // surface is active rather than purely informational. Horace prompts the
 // agent to generate signal when there's nothing to read.
 
-function EmptyState() {
+function EmptyState({ websiteUrl }: { websiteUrl: string | null }) {
   return (
     <>
       <p
@@ -470,7 +473,7 @@ function EmptyState() {
         </div>
       </div>
 
-      <ActivityPrompts />
+      <ActivityPrompts websiteUrl={websiteUrl} />
     </>
   )
 }
