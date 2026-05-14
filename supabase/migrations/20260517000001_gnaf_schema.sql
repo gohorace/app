@@ -130,19 +130,29 @@ COMMENT ON TABLE gnaf.address_principal IS
 COMMENT ON COLUMN gnaf.address_principal.primary_secondary IS
   'P = principal address (building / parcel). S = sub-dwelling (unit / flat / suite). Both kinds have their own address_detail_pid and become independent properties rows at import time.';
 
--- ─── Grants ─────────────────────────────────────────────────────────
--- Service-role (admin client) and authenticated users (anon client
--- via SECURITY DEFINER RPCs) both need SELECT. No INSERT/UPDATE/
--- DELETE grants — writes happen via the ingest script with the
--- raw postgres role.
+-- ─── RLS ────────────────────────────────────────────────────────────
+-- Defense in depth. The `gnaf` schema isn't in supabase/config.toml's
+-- API-exposed list, so PostgREST won't surface these tables to
+-- anon/authenticated keys today. RLS without policies silently
+-- denies all anon/authenticated reads, so if a future config change
+-- ever exposes the schema, we're still safe.
 --
--- search_localities (HOR-192) is SECURITY DEFINER so the anon
--- client doesn't depend on this grant; but giving authenticated
--- SELECT keeps the admin client straightforward.
+-- service_role bypasses RLS (Supabase's default role config). The
+-- user-facing suburb-picker reads go through the SECURITY DEFINER
+-- `search_localities` RPC (HOR-192), which runs as the function
+-- owner and likewise bypasses RLS. No SELECT policies needed.
+ALTER TABLE gnaf.localities         ENABLE ROW LEVEL SECURITY;
+ALTER TABLE gnaf.address_principal  ENABLE ROW LEVEL SECURITY;
+
+-- ─── Grants ─────────────────────────────────────────────────────────
+-- Service-role (admin client) gets SELECT for completeness — it
+-- bypasses RLS anyway, but the explicit grant matches the rest of
+-- the schema. authenticated is granted SELECT as a no-op under RLS
+-- (no policies = no rows visible), but kept for symmetry in case
+-- we later add a read policy. No INSERT/UPDATE/DELETE grants —
+-- writes happen via scripts/gnaf/ingest.mjs as the postgres role.
 GRANT USAGE ON SCHEMA gnaf TO service_role, authenticated;
 GRANT SELECT ON ALL TABLES IN SCHEMA gnaf TO service_role, authenticated;
 
--- New tables added to the schema later (none planned for V1) inherit
--- SELECT for these roles too — saves a grant per new table.
 ALTER DEFAULT PRIVILEGES IN SCHEMA gnaf
   GRANT SELECT ON TABLES TO service_role, authenticated;
