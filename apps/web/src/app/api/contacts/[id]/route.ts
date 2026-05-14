@@ -141,6 +141,21 @@ export async function PATCH(
     if (key in body) update[key] = body[key]
   }
 
+  // HOR-130 follow-up: per-contact notes. The contacts table already has
+  // a `notes` column from v0 (no migration needed). Trim and accept null
+  // for the clear-the-note case — same shape NotesPanel sends.
+  if ('notes' in body) {
+    const raw = body.notes
+    if (raw === null) {
+      update.notes = null
+    } else if (typeof raw === 'string') {
+      const trimmed = raw.slice(0, 2000).trim()
+      update.notes = trimmed.length === 0 ? null : trimmed
+    } else {
+      return NextResponse.json({ error: 'Invalid notes value' }, { status: 400 })
+    }
+  }
+
   // HOR-125: role mutations via metadata.roles. Two shapes:
   //   { add_role: { type: 'seller'|'buyer', property_id: uuid, date? } }
   //   { remove_role_id: uuid }
