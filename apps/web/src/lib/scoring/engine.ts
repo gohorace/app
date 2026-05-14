@@ -6,6 +6,7 @@ import {
   sendScoreThresholdAlert,
   sendFormSubmitAlert,
   sendReturnVisitAlert,
+  sendInspectionRevisitAlert,
 } from '../notifications/push'
 
 type AdminClient = SupabaseClient<Database>
@@ -130,7 +131,7 @@ export async function scoreEventsForContact(
   // Fetch contact name + agent alert mode
   const [{ data: contact }, { data: agentSettingsRow }] = await Promise.all([
     supabase.from('contacts').select('first_name, last_name, email').eq('id', contactId).maybeSingle(),
-    supabase.from('agent_settings').select('push_alert_mode').eq('agent_id', agentId).maybeSingle(),
+    supabase.from('agent_settings').select('push_alert_mode, sms_threshold_score').eq('agent_id', agentId).maybeSingle(),
   ])
 
   const contactName =
@@ -152,15 +153,50 @@ export async function scoreEventsForContact(
         ? ((formEvent.properties as Record<string, unknown>).form_name as string | null) ?? null
         : null
 
+    // HOR-154: when a contact who signed in to a Doorstep inspection in
+    // the last 30 days comes back to the agent's tracked site, swap the
+    // generic return-visit / score-threshold copy for the
+    // inspection-aware variant. Form submits stay generic — a new form
+    // submission isn't a "they're back" event.
+    const recentInspection = await detectRecentInspectionContext(supabase, contactId, events)
+
     // Await — fire-and-forget is killed by Vercel before the push fetch completes
     await Promise.all([
-      // Threshold mode: only fire when score crosses the configured threshold
-      // All mode: fire for any scoring activity (dedup prevents spam)
-      sendScoreThresholdAlert(agentId, contactId, contactName, scoreAfter, scoreBefore),
-      hasFormSubmit  ? sendFormSubmitAlert(agentId, contactId, contactName, formName) : null,
-      hasReturnVisit ? sendReturnVisitAlert(agentId, contactId, contactName)          : null,
-      // 'all' mode: also alert on general activity (page/property views etc.)
-      alertMode === 'all' && !hasFormSubmit && !hasReturnVisit
+      // Form submit alert is independent of the revisit variant — always
+      // uses the generic helper when present.
+      hasFormSubmit ? sendFormSubmitAlert(agentId, contactId, contactName, formName) : null,
+
+      // Inspection variant: fires for return-visits OR threshold crosses
+      // OR (all-mode general activity) when the contact has a recent
+      // inspection scan. The helper itself doesn't self-gate on threshold,
+      // so we just suppress the generic threshold/return-visit helpers
+      // below when we fire this one — dedup in dispatchPushAlert prevents
+      // double-buzz on the same contact.
+      recentInspection &&
+      (hasReturnVisit || isThresholdCross(scoreBefore, scoreAfter, agentSettingsRow?.sms_threshold_score) ||
+        (alertMode === 'all' && !hasFormSubmit && !hasReturnVisit))
+        ? sendInspectionRevisitAlert(
+            agentId,
+            contactId,
+            contactName,
+            recentInspection.street,
+            recentInspection.behaviour,
+          )
+        : null,
+
+      // Generic threshold + return-visit fall through only when there's
+      // no recent inspection scan to swap to.
+      recentInspection
+        ? null
+        : sendScoreThresholdAlert(agentId, contactId, contactName, scoreAfter, scoreBefore),
+      recentInspection
+        ? null
+        : hasReturnVisit
+          ? sendReturnVisitAlert(agentId, contactId, contactName)
+          : null,
+      // 'all' mode: alert on general activity (page/property views etc.)
+      // when no specific form/return event fired AND no recent inspection.
+      !recentInspection && alertMode === 'all' && !hasFormSubmit && !hasReturnVisit
         ? sendReturnVisitAlert(agentId, contactId, contactName)
         : null,
     ]).catch((err) => console.error('[alerts] push error:', err))
@@ -185,4 +221,99 @@ export async function getAgentScoringOverrides(
     .single()
 
   return (data?.scoring_config as ScoringRuleOverride) ?? {}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HOR-154 — inspection revisit detection
+//
+// When a contact's most recent inspection scan is within the last 30 days,
+// downstream push alerts use the inspection-aware variant copy. Helpers
+// live alongside the scoring engine so the dispatch block stays terse.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const RECENT_SCAN_WINDOW_MS = 30 * 24 * 60 * 60 * 1000
+const DEFAULT_SCORE_THRESHOLD = 50
+
+interface RecentInspectionContext {
+  /** The street_name from the property associated with the most recent scan. */
+  street: string
+  /** Short verb phrase describing what the contact just did, e.g.
+   * "looking at properties". Used as the push body prefix. */
+  behaviour: string
+}
+
+async function detectRecentInspectionContext(
+  supabase: AdminClient,
+  contactId: string,
+  events: IncomingEvent[],
+): Promise<RecentInspectionContext | null> {
+  const sinceIso = new Date(Date.now() - RECENT_SCAN_WINDOW_MS).toISOString()
+
+  // Most recent scan in the 30-day window; pull the parent inspection's
+  // property street_name through the nested join.
+  // database.types.ts hasn't been regenerated for inspections yet — cast
+  // through `as never` until the regen commit on the HOR-146 branch lands.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase
+    .from('inspection_scans' as never)
+    .select('captured_at, inspections(properties(street_name))')
+    .eq('contact_id', contactId)
+    .gte('captured_at', sinceIso)
+    .order('captured_at', { ascending: false })
+    .limit(1)
+    .maybeSingle() as any)
+
+  if (error) {
+    // Don't let a scan lookup failure block the entire scoring path.
+    console.warn('[engine] inspection scan lookup failed:', error)
+    return null
+  }
+  if (!data) return null
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const row = data as any
+  const street: string | null =
+    row?.inspections?.properties?.street_name ?? null
+  if (!street || street.trim().length === 0) return null
+
+  return {
+    street: street.trim(),
+    behaviour: computeBehaviour(events),
+  }
+}
+
+/**
+ * Maps the most-relevant triggering event in this batch to a short verb
+ * phrase suitable for the push body. Priority:
+ *
+ *   property_view              → "looking at properties"
+ *   page/scroll on /appraisal  → "back on your appraisal page"
+ *   anything else              → "back on your site"
+ */
+function computeBehaviour(events: IncomingEvent[]): string {
+  if (events.some((e) => e.event_type === 'property_view')) {
+    return 'looking at properties'
+  }
+
+  const onAppraisalPage = events.some((e) => {
+    if (e.event_type !== 'page_view' && e.event_type !== 'scroll_depth') return false
+    if (!e.properties || typeof e.properties !== 'object' || Array.isArray(e.properties)) {
+      return false
+    }
+    const props = e.properties as Record<string, unknown>
+    const url = typeof props.url === 'string' ? props.url : null
+    return !!url && url.toLowerCase().includes('appraisal')
+  })
+  if (onAppraisalPage) return 'back on your appraisal page'
+
+  return 'back on your site'
+}
+
+function isThresholdCross(
+  scoreBefore: number,
+  scoreAfter: number,
+  configuredThreshold: number | null | undefined,
+): boolean {
+  const threshold = configuredThreshold ?? DEFAULT_SCORE_THRESHOLD
+  return scoreBefore < threshold && scoreAfter >= threshold
 }
