@@ -3,25 +3,35 @@
 /**
  * HOR-148 — Doorstep inspections create form.
  *
- * Client component rendered inside `/inspections/new`. Three fields:
+ * Client component rendered inside `/inspections/new`. Three inputs:
  *   - Property (required, via the shared AddressAutocomplete; resolves
  *     through `resolve_residence_property` on submit)
- *   - Scheduled at (required, native datetime-local)
- *   - Window end (optional, native datetime-local)
+ *   - Start (required, native datetime-local)
+ *   - Duration (required, 15 / 30 / 60 min — server-side window_end_at)
  *
- * Submit posts to `/api/inspections`. On success we send the agent back
- * to `/inspections` — the detail page lands in HOR-150, at which point
- * we'll redirect to `/inspections/[id]` instead.
+ * Submit posts to `/api/inspections`. On success the agent lands on
+ * `/inspections/[id]` (the detail page with the QR) so they can show
+ * it immediately.
  *
- * v1 hard-codes `inspection_type='open_home'` server-side; this form has
- * no UI selector for it. When private inspections ship (v2) a toggle
- * lands here.
+ * v1 hard-codes `inspection_type='open_home'` server-side; this form
+ * has no UI selector for it. A toggle lands here when private
+ * inspections ship in v2.
  */
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { AddressAutocomplete } from '@/components/address/address-autocomplete'
 import type { SelectedAddress } from '@/components/address/types'
+
+type Duration = 15 | 30 | 60
+
+const DURATIONS: { value: Duration; label: string }[] = [
+  { value: 15, label: '15 min' },
+  { value: 30, label: '30 min' },
+  { value: 60, label: '60 min' },
+]
+
+const DEFAULT_DURATION: Duration = 30
 
 const cardStyle: React.CSSProperties = {
   background: '#FAF7F2',
@@ -56,6 +66,26 @@ const inputStyle: React.CSSProperties = {
   fontFamily: 'inherit',
 }
 
+const durationChipBase: React.CSSProperties = {
+  flex: 1,
+  padding: '10px 6px',
+  fontSize: 13,
+  fontWeight: 500,
+  background: '#FFFFFF',
+  border: '1px solid rgba(140,123,107,0.25)',
+  borderRadius: 6,
+  cursor: 'pointer',
+  fontFamily: 'inherit',
+  color: '#3D332B',
+}
+
+const durationChipActive: React.CSSProperties = {
+  ...durationChipBase,
+  background: 'rgba(196,98,45,0.12)',
+  borderColor: '#C4622D',
+  color: '#9C4A1F',
+}
+
 const submitStyle: React.CSSProperties = {
   padding: '10px 18px',
   fontSize: 13,
@@ -87,7 +117,7 @@ export function InspectionsCreateForm() {
   const router = useRouter()
   const [residence, setResidence] = useState<SelectedAddress | null>(null)
   const [scheduledAt, setScheduledAt] = useState('')
-  const [windowEndAt, setWindowEndAt] = useState('')
+  const [durationMinutes, setDurationMinutes] = useState<Duration>(DEFAULT_DURATION)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -119,21 +149,21 @@ export function InspectionsCreateForm() {
         body: JSON.stringify({
           residence,
           scheduled_at: scheduledAt,
-          window_end_at: windowEndAt || null,
+          duration_minutes: durationMinutes,
         }),
       })
 
       const data = (await res.json()) as { id?: string; error?: string }
       if (!res.ok) {
-        setError(data?.error ?? 'Could not save the open home')
+        setError(data?.error ?? 'Could not save the inspection')
         setSaving(false)
         return
       }
 
-      // HOR-150 will route to `/inspections/${data.id}`; today the list
-      // view is where the agent picks the inspection back up.
+      // Land on the detail page so the agent can show the QR
+      // immediately — that's the common next step at the inspection.
       router.refresh()
-      router.push('/inspections')
+      router.push(data.id ? `/inspections/${data.id}` : '/inspections')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Network error')
       setSaving(false)
@@ -168,18 +198,23 @@ export function InspectionsCreateForm() {
       </div>
 
       <div style={{ marginBottom: 24 }}>
-        <label style={fieldLabelStyle} htmlFor="window_end_at">
-          When does it end? <span style={{ color: '#8C7B6B', fontWeight: 400 }}>(optional)</span>
-        </label>
-        <input
-          id="window_end_at"
-          type="datetime-local"
-          value={windowEndAt}
-          onChange={(e) => setWindowEndAt(e.target.value)}
-          style={inputStyle}
-        />
-        <div style={fieldHintStyle}>
-          Lets the next-morning briefing scope its summary to people who actually attended.
+        <span style={fieldLabelStyle}>How long does it run?</span>
+        <div style={{ display: 'flex', gap: 8 }} role="radiogroup" aria-label="Inspection duration">
+          {DURATIONS.map((d) => {
+            const isActive = durationMinutes === d.value
+            return (
+              <button
+                key={d.value}
+                type="button"
+                role="radio"
+                aria-checked={isActive}
+                onClick={() => setDurationMinutes(d.value)}
+                style={isActive ? durationChipActive : durationChipBase}
+              >
+                {d.label}
+              </button>
+            )
+          })}
         </div>
       </div>
 
@@ -188,7 +223,7 @@ export function InspectionsCreateForm() {
         disabled={!canSubmit}
         style={canSubmit ? submitStyle : submitDisabledStyle}
       >
-        {saving ? 'Saving…' : 'Create open home'}
+        {saving ? 'Saving…' : 'Create inspection'}
       </button>
 
       {error && (

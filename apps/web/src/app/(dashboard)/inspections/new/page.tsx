@@ -25,18 +25,18 @@ export default async function NewInspectionPage() {
     <div style={{ padding: '32px 24px', maxWidth: 720 }}>
       <div style={{ marginBottom: 6, fontSize: 12, color: '#8C7B6B' }}>
         <Link href="/inspections" style={{ color: '#8C7B6B', textDecoration: 'none' }}>
-          ← Open homes
+          ← Inspections
         </Link>
       </div>
       <h1
         className="font-display"
         style={{ fontSize: 28, fontWeight: 500, color: '#3D332B', marginBottom: 8 }}
       >
-        Set up an open home
+        Create an inspection
       </h1>
       <p style={{ fontSize: 14, color: '#5E5246', marginBottom: 24, maxWidth: 540 }}>
-        Pick the property and when it&rsquo;s on. Horace generates a private sign-in QR you can print or
-        show on screen.
+        Pick the property, when it starts, and how long it runs. Horace generates a private
+        sign-in QR you can show on screen or print.
       </p>
       <InspectionsCreateForm />
     </div>
