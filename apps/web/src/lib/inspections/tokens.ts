@@ -1,7 +1,7 @@
 /**
  * Doorstep public-token helpers.
  *
- * Tokens live in the URL path: `https://horace.app/i/<token>`. They are
+ * Tokens live in the URL path: `https://gohorace.com/i/<token>`. They are
  * 8-character base62 strings drawn from the existing `generateShortCode`
  * alphabet (excludes the ambiguous `O` / `l` characters), giving
  * ~218 trillion combinations — enumeration-resistant without an extra

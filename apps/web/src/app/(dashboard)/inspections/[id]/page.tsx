@@ -26,6 +26,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { qrDataUrl } from '@/lib/inspections/qr'
+import { inspectionOrigin } from '@/lib/inspections/origin'
 
 export const dynamic = 'force-dynamic'
 
@@ -108,9 +109,7 @@ export default async function InspectionDetailPage({ params }: PageProps) {
   const property = propertyRow as PropertyRow | null
   const address = formatAddress(property)
 
-  const origin =
-    process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '') ?? 'https://horace.app'
-  const publicUrl = `${origin}/i/${inspection.token}`
+  const publicUrl = `${inspectionOrigin()}/i/${inspection.token}`
 
   const qr = await qrDataUrl(publicUrl)
 
@@ -118,7 +117,7 @@ export default async function InspectionDetailPage({ params }: PageProps) {
     <div style={{ padding: '24px 20px', maxWidth: 520, margin: '0 auto' }}>
       <div style={{ marginBottom: 6, fontSize: 12, color: '#8C7B6B' }}>
         <Link href="/inspections" style={{ color: '#8C7B6B', textDecoration: 'none' }}>
-          ← Open homes
+          ← Inspections
         </Link>
       </div>
 

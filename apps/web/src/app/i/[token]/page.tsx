@@ -18,8 +18,8 @@
  * The brief's "subsequent visits attributed to the named contact"
  * promise depends on the prospect's _riq_aid cookie being readable by
  * the agent's tracker on the AGENT'S domain. This page lives on
- * horace.app (or wherever NEXT_PUBLIC_APP_URL points), so the cookie
- * we set here is on horace.app — different origin from agent-domain.com.
+ * gohorace.com (or wherever NEXT_PUBLIC_APP_URL points), so the cookie
+ * we set here is on gohorace.com — different origin from agent-domain.com.
  * Subsequent visits to the agent's tracked site will see a fresh
  * tracker-set cookie there, with no link back to the Doorstep capture.
  *
