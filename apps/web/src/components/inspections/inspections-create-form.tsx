@@ -130,10 +130,10 @@ export function InspectionsCreateForm() {
         return
       }
 
-      // HOR-150 will route to `/inspections/${data.id}`; today the list
-      // view is where the agent picks the inspection back up.
+      // Land on the detail page so the agent can show the QR
+      // immediately — that's the common next step at the open home.
       router.refresh()
-      router.push('/inspections')
+      router.push(data.id ? `/inspections/${data.id}` : '/inspections')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Network error')
       setSaving(false)
