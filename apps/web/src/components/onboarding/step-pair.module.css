@@ -18,6 +18,15 @@
   }
 }
 
+/* HOR-56: layout used when the SMS form is hidden (Twilio compliance
+ * pending). Centers the QR card by itself rather than leaving an
+ * empty right column. */
+.qrAlone {
+  display: flex;
+  justify-content: center;
+  margin: 24px 0 32px;
+}
+
 /* ───── QR card ──────────────────────────────────────────────── */
 
 .qrCard {

@@ -45,6 +45,12 @@ type PairState =
 
 const POLL_INTERVAL_MS = 2000
 
+// HOR-56: SMS fallback is gated behind an env flag so we can hide
+// it cleanly while waiting on Twilio AU compliance approval for the
+// new account. Default OFF — set NEXT_PUBLIC_PAIRING_SMS_ENABLED=true
+// in Vercel once Twilio is restored. See HOR-175.
+const SMS_ENABLED = process.env.NEXT_PUBLIC_PAIRING_SMS_ENABLED === 'true'
+
 export function StepPair({ stepNumber, totalSteps, onNext, onBack }: Props) {
   const [fetchState, setFetchState] = useState<FetchState>({ phase: 'loading' })
   const [pairState, setPairState] = useState<PairState>({ phase: 'pending' })
@@ -188,10 +194,17 @@ export function StepPair({ stepNumber, totalSteps, onNext, onBack }: Props) {
         <div className={pairStyles.loadingCard}>Generating your pairing code…</div>
       ) : fetchState.phase === 'error' ? (
         <ErrorCard message={fetchState.message} onRetry={() => setIssueNonce((n) => n + 1)} />
-      ) : (
+      ) : SMS_ENABLED ? (
         <div className={pairStyles.pairBody}>
           <QRCard qrDataUrl={fetchState.qrDataUrl} qrUrl={fetchState.qrUrl} />
           <SMSForm token={fetchState.token} />
+        </div>
+      ) : (
+        // HOR-56: SMS hidden while Twilio compliance is pending.
+        // QR-only layout keeps the surface clean rather than leaving
+        // a yawning empty right column.
+        <div className={pairStyles.qrAlone}>
+          <QRCard qrDataUrl={fetchState.qrDataUrl} qrUrl={fetchState.qrUrl} />
         </div>
       )}
 
