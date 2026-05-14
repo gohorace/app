@@ -32,6 +32,7 @@ import { deviceLabelFromUA } from '@/lib/pairing/device-label'
 import { headers } from 'next/headers'
 import { PairingBootstrap } from './pairing-bootstrap'
 import { IOSInstallGuide } from '@/components/mobile/ios-install-guide'
+import { AndroidInstallPrompt } from '@/components/mobile/android-install-prompt'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -165,17 +166,13 @@ function PlatformSlot({
     return <IOSInstallGuide />
   }
 
-  // HOR-164 fills in the Android and unsupported branches; we keep
-  // the placeholders here so the page renders cleanly on those
-  // platforms in the meantime. `token` is threaded down for HOR-164
-  // to use without another prop drill.
-  void token
+  if (platform === 'android') {
+    return <AndroidInstallPrompt token={token} />
+  }
 
-  const message =
-    platform === 'android'
-      ? 'Install Horace, then allow notifications when prompted.'
-      : "Push isn't supported in this browser. Open this link in Safari or Chrome to continue."
-
+  // Anything else — desktop browsers visiting the URL out of curiosity,
+  // in-app webviews, Firefox iOS, etc. We don't try to push them
+  // through the flow; the copy points them at a supported browser.
   return (
     <div
       style={{
@@ -185,9 +182,9 @@ function PlatformSlot({
         background: 'var(--color-cream, #FAF7F2)',
       }}
     >
-      <p style={{ margin: 0, fontSize: 15, lineHeight: 1.5 }}>{message}</p>
-      <p style={{ marginTop: 12, fontSize: 12, opacity: 0.6 }}>
-        Install flow coming soon (HOR-164).
+      <p style={{ margin: 0, fontSize: 15, lineHeight: 1.5 }}>
+        Push isn&rsquo;t supported in this browser. Open this link in Safari
+        or Chrome on your phone to continue.
       </p>
     </div>
   )
