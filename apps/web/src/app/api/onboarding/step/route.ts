@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { markStepComplete, type OnboardingStep } from '@/lib/onboarding/state'
 
-const ALLOWED: OnboardingStep[] = ['profile', 'script', 'contacts', 'notify', 'done']
+const ALLOWED: OnboardingStep[] = ['profile', 'script', 'contacts', 'notify', 'pair', 'done']
 const schema = z.object({
   step: z.enum(ALLOWED as [OnboardingStep, ...OnboardingStep[]]),
 })

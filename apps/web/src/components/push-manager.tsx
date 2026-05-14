@@ -37,11 +37,20 @@ export async function requestPushPermission(): Promise<PushSubscription | null> 
   })
 }
 
-export async function savePushSubscription(sub: PushSubscription): Promise<void> {
+export type DeviceKind = 'desktop' | 'mobile' | 'tablet' | 'other'
+
+export async function savePushSubscription(
+  sub: PushSubscription,
+  opts?: { deviceKind?: DeviceKind },
+): Promise<void> {
+  // HOR-164: optional deviceKind is forwarded to the subscribe
+  // endpoint so push_subscriptions.device_kind is populated. The
+  // server treats missing values as null for backwards compat.
+  const body = { ...sub.toJSON(), deviceKind: opts?.deviceKind }
   const res = await fetch('/api/push/subscribe', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(sub.toJSON()),
+    body: JSON.stringify(body),
   })
   if (!res.ok) {
     const data = await res.json().catch(() => ({}))

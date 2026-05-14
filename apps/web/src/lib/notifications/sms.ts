@@ -13,6 +13,26 @@ export const SMS_TEMPLATES = {
     `${name} submitted${formName ? ` "${formName}"` : ' a form'} on your website. ${appUrl}/contacts/${contactId}`,
   return_visit: (name: string, contactId: string, appUrl: string) =>
     `${name} is back on your website right now. ${appUrl}/contacts/${contactId}`,
+  /**
+   * HOR-56 mobile pair: the SMS body that delivers the signed install
+   * URL to the agent's phone. Voice and sign-off match the alerts
+   * copy standards (first-person Horace, "Seize the moment" sign-off).
+   */
+  pairing_link: (url: string) => `Take Horace with you: ${url} — Seize the moment.`,
+}
+
+/**
+ * HOR-56: dispatch a pairing SMS to the agent's own phone. Auth and
+ * rate-limit guards live on the calling route (per-token accounting
+ * on `pairing_tokens`); this helper does the bare Twilio send.
+ *
+ * Does NOT log to `notification_log` — pairing accounting belongs on
+ * the pairing_tokens row, not the alerts/notifications surface.
+ * Throws on Twilio failure so the caller can keep the row's
+ * rate-limit budget unchanged (fail-closed accounting).
+ */
+export async function sendPairingLinkSms(to: string, url: string): Promise<void> {
+  await sendSms(to, SMS_TEMPLATES.pairing_link(url))
 }
 
 /** Send an SMS via Twilio. Only call server-side. */

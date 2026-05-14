@@ -17,14 +17,34 @@ export async function POST(req: NextRequest) {
   if (!agent) return NextResponse.json({ error: 'Agent not found' }, { status: 404 })
 
   const body = await req.json()
-  const { endpoint, keys } = body as { endpoint: string; keys: { p256dh: string; auth: string } }
+  const { endpoint, keys, deviceKind } = body as {
+    endpoint: string
+    keys: { p256dh: string; auth: string }
+    deviceKind?: 'desktop' | 'mobile' | 'tablet' | 'other'
+  }
 
   if (!endpoint || !keys?.p256dh || !keys?.auth) {
     return NextResponse.json({ error: 'Invalid subscription' }, { status: 400 })
   }
 
+  // HOR-164: device_kind is optional on the column (nullable). Only
+  // pass it through when the client supplies a recognised value; we
+  // intentionally ignore unknown values rather than 400-ing so older
+  // clients (pre-HOR-164) keep working.
+  const allowedKinds = ['desktop', 'mobile', 'tablet', 'other'] as const
+  const safeDeviceKind =
+    deviceKind && (allowedKinds as readonly string[]).includes(deviceKind)
+      ? deviceKind
+      : null
+
   const { error } = await admin.from('push_subscriptions').upsert(
-    { agent_id: agent.id, endpoint, p256dh: keys.p256dh, auth: keys.auth },
+    {
+      agent_id: agent.id,
+      endpoint,
+      p256dh: keys.p256dh,
+      auth: keys.auth,
+      ...(safeDeviceKind ? { device_kind: safeDeviceKind } : {}),
+    },
     { onConflict: 'agent_id,endpoint' },
   )
 

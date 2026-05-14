@@ -1,14 +1,15 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 
-export type OnboardingStep = 'profile' | 'script' | 'contacts' | 'notify' | 'done'
+export type OnboardingStep = 'profile' | 'script' | 'contacts' | 'notify' | 'pair' | 'done'
 
-export const STEPS: OnboardingStep[] = ['profile', 'script', 'contacts', 'notify', 'done']
+export const STEPS: OnboardingStep[] = ['profile', 'script', 'contacts', 'notify', 'pair', 'done']
 
 const NEXT_STEP: Record<OnboardingStep, OnboardingStep | null> = {
   profile: 'script',
   script: 'contacts',
   contacts: 'notify',
-  notify: 'done',
+  notify: 'pair',
+  pair: 'done',
   done: null,
 }
 

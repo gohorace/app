@@ -99,8 +99,31 @@ export default async function OnboardingPage() {
     redirect('/signup')
   }
 
+  // HOR-161 heal-forward: the wizard's 'pair' step doesn't auto-
+  // advance on completion — the agent taps Continue. If they close
+  // the tab mid-flow after the phone has actually paired, the next
+  // visit would land them back at 'pair'. Detect that case here and
+  // bump last_completed_step so the wizard resumes at the reveal.
+  let lastCompleted = agent.last_completed_step
+  if (lastCompleted === 'notify') {
+    const { data: latestTokenRow } = await admin
+      .from('pairing_tokens')
+      .select('consumed_at')
+      .eq('agent_id', agent.id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (latestTokenRow?.consumed_at) {
+      await admin
+        .from('agents')
+        .update({ last_completed_step: 'pair' })
+        .eq('id', agent.id)
+      lastCompleted = 'pair'
+    }
+  }
+
   // Already finished — go straight to the dashboard.
-  if (agent.last_completed_step === 'done') {
+  if (lastCompleted === 'done') {
     redirect('/dashboard')
   }
 
@@ -121,7 +144,7 @@ export default async function OnboardingPage() {
       snippetKey={snippetKey}
       appUrl={appUrl}
       firstName={agent.first_name}
-      lastCompletedStep={agent.last_completed_step}
+      lastCompletedStep={lastCompleted}
     />
   )
 }
