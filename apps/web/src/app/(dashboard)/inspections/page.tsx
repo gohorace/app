@@ -249,8 +249,9 @@ function Section({
           }}
         >
           {rows.map((row, idx) => (
-            <div
+            <Link
               key={row.id}
+              href={`/inspections/${row.id}`}
               style={{
                 padding: '14px 16px',
                 borderTop: idx === 0 ? 'none' : '1px solid rgba(140,123,107,0.12)',
@@ -258,6 +259,8 @@ function Section({
                 alignItems: 'center',
                 justifyContent: 'space-between',
                 gap: 16,
+                textDecoration: 'none',
+                color: 'inherit',
               }}
             >
               <div style={{ flex: 1, minWidth: 0 }}>
@@ -269,36 +272,11 @@ function Section({
                 </div>
                 <div style={{ fontSize: 12, color: '#8C7B6B' }}>{formatScheduledAt(row.scheduled_at)}</div>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
-                <code
-                  style={{
-                    fontSize: 11,
-                    fontFamily: 'var(--font-mono)',
-                    color: '#5E5246',
-                    background: '#FFFFFF',
-                    padding: '4px 8px',
-                    borderRadius: 4,
-                    border: '1px solid rgba(140,123,107,0.15)',
-                  }}
-                >
-                  {publicUrl(row.token)}
-                </code>
-                <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                  <a
-                    href={`/api/inspections/${row.id}/qr`}
-                    style={{
-                      fontSize: 11,
-                      color: '#C4622D',
-                      textDecoration: 'none',
-                      fontWeight: 500,
-                    }}
-                  >
-                    Download QR
-                  </a>
-                  <span style={{ fontSize: 10, color: '#8C7B6B' }}>{row.status}</span>
-                </div>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+                <span style={{ fontSize: 11, color: '#C4622D', fontWeight: 500 }}>Show QR →</span>
+                <span style={{ fontSize: 10, color: '#8C7B6B', textTransform: 'capitalize' }}>{row.status}</span>
               </div>
-            </div>
+            </Link>
           ))}
         </div>
       )}
