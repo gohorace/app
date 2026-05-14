@@ -29,6 +29,7 @@ import { deriveIdentity, makeInitials } from '@/lib/contacts/identity'
 import { roleCounts, type ContactRoleEntry } from '@/lib/contacts/roles'
 import { intentForScore } from '@/lib/design/intent'
 import { AddContactDialog } from './add-contact-dialog'
+import { TrackedLinkCell } from './tracked-link-cell'
 
 const ONLINE_MS = 5 * 60 * 1000 // 5 minutes
 
@@ -55,12 +56,22 @@ export interface ContactGridRow {
   roles: ContactRoleEntry[]
   /** Resolved linked properties (residence + role properties), deduped. */
   linked_properties: Array<{ id: string; address: string }>
+  /** HOR-136: per-contact tracked link fields (from get_contacts_list). */
+  tracked_link_token: string | null
+  tracked_link_destination_url: string | null
+  tracked_link_last_clicked_at: string | null
 }
 
 interface Props {
   contacts: ContactGridRow[]
   initialQ?: string
   agentId: string
+  /** Workspace default destination URL (agent_settings.website_url). Shown
+   *  in the edit-destination popover as the fallback when no per-contact
+   *  override is set. */
+  defaultLinkUrl: string | null
+  /** Public app URL — used to build the tracked link `${appUrl}/c/${token}`. */
+  appUrl: string
 }
 
 type Tab = 'all' | 'known' | 'unidentified'
@@ -111,7 +122,7 @@ function lastSeenLabel(iso: string | null): string {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export function ContactsGrid({ contacts, initialQ = '', agentId }: Props) {
+export function ContactsGrid({ contacts, initialQ = '', agentId, defaultLinkUrl, appUrl }: Props) {
   const router = useRouter()
   const [search, setSearch] = useState(initialQ)
   const [tab, setTab] = useState<Tab>('all')
@@ -377,6 +388,8 @@ export function ContactsGrid({ contacts, initialQ = '', agentId }: Props) {
                   identity={identityById.get(c.id) ?? 'anonymous'}
                   isOnline={onlineIds.has(c.id)}
                   isLast={idx === filtered.length - 1}
+                  appUrl={appUrl}
+                  defaultLinkUrl={defaultLinkUrl}
                   onClick={() => router.push(`/contacts/${c.id}`)}
                 />
               ))
@@ -663,14 +676,15 @@ function SecondaryFilterBar({
 // ── Table head ───────────────────────────────────────────────────────────────
 
 const COL_STYLES = {
-  avatar:    { width: 52,  flexGrow: 0, flexShrink: 0 },
-  contact:   { flex: 2.4,  minWidth: 200 },
-  roles:     { flex: 1.6,  minWidth: 140 },
-  suburb:    { flex: 1,    minWidth: 100 },
-  engagement:{ flex: 1.1,  minWidth: 120 },
-  properties:{ flex: 1.4,  minWidth: 130 },
-  lastSeen:  { flex: 0.9,  minWidth: 80 },
-  overflow:  { width: 36,  flexGrow: 0, flexShrink: 0 },
+  avatar:    { width: 52,   flexGrow: 0, flexShrink: 0 },
+  contact:   { flex: 2.2,   minWidth: 200 },
+  roles:     { flex: 1.4,   minWidth: 130 },
+  suburb:    { flex: 0.9,   minWidth: 90  },
+  engagement:{ flex: 1.0,   minWidth: 110 },
+  properties:{ flex: 1.2,   minWidth: 120 },
+  lastSeen:  { flex: 0.7,   minWidth: 70  },
+  link:      { flex: 1.0,   minWidth: 140 },
+  overflow:  { width: 36,   flexGrow: 0, flexShrink: 0 },
 } as const
 
 function TableHead() {
@@ -697,6 +711,7 @@ function TableHead() {
       <span style={COL_STYLES.engagement}>Engagement</span>
       <span style={COL_STYLES.properties}>Linked properties</span>
       <span style={COL_STYLES.lastSeen}>Last seen</span>
+      <span style={COL_STYLES.link}>Link</span>
       <span style={COL_STYLES.overflow} />
     </div>
   )
@@ -709,12 +724,16 @@ function ContactRow({
   identity,
   isOnline,
   isLast,
+  appUrl,
+  defaultLinkUrl,
   onClick,
 }: {
   contact: ContactGridRow
   identity: ReturnType<typeof deriveIdentity>
   isOnline: boolean
   isLast: boolean
+  appUrl: string
+  defaultLinkUrl: string | null
   onClick: () => void
 }) {
   const isAnon = identity === 'anonymous'
@@ -865,6 +884,18 @@ function ContactRow({
         }}
       >
         {lastSeenLabel(contact.last_seen_at)}
+      </div>
+
+      {/* Tracked link (HOR-136) */}
+      <div style={{ ...COL_STYLES.link, position: 'relative' }}>
+        <TrackedLinkCell
+          contactId={contact.id}
+          token={contact.tracked_link_token}
+          destinationUrl={contact.tracked_link_destination_url}
+          lastClickedAt={contact.tracked_link_last_clicked_at}
+          appUrl={appUrl}
+          defaultLinkUrl={defaultLinkUrl}
+        />
       </div>
 
       {/* Overflow */}
