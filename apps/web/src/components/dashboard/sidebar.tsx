@@ -25,8 +25,10 @@ type NavSection = {
 }
 
 // ── Nav definitions ───────────────────────────────────────────────────────────
-// IA per V1 design: Today / Data / Notifications / Account. Signals (/dashboard)
-// is retired and redirects to /digest. Help + Import live under Settings now.
+// IA per V1 design: Today / Data / Account. Notifications sits under Account
+// (above Settings) — it's a per-agent surface, not a workspace data slice.
+// Signals (/dashboard) is retired and redirects to /digest. Help + Import
+// live under Settings now.
 
 const NAV_SECTIONS: NavSection[] = [
   {
@@ -47,12 +49,11 @@ const NAV_SECTIONS: NavSection[] = [
     ],
   },
   {
-    label: null,
-    items: [{ href: '/notifications', label: 'Notifications', icon: Bell, badgeFrom: 'attention' }],
-  },
-  {
     label: 'Account',
-    items: [{ href: '/settings', label: 'Settings', icon: Settings }],
+    items: [
+      { href: '/notifications', label: 'Notifications', icon: Bell,     badgeFrom: 'attention' },
+      { href: '/settings',      label: 'Settings',      icon: Settings },
+    ],
   },
 ]
 
