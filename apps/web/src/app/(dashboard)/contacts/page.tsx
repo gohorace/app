@@ -2,15 +2,20 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { ContactsGrid, type ContactGridRow, type SavedFilterState } from '@/components/contacts/contacts-grid'
 import { getRoles } from '@/lib/contacts/roles'
+import { findBuiltin, isBuiltinSlug } from '@/lib/lists/builtin'
 
 export const dynamic = 'force-dynamic'
 
 export default async function ContactsPage({
   searchParams,
 }: {
-  // HOR-143: ?list_id scopes the grid to a list's membership (manual lists)
-  // or hydrates the secondary filters from a saved_filter list.
-  searchParams: { q?: string; list_id?: string }
+  // HOR-143/HOR-144:
+  //   ?list_id=<uuid>   manual list → scope rows; saved_filter → hydrate.
+  //   ?builtin=<slug>   computed list (warming-up | watch-closely) →
+  //                     scope rows by score threshold.
+  // Both are mutually exclusive at the URL level; if both are sent we
+  // honour list_id first.
+  searchParams: { q?: string; list_id?: string; builtin?: string }
 }) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -26,20 +31,21 @@ export default async function ContactsPage({
   const workspaceId = agent!.workspace_id
   const q = searchParams.q?.trim() ?? ''
   const listId = searchParams.list_id?.trim() || null
+  const builtinSlug = searchParams.builtin?.trim() || null
 
-  // HOR-143: when ?list_id is set, resolve the list + its kind. Manual lists
-  // pin to membership; saved_filter lists hydrate the grid's secondary
-  // filters from list.filter_state but don't restrict rows beyond that.
-  // Unknown / soft-deleted list → silently treated as "no list selected".
+  // HOR-143/HOR-144: resolve the selected list (real or built-in) into the
+  // shared selectedList shape. Unknown / soft-deleted → silently null.
   let selectedList:
     | {
         id: string
         name: string
-        kind: 'manual' | 'saved_filter'
+        kind: 'manual' | 'saved_filter' | 'builtin'
         filter_state: SavedFilterState | null
       }
     | null = null
   let manualListMemberIds: Set<string> | null = null
+  let builtinScoreRange: { min: number; maxExclusive: number | null } | null = null
+
   if (listId && workspaceId) {
     const { data: row } = await admin
       .from('lists')
@@ -63,6 +69,15 @@ export default async function ContactsPage({
         manualListMemberIds = new Set((memberRows ?? []).map((m) => m.contact_id))
       }
     }
+  } else if (builtinSlug && isBuiltinSlug(builtinSlug)) {
+    const def = findBuiltin(builtinSlug)!
+    selectedList = {
+      id: def.slug,
+      name: def.name,
+      kind: 'builtin',
+      filter_state: null,
+    }
+    builtinScoreRange = { min: def.minScore, maxExclusive: def.maxScoreExclusive }
   }
 
   // HOR-136: workspace default destination for tracked links. Surfaced in
@@ -156,6 +171,16 @@ export default async function ContactsPage({
   // and means an empty list shows the proper empty state.
   if (manualListMemberIds) {
     baseRows = baseRows.filter((r) => manualListMemberIds!.has(r.id))
+  }
+  // HOR-144: built-in lists scope rows by score threshold. Same pre-batch
+  // pruning so the metadata + properties queries stay tight.
+  if (builtinScoreRange) {
+    const { min, maxExclusive } = builtinScoreRange
+    baseRows = baseRows.filter((r) => {
+      if (r.score < min) return false
+      if (maxExclusive !== null && r.score >= maxExclusive) return false
+      return true
+    })
   }
 
   if (baseRows.length === 0) {

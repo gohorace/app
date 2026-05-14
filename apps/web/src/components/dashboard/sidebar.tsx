@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Sun, Users, MapPin, Bell, Settings } from 'lucide-react'
+import { Sun, Users, MapPin, Bell, Settings, ListChecks } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -13,6 +13,11 @@ type NavItem = {
   icon: React.ElementType
   badgeFrom?: 'attention'
 }
+
+// HOR-144: Lists landed in the Data group alongside Contacts + Properties.
+// Mobile tab bar stays at 4 tabs (Today / Contacts / Properties / More) —
+// the List filter chip inside Contacts is the primary mobile entry point,
+// and the desktop sidebar handles direct browsing.
 
 type NavSection = {
   label: string | null
@@ -31,8 +36,9 @@ const NAV_SECTIONS: NavSection[] = [
   {
     label: 'Data',
     items: [
-      { href: '/contacts',   label: 'Contacts',   icon: Users  },
-      { href: '/properties', label: 'Properties', icon: MapPin },
+      { href: '/contacts',   label: 'Contacts',   icon: Users      },
+      { href: '/lists',      label: 'Lists',      icon: ListChecks },
+      { href: '/properties', label: 'Properties', icon: MapPin     },
     ],
   },
   {
