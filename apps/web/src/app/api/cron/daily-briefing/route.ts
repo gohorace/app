@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { revalidateTag } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { buildDailyBriefingEmail } from '@/lib/notifications/email'
 import { generateContactInsight, generateBriefingNarrative } from '@/lib/ai/briefing'
@@ -134,6 +135,13 @@ export async function GET(request: NextRequest) {
         contact_id: null,
         type: 'email_daily_brief',
       })
+
+      // HOR-127: invalidate the per-agent /digest insight cache so the
+      // next web load picks up this morning's roster (and warms the cache
+      // with fresh insights when it does). Tag matches the
+      // `digest:<agent_id>` tag emitted by getCachedInsight /
+      // getCachedNarrative in apps/web/src/app/(dashboard)/digest/page.tsx.
+      revalidateTag(`digest:${settings.agent_id}`)
 
       sent++
     } catch (err) {

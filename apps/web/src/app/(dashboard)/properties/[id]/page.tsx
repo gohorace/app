@@ -32,7 +32,7 @@ export default async function PropertyDetailPage({
 
   const { data: property } = await admin
     .from('properties')
-    .select('id, street_number, street_name, suburb, status, first_seen_at, last_activity_at')
+    .select('id, street_number, street_name, suburb, status, first_seen_at, last_activity_at, metadata')
     .eq('id', params.id)
     .eq('workspace_id', agent.workspace_id)
     .is('deleted_at', null)
@@ -179,9 +179,9 @@ export default async function PropertyDetailPage({
     recent7d.length >= 4 ? 2 :
     recent7d.length >= 1 ? 1 : 0
 
-  // Notes not yet persistable (no metadata column on properties — see
-  // /api/properties/[id] route). Wired into the view shape for future use.
-  const notes = null
+  // HOR-130: notes now persist on properties.metadata.notes.
+  const metadata = (property.metadata as Record<string, unknown> | null) ?? null
+  const notes = (metadata?.notes as string | undefined) ?? null
 
   return (
     <PropertyDetailView

@@ -354,6 +354,9 @@ export function PropertyDetailView({
           </div>
         </div>
 
+        {/* Notes (HOR-130) */}
+        <NotesPanel propertyId={property.id} initial={property.notes} />
+
         {/* Contacts panel */}
         <section style={panelStyle}>
           <PanelHeader
@@ -698,6 +701,114 @@ function GroupLabel({
         · {note}
       </span>
     </div>
+  )
+}
+
+// ── Notes panel (HOR-130) ────────────────────────────────────────────────────
+// Inline textarea panel between the Horace summary and the Contacts panel.
+// Saves on blur via PATCH /api/properties/[id] with { notes }. Optimistic —
+// shows "Saving" / "Saved" pill, surfaces an inline error if the PATCH
+// rejects. Empty textarea clears the note (server treats trimmed-empty
+// as null and removes the metadata.notes key).
+function NotesPanel({
+  propertyId,
+  initial,
+}: {
+  propertyId: string
+  initial: string | null
+}) {
+  const [value, setValue] = useState(initial ?? '')
+  const [savedValue, setSavedValue] = useState(initial ?? '')
+  const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const [error, setError] = useState<string | null>(null)
+
+  async function persist(next: string) {
+    if (next === savedValue) {
+      // No change to save — bail.
+      setStatus('idle')
+      return
+    }
+    setStatus('saving')
+    setError(null)
+    const res = await fetch(`/api/properties/${propertyId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ notes: next.trim().length === 0 ? null : next }),
+    })
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      setError(data?.error ?? 'Could not save notes')
+      setStatus('error')
+      return
+    }
+    setSavedValue(next)
+    setStatus('saved')
+    setTimeout(() => setStatus((s) => (s === 'saved' ? 'idle' : s)), 1600)
+  }
+
+  return (
+    <section style={panelStyle}>
+      <PanelHeader
+        title="Notes"
+        subtitle="A space for yourself. Horace keeps them with the property — visible to everyone in your workspace."
+        actions={
+          <span
+            style={{
+              fontSize: 10,
+              fontWeight: 600,
+              letterSpacing: '0.08em',
+              textTransform: 'uppercase',
+              color:
+                status === 'saving' ? '#8C7B6B'
+                : status === 'saved'  ? '#3D5246'
+                : status === 'error'  ? '#9C4A1F'
+                : 'transparent',
+              transition: 'color 180ms',
+            }}
+          >
+            {status === 'saving' && 'Saving…'}
+            {status === 'saved'  && 'Saved'}
+            {status === 'error'  && 'Save failed'}
+            {status === 'idle'   && '·'}
+          </span>
+        }
+      />
+      <textarea
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={() => persist(value)}
+        placeholder="e.g. Pitching for the listing next Thursday. Owners renovated kitchen last spring. Wife works in real estate so she'll ask sharp questions."
+        rows={4}
+        maxLength={2000}
+        style={{
+          width: '100%',
+          minHeight: 90,
+          padding: '12px 14px',
+          fontSize: 13,
+          lineHeight: 1.55,
+          fontFamily: 'var(--font-body)',
+          color: '#1A1612',
+          background: '#FFFFFF',
+          border: '1px solid rgba(140,123,107,0.22)',
+          borderRadius: 8,
+          outline: 'none',
+          resize: 'vertical',
+          boxSizing: 'border-box',
+        }}
+      />
+      {error && (
+        <p
+          role="alert"
+          style={{
+            marginTop: 8,
+            fontSize: 12,
+            color: '#9C4A1F',
+          }}
+        >
+          {error}
+        </p>
+      )}
+    </section>
   )
 }
 
