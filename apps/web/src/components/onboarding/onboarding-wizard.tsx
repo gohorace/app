@@ -7,10 +7,11 @@ import { Rail, type RailStepId } from './rail'
 import { StepScript } from './step-script'
 import { StepContacts } from './step-contacts'
 import { StepNotify } from './step-notify'
+import { StepPair } from './step-pair'
 import { StepReveal } from './step-reveal'
 import styles from './onboarding.module.css'
 
-type WizardStep = 'script' | 'contacts' | 'notify' | 'done'
+type WizardStep = 'script' | 'contacts' | 'notify' | 'pair' | 'done'
 
 const STAGE_COPY: Record<Exclude<WizardStep, 'done'>, { title: string; body: string }> = {
   script: {
@@ -24,6 +25,10 @@ const STAGE_COPY: Record<Exclude<WizardStep, 'done'>, { title: string; body: str
   notify: {
     title: 'A whisper, never a shout.',
     body: 'Browser alerts only when a signal is genuinely worth your attention. Two or three a week, max.',
+  },
+  pair: {
+    title: 'Take Horace with you.',
+    body: "You'll catch most signals on the move. The phone in your pocket is where this earns its keep.",
   },
 }
 
@@ -40,7 +45,8 @@ function resumeStep(last: OnboardingStep | null): WizardStep {
   if (last === 'done') return 'done'
   if (last === 'script') return 'contacts'
   if (last === 'contacts') return 'notify'
-  if (last === 'notify') return 'done'
+  if (last === 'notify') return 'pair'
+  if (last === 'pair') return 'done'
   return 'script'
 }
 
@@ -58,9 +64,10 @@ export function OnboardingWizard({
   // includes profile, so we track completed steps in that namespace.
   const [completed, setCompleted] = useState<Set<RailStepId>>(() => {
     const s = new Set<RailStepId>(['profile'])
-    if (lastCompletedStep === 'script' || lastCompletedStep === 'contacts' || lastCompletedStep === 'notify' || lastCompletedStep === 'done') s.add('script')
-    if (lastCompletedStep === 'contacts' || lastCompletedStep === 'notify' || lastCompletedStep === 'done') s.add('contacts')
-    if (lastCompletedStep === 'notify' || lastCompletedStep === 'done') s.add('notify')
+    if (lastCompletedStep === 'script' || lastCompletedStep === 'contacts' || lastCompletedStep === 'notify' || lastCompletedStep === 'pair' || lastCompletedStep === 'done') s.add('script')
+    if (lastCompletedStep === 'contacts' || lastCompletedStep === 'notify' || lastCompletedStep === 'pair' || lastCompletedStep === 'done') s.add('contacts')
+    if (lastCompletedStep === 'notify' || lastCompletedStep === 'pair' || lastCompletedStep === 'done') s.add('notify')
+    if (lastCompletedStep === 'pair' || lastCompletedStep === 'done') s.add('pair')
     return s
   })
 
@@ -107,7 +114,7 @@ export function OnboardingWizard({
             appUrl={appUrl}
             firstName={firstName}
             stepNumber={2}
-            totalSteps={4}
+            totalSteps={5}
             onNext={() => advance('script', 'contacts')}
           />
         )}
@@ -115,7 +122,7 @@ export function OnboardingWizard({
         {step === 'contacts' && (
           <StepContacts
             stepNumber={3}
-            totalSteps={4}
+            totalSteps={5}
             onNext={() => advance('contacts', 'notify')}
             onBack={() => setStep('script')}
           />
@@ -124,9 +131,18 @@ export function OnboardingWizard({
         {step === 'notify' && (
           <StepNotify
             stepNumber={4}
-            totalSteps={4}
-            onNext={() => advance('notify', 'done')}
+            totalSteps={5}
+            onNext={() => advance('notify', 'pair')}
             onBack={() => setStep('contacts')}
+          />
+        )}
+
+        {step === 'pair' && (
+          <StepPair
+            stepNumber={5}
+            totalSteps={5}
+            onNext={() => advance('pair', 'done')}
+            onBack={() => setStep('notify')}
           />
         )}
       </main>

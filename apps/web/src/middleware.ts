@@ -59,7 +59,12 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/u/') ||
     pathname.startsWith('/install/') ||
     pathname.startsWith('/oauth/') ||
-    pathname.startsWith('/.well-known/')
+    pathname.startsWith('/.well-known/') ||
+    // HOR-56 mobile pairing: the token-exchange route `/m/<token>` is public
+    // (phone has no session yet — it's about to redeem a magic link). The
+    // post-redemption page `/m/<token>/install` stays auth-protected so it
+    // requires the magic-link session.
+    /^\/m\/[^/]+\/?$/.test(pathname)
 
   if (!user && !isPublicRoute) {
     const url = request.nextUrl.clone()

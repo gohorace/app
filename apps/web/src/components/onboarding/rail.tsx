@@ -1,9 +1,9 @@
 'use client'
 
-import { User, Code2, Users, Bell, Check } from 'lucide-react'
+import { User, Code2, Users, Bell, Smartphone, Check } from 'lucide-react'
 import styles from './onboarding.module.css'
 
-export type RailStepId = 'profile' | 'script' | 'contacts' | 'notify'
+export type RailStepId = 'profile' | 'script' | 'contacts' | 'notify' | 'pair'
 
 interface RailStep {
   id: RailStepId
@@ -15,6 +15,7 @@ const RAIL_STEPS: RailStep[] = [
   { id: 'script',   short: 'Tracking script' },
   { id: 'contacts', short: 'Your contacts' },
   { id: 'notify',   short: 'Browser alerts' },
+  { id: 'pair',     short: 'Mobile push' },
 ]
 
 const ICONS: Record<RailStepId, React.ComponentType<{ className?: string }>> = {
@@ -22,6 +23,7 @@ const ICONS: Record<RailStepId, React.ComponentType<{ className?: string }>> = {
   script:   Code2,
   contacts: Users,
   notify:   Bell,
+  pair:     Smartphone,
 }
 
 interface RailProps {

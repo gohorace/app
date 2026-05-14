@@ -49,7 +49,7 @@ export type Database = {
           first_name: string | null; last_name: string | null
           email: string | null; phone: string | null
           rex_agent_id: string | null; created_at: string
-          last_completed_step: 'profile' | 'script' | 'contacts' | 'notify' | 'done' | null
+          last_completed_step: 'profile' | 'script' | 'contacts' | 'notify' | 'pair' | 'done' | null
           avatar_url: string | null
         }
         Insert: {
@@ -57,7 +57,7 @@ export type Database = {
           first_name?: string | null; last_name?: string | null
           email?: string | null; phone?: string | null
           rex_agent_id?: string | null; created_at?: string
-          last_completed_step?: 'profile' | 'script' | 'contacts' | 'notify' | 'done' | null
+          last_completed_step?: 'profile' | 'script' | 'contacts' | 'notify' | 'pair' | 'done' | null
           avatar_url?: string | null
         }
         Update: {
@@ -65,7 +65,7 @@ export type Database = {
           first_name?: string | null; last_name?: string | null
           email?: string | null; phone?: string | null
           rex_agent_id?: string | null; created_at?: string
-          last_completed_step?: 'profile' | 'script' | 'contacts' | 'notify' | 'done' | null
+          last_completed_step?: 'profile' | 'script' | 'contacts' | 'notify' | 'pair' | 'done' | null
           avatar_url?: string | null
         }
         Relationships: [
@@ -358,11 +358,43 @@ export type Database = {
         ]
       }
       push_subscriptions: {
-        Row: { id: string; agent_id: string; endpoint: string; p256dh: string; auth: string; created_at: string }
-        Insert: { id?: string; agent_id: string; endpoint: string; p256dh: string; auth: string; created_at?: string }
-        Update: { id?: string; agent_id?: string; endpoint?: string; p256dh?: string; auth?: string; created_at?: string }
+        Row: { id: string; agent_id: string; endpoint: string; p256dh: string; auth: string; created_at: string; device_kind: 'desktop' | 'mobile' | 'tablet' | 'other' | null }
+        Insert: { id?: string; agent_id: string; endpoint: string; p256dh: string; auth: string; created_at?: string; device_kind?: 'desktop' | 'mobile' | 'tablet' | 'other' | null }
+        Update: { id?: string; agent_id?: string; endpoint?: string; p256dh?: string; auth?: string; created_at?: string; device_kind?: 'desktop' | 'mobile' | 'tablet' | 'other' | null }
         Relationships: [
           { foreignKeyName: 'push_subscriptions_agent_id_fkey'; columns: ['agent_id']; isOneToOne: false; referencedRelation: 'agents'; referencedColumns: ['id'] }
+        ]
+      }
+      pairing_tokens: {
+        Row: {
+          id: string; agent_id: string; token_hash: string; expires_at: string
+          consumed_at: string | null
+          consumed_outcome: 'push_granted' | 'push_denied_but_installed' | null
+          device_label: string | null
+          sms_sends_count: number
+          last_sms_sent_at: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string; agent_id: string; token_hash: string; expires_at: string
+          consumed_at?: string | null
+          consumed_outcome?: 'push_granted' | 'push_denied_but_installed' | null
+          device_label?: string | null
+          sms_sends_count?: number
+          last_sms_sent_at?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string; agent_id?: string; token_hash?: string; expires_at?: string
+          consumed_at?: string | null
+          consumed_outcome?: 'push_granted' | 'push_denied_but_installed' | null
+          device_label?: string | null
+          sms_sends_count?: number
+          last_sms_sent_at?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          { foreignKeyName: 'pairing_tokens_agent_id_fkey'; columns: ['agent_id']; isOneToOne: false; referencedRelation: 'agents'; referencedColumns: ['id'] }
         ]
       }
       outreach_log: {
