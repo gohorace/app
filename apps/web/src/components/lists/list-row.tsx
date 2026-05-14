@@ -278,31 +278,48 @@ export function ListRow({ list, isLast }: ListRowProps) {
           >
             {formatRelative(list.updated_at)}
           </span>
-          <RowOverflowMenu
-            triggerLabel={`Actions for ${name}`}
-            actions={[
-              {
-                id: 'rename',
-                label: 'Rename',
-                Icon: Pencil,
-                onSelect: () => {
-                  setDraftName(name)
-                  setError(null)
-                  setRenaming(true)
+          {/* Kebab — wrapped in a chip-style container so it reads as an
+              affordance against the parchment row. The shared
+              RowOverflowMenu icon is intentionally muted; on this surface
+              (no hover-revealed columns) we want it always-visible. */}
+          <div
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: 28,
+              height: 28,
+              borderRadius: 6,
+              border: '1px solid rgba(140,123,107,0.2)',
+              background: '#FFFFFF',
+            }}
+          >
+            <RowOverflowMenu
+              triggerLabel={`Actions for ${name}`}
+              actions={[
+                {
+                  id: 'rename',
+                  label: 'Rename',
+                  Icon: Pencil,
+                  onSelect: () => {
+                    setDraftName(name)
+                    setError(null)
+                    setRenaming(true)
+                  },
                 },
-              },
-              {
-                id: 'delete',
-                label: 'Delete',
-                Icon: Trash2,
-                destructive: true,
-                onSelect: () => {
-                  setError(null)
-                  setConfirmDelete(true)
+                {
+                  id: 'delete',
+                  label: 'Delete',
+                  Icon: Trash2,
+                  destructive: true,
+                  onSelect: () => {
+                    setError(null)
+                    setConfirmDelete(true)
+                  },
                 },
-              },
-            ]}
-          />
+              ]}
+            />
+          </div>
         </div>
       </div>
 
