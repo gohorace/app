@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Bookmark, ListPlus, Pencil, Trash2 } from 'lucide-react'
 import { RowOverflowMenu } from '@/components/dashboard/row-overflow-menu'
@@ -103,9 +102,34 @@ export function ListRow({ list, isLast }: ListRowProps) {
     color: 'inherit',
   }
 
+  // Row-level click → navigate to the list view. We skip navigation while
+  // renaming (the input owns the row) and rely on RowOverflowMenu's own
+  // stopPropagation to keep kebab clicks local. The input itself also
+  // stops propagation so typing doesn't bubble into router.push.
+  function handleRowActivate() {
+    if (renaming) return
+    router.push(`/contacts?list_id=${list.id}`)
+  }
+
   return (
     <>
-      <div style={{ ...rowBaseStyle, position: 'relative' }}>
+      <div
+        role="link"
+        tabIndex={renaming ? -1 : 0}
+        onClick={handleRowActivate}
+        onKeyDown={(e) => {
+          if (renaming) return
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            handleRowActivate()
+          }
+        }}
+        style={{
+          ...rowBaseStyle,
+          position: 'relative',
+          cursor: renaming ? 'default' : 'pointer',
+        }}
+      >
         {/* Kind icon (parchment chip — same vocabulary as the page's built-in panel) */}
         <span
           style={{
@@ -147,7 +171,12 @@ export function ListRow({ list, isLast }: ListRowProps) {
                   setDraftName(e.target.value)
                   setError(null)
                 }}
+                // Keep typing + cursor clicks inside the input — don't let
+                // them bubble to the row-level click handler.
+                onClick={(e) => e.stopPropagation()}
+                onMouseDown={(e) => e.stopPropagation()}
                 onKeyDown={(e) => {
+                  e.stopPropagation()
                   if (e.key === 'Enter') {
                     e.preventDefault()
                     void commitRename()
@@ -174,17 +203,15 @@ export function ListRow({ list, isLast }: ListRowProps) {
                 }}
               />
             ) : (
-              <Link
-                href={`/contacts?list_id=${list.id}`}
+              <span
                 style={{
                   fontSize: 14,
                   fontWeight: 500,
                   color: '#1A1612',
-                  textDecoration: 'none',
                 }}
               >
                 {name}
-              </Link>
+              </span>
             )}
             <span
               style={{
@@ -277,23 +304,6 @@ export function ListRow({ list, isLast }: ListRowProps) {
             ]}
           />
         </div>
-
-        {/* Row-wide overlay link so clicking anywhere outside the kebab /
-            input navigates to the list. Sits below the actions but above
-            the row body. Suspended while renaming to keep the input
-            interactive. */}
-        {!renaming && (
-          <Link
-            href={`/contacts?list_id=${list.id}`}
-            aria-hidden
-            tabIndex={-1}
-            style={{
-              position: 'absolute',
-              inset: 0,
-              zIndex: 0,
-            }}
-          />
-        )}
       </div>
 
       {confirmDelete && (
