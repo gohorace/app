@@ -40,6 +40,7 @@ export type IdentificationMethod =
   | 'form_submit'
   | 'login'
   | 'manual_merge'
+  | 'inspection_capture' // HOR-147 — Doorstep capture flow widens this; CHECK constraint updated in HOR-146 migration.
 
 interface WriteIdentifiedDeviceArgs {
   workspaceId: string
@@ -73,13 +74,18 @@ export async function writeIdentifiedDevice(
 
   // Try insert. ON CONFLICT (cookie_id) is handled by the chained UPDATE
   // when contact_id matches; otherwise we let the conflict bubble and check.
+  //
+  // HOR-146 widened identified_devices.identification_method to include
+  // 'inspection_capture', but database.types.ts hasn't been regenerated
+  // yet. The cast below is temporary — strip it after the types regen
+  // commit on the HOR-146 branch.
   const { error: insertError } = await supabase
     .from('identified_devices')
     .insert({
       workspace_id: args.workspaceId,
       contact_id: args.contactId,
       cookie_id: args.cookieId,
-      identification_method: args.method,
+      identification_method: args.method as 'email_link_click' | 'form_submit' | 'login' | 'manual_merge',
       identified_by_agent_id: args.agentId,
       user_agent_summary: summary,
       first_identified_at: now.toISOString(),
