@@ -1,9 +1,11 @@
 'use client'
 
 import Link from 'next/link'
+import { useState } from 'react'
 import { ListPlus, MoreHorizontal, Sparkles } from 'lucide-react'
 import { IntentBadge } from './intent-badge'
 import { GuidanceBadge } from './guidance-badge'
+import { AddToListSheet } from '@/components/lists/add-to-list-sheet'
 import { INTENT_AVATAR_BG, type IntentLevel, type GuidanceMode } from '@/lib/design/intent'
 
 export interface DigestSignal {
@@ -48,6 +50,10 @@ interface SignalCardProps {
  */
 export function SignalCard({ signal }: SignalCardProps) {
   const isAnon = signal.isAnonymousNowKnown ?? false
+  // HOR-142: Add-to-list sheet is rendered above the link via a fixed-
+  // position scrim; state lives here so the trigger button can open it
+  // without touching the parent's link navigation.
+  const [sheetOpen, setSheetOpen] = useState(false)
   return (
     <Link
       href={`/contacts/${signal.contactId}`}
@@ -211,12 +217,17 @@ export function SignalCard({ signal }: SignalCardProps) {
       >
         <button
           type="button"
-          disabled
-          aria-disabled
-          title="Lists coming soon"
+          onMouseDown={(e) => {
+            // Outer Link uses onClick to navigate; preventing default on
+            // mousedown stops the focus + navigation race when the sheet
+            // opens. onClick still does the work.
+            e.preventDefault()
+            e.stopPropagation()
+          }}
           onClick={(e) => {
             e.preventDefault()
             e.stopPropagation()
+            setSheetOpen(true)
           }}
           style={{
             display: 'inline-flex',
@@ -230,8 +241,7 @@ export function SignalCard({ signal }: SignalCardProps) {
             background: '#1A1612',
             border: '1px solid #1A1612',
             borderRadius: 7,
-            cursor: 'not-allowed',
-            opacity: 0.85,
+            cursor: 'pointer',
             fontFamily: 'var(--font-body)',
             transition: 'opacity 180ms',
           }}
@@ -239,6 +249,12 @@ export function SignalCard({ signal }: SignalCardProps) {
           <ListPlus style={{ width: 14, height: 14 }} />
           Add to list
         </button>
+        <AddToListSheet
+          open={sheetOpen}
+          onClose={() => setSheetOpen(false)}
+          contactId={signal.contactId}
+          subjectLabel={signal.name}
+        />
         <button
           type="button"
           title="More — coming soon"

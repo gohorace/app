@@ -28,6 +28,7 @@ import type { IdentityState } from '@/lib/design/badges'
 import { eventLabel, eventUrl, formatEventUrl, type MergedEvent } from '@/lib/contacts/events'
 import { AttachRoleDialog } from './attach-role-dialog'
 import { NotesPanel } from '@/components/dashboard/notes-panel'
+import { AddToListSheet } from '@/components/lists/add-to-list-sheet'
 
 export interface ContactDetailViewProps {
   contact: {
@@ -83,6 +84,9 @@ export function ContactDetailView({
   const [timelineFilter, setTimelineFilter] = useState<TimelineFilter>('all')
   const [attachOpen, setAttachOpen] = useState(false)
   const [removingRoleId, setRemovingRoleId] = useState<string | null>(null)
+  // HOR-142: Add-to-list sheet state (replaces the disabled placeholder
+  // button on the action row).
+  const [addToListOpen, setAddToListOpen] = useState(false)
 
   const isAnon = identity === 'anonymous'
   const displayName =
@@ -311,12 +315,21 @@ export function ContactDetailView({
               )}
               <button
                 type="button"
-                disabled
-                title="Lists coming soon"
-                style={{ ...secondaryBtnStyle, opacity: 0.55, cursor: 'not-allowed' }}
+                onClick={() => setAddToListOpen(true)}
+                style={secondaryBtnStyle}
               >
                 Add to list
               </button>
+              <AddToListSheet
+                open={addToListOpen}
+                onClose={() => setAddToListOpen(false)}
+                contactId={contact.id}
+                subjectLabel={
+                  [contact.firstName, contact.lastName].filter(Boolean).join(' ') ||
+                  contact.email ||
+                  'this contact'
+                }
+              />
             </div>
           </div>
         </div>

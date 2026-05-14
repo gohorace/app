@@ -424,6 +424,54 @@ export type Database = {
           { foreignKeyName: 'contact_notes_contact_id_fkey'; columns: ['contact_id']; isOneToOne: false; referencedRelation: 'contacts'; referencedColumns: ['id'] }
         ]
       }
+      // HOR-142: Lists v1 — workspace-shared named contact buckets.
+      // See supabase/migrations/20260515000001_lists_v1.sql.
+      lists: {
+        Row: {
+          id: string; workspace_id: string; agent_id: string
+          name: string; description: string | null
+          kind: 'manual' | 'saved_filter'
+          filter_state: Json | null
+          created_at: string; updated_at: string; deleted_at: string | null
+        }
+        Insert: {
+          id?: string; workspace_id: string; agent_id: string
+          name: string; description?: string | null
+          kind?: 'manual' | 'saved_filter'
+          filter_state?: Json | null
+          created_at?: string; updated_at?: string; deleted_at?: string | null
+        }
+        Update: {
+          id?: string; workspace_id?: string; agent_id?: string
+          name?: string; description?: string | null
+          kind?: 'manual' | 'saved_filter'
+          filter_state?: Json | null
+          created_at?: string; updated_at?: string; deleted_at?: string | null
+        }
+        Relationships: [
+          { foreignKeyName: 'lists_workspace_id_fkey'; columns: ['workspace_id']; isOneToOne: false; referencedRelation: 'workspaces'; referencedColumns: ['id'] },
+          { foreignKeyName: 'lists_agent_id_fkey'; columns: ['agent_id']; isOneToOne: false; referencedRelation: 'agents'; referencedColumns: ['id'] }
+        ]
+      }
+      contact_list_membership: {
+        Row: {
+          list_id: string; contact_id: string
+          added_at: string; added_by_agent_id: string | null
+        }
+        Insert: {
+          list_id: string; contact_id: string
+          added_at?: string; added_by_agent_id?: string | null
+        }
+        Update: {
+          list_id?: string; contact_id?: string
+          added_at?: string; added_by_agent_id?: string | null
+        }
+        Relationships: [
+          { foreignKeyName: 'contact_list_membership_list_id_fkey'; columns: ['list_id']; isOneToOne: false; referencedRelation: 'lists'; referencedColumns: ['id'] },
+          { foreignKeyName: 'contact_list_membership_contact_id_fkey'; columns: ['contact_id']; isOneToOne: false; referencedRelation: 'contacts'; referencedColumns: ['id'] },
+          { foreignKeyName: 'contact_list_membership_added_by_agent_id_fkey'; columns: ['added_by_agent_id']; isOneToOne: false; referencedRelation: 'agents'; referencedColumns: ['id'] }
+        ]
+      }
       workspace_api_tokens: {
         Row: {
           id: string; workspace_id: string; agent_id: string; user_id: string
