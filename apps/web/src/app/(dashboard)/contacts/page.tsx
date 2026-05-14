@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { ContactsGrid, type ContactGridRow } from '@/components/contacts/contacts-grid'
+import { ContactsGrid, type ContactGridRow, type SavedFilterState } from '@/components/contacts/contacts-grid'
 import { getRoles } from '@/lib/contacts/roles'
 
 export const dynamic = 'force-dynamic'
@@ -8,7 +8,9 @@ export const dynamic = 'force-dynamic'
 export default async function ContactsPage({
   searchParams,
 }: {
-  searchParams: { q?: string }
+  // HOR-143: ?list_id scopes the grid to a list's membership (manual lists)
+  // or hydrates the secondary filters from a saved_filter list.
+  searchParams: { q?: string; list_id?: string }
 }) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -16,12 +18,52 @@ export default async function ContactsPage({
   const admin = createAdminClient()
   const { data: agent } = await admin
     .from('agents')
-    .select('id')
+    .select('id, workspace_id')
     .eq('user_id', user!.id)
     .maybeSingle()
 
   const agentId = agent!.id
+  const workspaceId = agent!.workspace_id
   const q = searchParams.q?.trim() ?? ''
+  const listId = searchParams.list_id?.trim() || null
+
+  // HOR-143: when ?list_id is set, resolve the list + its kind. Manual lists
+  // pin to membership; saved_filter lists hydrate the grid's secondary
+  // filters from list.filter_state but don't restrict rows beyond that.
+  // Unknown / soft-deleted list → silently treated as "no list selected".
+  let selectedList:
+    | {
+        id: string
+        name: string
+        kind: 'manual' | 'saved_filter'
+        filter_state: SavedFilterState | null
+      }
+    | null = null
+  let manualListMemberIds: Set<string> | null = null
+  if (listId && workspaceId) {
+    const { data: row } = await admin
+      .from('lists')
+      .select('id, name, kind, filter_state')
+      .eq('id', listId)
+      .eq('workspace_id', workspaceId)
+      .is('deleted_at', null)
+      .maybeSingle()
+    if (row) {
+      selectedList = {
+        id: row.id,
+        name: row.name,
+        kind: row.kind as 'manual' | 'saved_filter',
+        filter_state: (row.filter_state as SavedFilterState | null) ?? null,
+      }
+      if (selectedList.kind === 'manual') {
+        const { data: memberRows } = await admin
+          .from('contact_list_membership')
+          .select('contact_id')
+          .eq('list_id', row.id)
+        manualListMemberIds = new Set((memberRows ?? []).map((m) => m.contact_id))
+      }
+    }
+  }
 
   // HOR-136: workspace default destination for tracked links. Surfaced in
   // the edit-destination popover as the fallback when no override is set.
@@ -109,6 +151,13 @@ export default async function ContactsPage({
     }))
   }
 
+  // HOR-143: when a manual list is selected, scope baseRows to its members
+  // BEFORE we run the metadata + properties batch. This keeps query 2 small
+  // and means an empty list shows the proper empty state.
+  if (manualListMemberIds) {
+    baseRows = baseRows.filter((r) => manualListMemberIds!.has(r.id))
+  }
+
   if (baseRows.length === 0) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
@@ -118,6 +167,7 @@ export default async function ContactsPage({
           agentId={agentId}
           appUrl={appUrl}
           defaultLinkUrl={defaultLinkUrl}
+          selectedList={selectedList}
         />
       </div>
     )
@@ -209,6 +259,7 @@ export default async function ContactsPage({
         agentId={agentId}
         appUrl={appUrl}
         defaultLinkUrl={defaultLinkUrl}
+        selectedList={selectedList}
       />
     </div>
   )

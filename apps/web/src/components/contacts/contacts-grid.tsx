@@ -30,6 +30,8 @@ import { roleCounts, type ContactRoleEntry } from '@/lib/contacts/roles'
 import { intentForScore } from '@/lib/design/intent'
 import { AddContactDialog } from './add-contact-dialog'
 import { TrackedLinkCell } from './tracked-link-cell'
+import { AddToListSheet } from '@/components/lists/add-to-list-sheet'
+import { useLists } from '@/lib/lists/use-lists'
 
 const ONLINE_MS = 5 * 60 * 1000 // 5 minutes
 
@@ -72,6 +74,27 @@ interface Props {
   defaultLinkUrl: string | null
   /** Public app URL — used to build the tracked link `${appUrl}/c/${token}`. */
   appUrl: string
+  /** HOR-143: when set, the grid renders inside a list context — header
+   *  shows "Viewing list: <name>" with a Clear affordance; manual lists
+   *  also have their rows pre-scoped to membership by the page. */
+  selectedList?: {
+    id: string
+    name: string
+    kind: 'manual' | 'saved_filter'
+    filter_state: SavedFilterState | null
+  } | null
+}
+
+// HOR-143: shape we persist to lists.filter_state when "Save as list" fires.
+// Loose by design so we can extend without a migration. The grid tolerates
+// missing keys when hydrating (falls back to defaults).
+export interface SavedFilterState {
+  tab?: Tab
+  search?: string
+  role?: SecondaryFilters['role']
+  intensity?: SecondaryFilters['intensity']
+  time?: TimeWindow
+  property?: string
 }
 
 type Tab = 'all' | 'known' | 'unidentified'
@@ -140,12 +163,61 @@ function lastSeenLabel(iso: string | null): string {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export function ContactsGrid({ contacts, initialQ = '', agentId, defaultLinkUrl, appUrl }: Props) {
+export function ContactsGrid({ contacts, initialQ = '', agentId, defaultLinkUrl, appUrl, selectedList = null }: Props) {
   const router = useRouter()
-  const [search, setSearch] = useState(initialQ)
-  const [tab, setTab] = useState<Tab>('all')
-  const [filters, setFilters] = useState<SecondaryFilters>(DEFAULT_FILTERS)
+
+  // HOR-143: when arriving via a saved_filter list, seed the secondary
+  // filters from list.filter_state. Manual lists keep the defaults — the
+  // page has already scoped rows to membership. Tolerates missing keys.
+  const hydrated = selectedList?.kind === 'saved_filter' ? selectedList.filter_state : null
+
+  const [search, setSearch] = useState(hydrated?.search ?? initialQ)
+  const [tab, setTab] = useState<Tab>(hydrated?.tab ?? 'all')
+  const [filters, setFilters] = useState<SecondaryFilters>(() => ({
+    role:      hydrated?.role      ?? DEFAULT_FILTERS.role,
+    list:      'All lists',
+    intensity: hydrated?.intensity ?? DEFAULT_FILTERS.intensity,
+    time:      hydrated?.time      ?? DEFAULT_FILTERS.time,
+    property:  hydrated?.property  ?? DEFAULT_FILTERS.property,
+  }))
   const [addOpen, setAddOpen] = useState(false)
+
+  // HOR-143: bulk-select state. Set of contact IDs ticked via row checkbox.
+  // Survives filter changes — selecting a contact, then narrowing the
+  // filter, doesn't clear the selection (matches Gmail / linear behaviour).
+  const [selected, setSelected] = useState<Set<string>>(() => new Set())
+
+  // HOR-143: re-hydrate filters when the URL flips between saved-filter
+  // lists. useState only seeds on mount; Next.js keeps ContactsGrid mounted
+  // across the SSR round-trip, so we need an effect to follow list_id.
+  useEffect(() => {
+    if (selectedList?.kind !== 'saved_filter') return
+    const fs = selectedList.filter_state
+    if (!fs) return
+    setTab(fs.tab ?? 'all')
+    setSearch(fs.search ?? '')
+    setFilters({
+      role:      fs.role      ?? DEFAULT_FILTERS.role,
+      list:      'All lists',
+      intensity: fs.intensity ?? DEFAULT_FILTERS.intensity,
+      time:      fs.time      ?? DEFAULT_FILTERS.time,
+      property:  fs.property  ?? DEFAULT_FILTERS.property,
+    })
+    // Selection is workspace-wide; if the new list shouldn't include the
+    // currently-ticked IDs they'll simply not render in the rows — but
+    // clearing on context-switch matches expectations and avoids stale
+    // ticks bleeding into a different scope.
+    setSelected(new Set())
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedList?.id])
+  // Add-to-list sheet — three modes:
+  //   closed              → no sheet
+  //   { kind: 'single' }  → single contactId (from row overflow, deferred)
+  //   { kind: 'bulk' }    → batch add of `selected` to a list
+  const [bulkSheetOpen, setBulkSheetOpen] = useState(false)
+  // "Save as list" dialog state — controlled here so the action lives next
+  // to the filter state it'll snapshot.
+  const [saveOpen, setSaveOpen] = useState(false)
   // HOR-137: optimistic soft-delete — drop the row from the grid immediately
   // and let router.refresh() catch up on next nav. Listed after the realtime
   // useState block in render order so the diff stays small.
@@ -201,6 +273,44 @@ export function ContactsGrid({ contacts, initialQ = '', agentId, defaultLinkUrl,
       clearInterval(interval)
     }
   }, [agentId])
+
+  // HOR-143: workspace lists for the List filter chip. No contact_id —
+  // we just want labels + ids. createList lives on this hook so the
+  // Save-as-list dialog can call it without instantiating a second hook.
+  const { lists, createList } = useLists()
+
+  // HOR-143: list chip options. Manual lists first (alphabetical), then
+  // saved_filter lists. "All lists" is the clear option.
+  const listOptions = useMemo(() => {
+    const manual = lists
+      .filter((l) => l.kind === 'manual')
+      .sort((a, b) => a.name.localeCompare(b.name))
+    const saved = lists
+      .filter((l) => l.kind === 'saved_filter')
+      .sort((a, b) => a.name.localeCompare(b.name))
+    return [
+      { id: null as string | null, label: 'All lists' },
+      ...manual.map((l) => ({ id: l.id as string | null, label: l.name })),
+      ...saved.map((l) => ({ id: l.id as string | null, label: `★ ${l.name}` })),
+    ]
+  }, [lists])
+
+  const currentListLabel =
+    listOptions.find((o) => o.id === (selectedList?.id ?? null))?.label ?? 'All lists'
+
+  function handleSelectList(id: string | null) {
+    // Preserve the search query so the user doesn't lose their typed
+    // text when they pivot to a list view (which then re-applies search
+    // after hydration).
+    const params = new URLSearchParams()
+    if (id) params.set('list_id', id)
+    if (search.trim()) params.set('q', search.trim())
+    const qs = params.toString()
+    router.push(qs ? `/contacts?${qs}` : '/contacts')
+    // The page does an SSR round-trip — clear any in-flight selection so
+    // we don't carry stale ticks to a different list's rows.
+    setSelected(new Set())
+  }
 
   const safeContacts = useMemo(
     () => (Array.isArray(contacts) ? contacts : []).filter((c) => !deletedIds.has(c.id)),
@@ -281,7 +391,8 @@ export function ContactsGrid({ contacts, initialQ = '', agentId, defaultLinkUrl,
       )
     }
 
-    // List dropdown is rendered but inert in V1 (Lists feature deferred).
+    // List filter is applied server-side via ?list_id (manual lists pin
+    // membership, saved_filter lists hydrate the bar — see page.tsx).
 
     // Search
     const q = search.trim().toLowerCase()
@@ -297,6 +408,54 @@ export function ContactsGrid({ contacts, initialQ = '', agentId, defaultLinkUrl,
 
     return rows
   }, [safeContacts, identityById, tab, filters, search])
+
+  // HOR-143: "Save as list" is meaningful only when SOMETHING narrows the
+  // view — otherwise saving captures "all contacts" which is just a copy of
+  // your book. Match the design intent: at least one filter / search /
+  // non-default tab is active.
+  const hasActiveFilter =
+    tab !== 'all' ||
+    search.trim().length > 0 ||
+    filters.role !== DEFAULT_FILTERS.role ||
+    filters.intensity !== DEFAULT_FILTERS.intensity ||
+    filters.time !== DEFAULT_FILTERS.time ||
+    filters.property !== DEFAULT_FILTERS.property
+
+  function snapshotFilterState(): SavedFilterState {
+    return {
+      tab,
+      search: search.trim() || undefined,
+      role: filters.role,
+      intensity: filters.intensity,
+      time: filters.time,
+      property: filters.property,
+    }
+  }
+
+  const selectedIds = useMemo(() => Array.from(selected), [selected])
+  const allVisibleSelected =
+    filtered.length > 0 && filtered.every((c) => selected.has(c.id))
+
+  function toggleAllVisible() {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (allVisibleSelected) {
+        for (const c of filtered) next.delete(c.id)
+      } else {
+        for (const c of filtered) next.add(c.id)
+      }
+      return next
+    })
+  }
+
+  function toggleOne(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
@@ -416,6 +575,60 @@ export function ContactsGrid({ contacts, initialQ = '', agentId, defaultLinkUrl,
             </div>
           </div>
 
+          {/* HOR-143: selected-list banner. Renders when a list is pinned
+              via ?list_id. Distinguishes manual (rows scoped) from
+              saved_filter (filters hydrated). */}
+          {selectedList && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                margin: '6px 0 12px',
+                padding: '8px 12px',
+                background: 'rgba(196,98,45,0.06)',
+                border: '1px solid rgba(196,98,45,0.22)',
+                borderRadius: 7,
+                fontSize: 12,
+                color: '#1A1612',
+              }}
+            >
+              <span
+                style={{
+                  fontSize: 10,
+                  fontWeight: 600,
+                  letterSpacing: '0.08em',
+                  textTransform: 'uppercase',
+                  color: '#C4622D',
+                }}
+              >
+                {selectedList.kind === 'saved_filter' ? 'Saved view' : 'List'}
+              </span>
+              <span style={{ fontWeight: 500 }}>{selectedList.name}</span>
+              <span style={{ color: '#8C7B6B' }}>
+                {selectedList.kind === 'saved_filter'
+                  ? '· filters hydrated from this view'
+                  : '· showing only members'}
+              </span>
+              <button
+                type="button"
+                onClick={() => handleSelectList(null)}
+                style={{
+                  marginLeft: 'auto',
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#5E5246',
+                  fontSize: 11,
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  fontFamily: 'var(--font-body)',
+                }}
+              >
+                Clear
+              </button>
+            </div>
+          )}
+
           {/* Secondary filter chips */}
           <SecondaryFilterBar
             filters={filters}
@@ -423,6 +636,11 @@ export function ContactsGrid({ contacts, initialQ = '', agentId, defaultLinkUrl,
             onChange={(next) => setFilters((f) => ({ ...f, ...next }))}
             resultCount={filtered.length}
             totalCount={safeContacts.length}
+            listOptions={listOptions}
+            currentListLabel={currentListLabel}
+            onSelectList={handleSelectList}
+            saveAsListDisabled={!hasActiveFilter}
+            onSaveAsList={() => setSaveOpen(true)}
           />
 
           {/* Table */}
@@ -434,7 +652,11 @@ export function ContactsGrid({ contacts, initialQ = '', agentId, defaultLinkUrl,
               overflow: 'hidden',
             }}
           >
-            <TableHead />
+            <TableHead
+              allChecked={allVisibleSelected}
+              indeterminate={!allVisibleSelected && filtered.some((c) => selected.has(c.id))}
+              onToggleAll={toggleAllVisible}
+            />
             {filtered.length === 0 ? (
               <EmptyState search={search} hasAnyContacts={safeContacts.length > 0} />
             ) : (
@@ -453,6 +675,8 @@ export function ContactsGrid({ contacts, initialQ = '', agentId, defaultLinkUrl,
                     next.add(id)
                     return next
                   })}
+                  isSelected={selected.has(c.id)}
+                  onToggleSelect={() => toggleOne(c.id)}
                 />
               ))
             )}
@@ -483,6 +707,245 @@ export function ContactsGrid({ contacts, initialQ = '', agentId, defaultLinkUrl,
           }}
         />
       )}
+
+      {/* HOR-143: bulk action bar — anchored to the bottom of the
+          viewport while at least one row is ticked. Stays above the
+          mobile tab bar (z-index 10) but below modals (z-index 60+). */}
+      {selected.size > 0 && (
+        <div
+          style={{
+            position: 'fixed',
+            left: '50%',
+            bottom: 24,
+            transform: 'translateX(-50%)',
+            zIndex: 30,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            padding: '10px 14px 10px 18px',
+            background: '#1A1612',
+            color: '#FAF7F2',
+            borderRadius: 999,
+            boxShadow: '0 12px 32px rgba(26,22,18,0.28)',
+            fontFamily: 'var(--font-body)',
+          }}
+        >
+          <span style={{ fontSize: 13, fontWeight: 500 }}>
+            {selected.size} selected
+          </span>
+          <button
+            type="button"
+            onClick={() => setBulkSheetOpen(true)}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '6px 12px',
+              fontSize: 12,
+              fontWeight: 500,
+              background: 'rgba(250,247,242,0.14)',
+              color: '#FAF7F2',
+              border: '1px solid rgba(250,247,242,0.18)',
+              borderRadius: 999,
+              cursor: 'pointer',
+              fontFamily: 'var(--font-body)',
+            }}
+          >
+            <BookmarkPlus style={{ width: 12, height: 12 }} />
+            Add to list
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelected(new Set())}
+            style={{
+              fontSize: 12,
+              color: '#FAF7F2',
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              opacity: 0.75,
+              fontFamily: 'var(--font-body)',
+            }}
+          >
+            Clear
+          </button>
+        </div>
+      )}
+
+      <AddToListSheet
+        open={bulkSheetOpen}
+        onClose={() => setBulkSheetOpen(false)}
+        contactIds={selectedIds}
+        subjectLabel={`${selected.size} contacts`}
+      />
+
+      {saveOpen && (
+        <SaveAsListDialog
+          onClose={() => setSaveOpen(false)}
+          onSave={async (name) => {
+            const list = await createList({
+              name,
+              kind: 'saved_filter',
+              filter_state: snapshotFilterState() as unknown as Record<string, unknown>,
+            })
+            setSaveOpen(false)
+            // Navigate to the saved view so the user sees the new banner
+            // and the filters are clearly "stored" rather than ephemeral.
+            router.push(`/contacts?list_id=${list.id}`)
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+// ── Save-as-list dialog ─────────────────────────────────────────────────────
+// HOR-143: small modal for naming a saved_filter list. Mounted only when
+// the user clicks "Save as list" on the filter bar. Owns its own name +
+// pending state so the parent doesn't have to.
+
+function SaveAsListDialog({
+  onClose,
+  onSave,
+}: {
+  onClose: () => void
+  onSave: (name: string) => Promise<void>
+}) {
+  const [name, setName] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    inputRef.current?.focus()
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    const trimmed = name.trim()
+    if (!trimmed) return
+    setSaving(true)
+    setError(null)
+    try {
+      await onSave(trimmed)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save')
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose()
+      }}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 60,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'rgba(26,22,18,0.36)',
+        padding: 16,
+      }}
+    >
+      <form
+        onSubmit={handleSubmit}
+        style={{
+          width: '100%',
+          maxWidth: 360,
+          background: '#FAF7F2',
+          border: '1px solid rgba(140,123,107,0.22)',
+          borderRadius: 12,
+          boxShadow: '0 20px 48px rgba(26,22,18,0.18)',
+          padding: '18px 20px',
+          fontFamily: 'var(--font-body)',
+          color: '#1A1612',
+        }}
+      >
+        <h3
+          className="font-display"
+          style={{
+            margin: '0 0 4px',
+            fontSize: 17,
+            fontWeight: 500,
+            letterSpacing: '-0.01em',
+          }}
+        >
+          Save as list
+        </h3>
+        <p style={{ margin: '0 0 14px', fontSize: 12, color: '#8C7B6B' }}>
+          Capture the current filter as a saved view you can return to.
+        </p>
+        <input
+          ref={inputRef}
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="e.g. Paddington warming up"
+          maxLength={80}
+          style={{
+            width: '100%',
+            padding: '9px 11px',
+            fontSize: 13,
+            fontFamily: 'var(--font-body)',
+            color: '#1A1612',
+            background: '#FFFFFF',
+            border: '1px solid rgba(140,123,107,0.28)',
+            borderRadius: 6,
+            outline: 'none',
+            boxSizing: 'border-box',
+            marginBottom: 14,
+          }}
+        />
+        {error && (
+          <p role="alert" style={{ margin: '0 0 12px', fontSize: 12, color: '#9C4A1F' }}>
+            {error}
+          </p>
+        )}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={saving}
+            style={{
+              padding: '8px 12px',
+              fontSize: 12,
+              color: '#5E5246',
+              background: 'transparent',
+              border: 'none',
+              borderRadius: 6,
+              cursor: saving ? 'wait' : 'pointer',
+              fontFamily: 'var(--font-body)',
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={saving || !name.trim()}
+            style={{
+              padding: '8px 14px',
+              fontSize: 12,
+              fontWeight: 500,
+              color: '#FAF7F2',
+              background: '#1A1612',
+              border: 'none',
+              borderRadius: 6,
+              cursor: saving || !name.trim() ? 'not-allowed' : 'pointer',
+              opacity: saving || !name.trim() ? 0.55 : 1,
+              fontFamily: 'var(--font-body)',
+            }}
+          >
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </form>
     </div>
   )
 }
@@ -630,12 +1093,25 @@ function SecondaryFilterBar({
   onChange,
   resultCount,
   totalCount,
+  listOptions,
+  currentListLabel,
+  onSelectList,
+  saveAsListDisabled,
+  onSaveAsList,
 }: {
   filters: SecondaryFilters
   propertyOptions: Array<{ id: string; label: string }>
   onChange: (next: Partial<SecondaryFilters>) => void
   resultCount: number
   totalCount: number
+  // HOR-143: List filter is the only chip that drives a URL change (and
+  // therefore a server re-fetch). The grid owns the labels, the parent
+  // owns navigation.
+  listOptions: Array<{ id: string | null; label: string }>
+  currentListLabel: string
+  onSelectList: (id: string | null) => void
+  saveAsListDisabled: boolean
+  onSaveAsList: () => void
 }) {
   // Property chip uses id-as-value, address-as-label. Find the address for
   // the current selection so the chip surfaces something readable.
@@ -666,11 +1142,13 @@ function SecondaryFilterBar({
       <FilterChip
         label="List"
         Icon={List}
-        isActive={false}
-        current={filters.list}
-        options={['All lists']}
-        onSelect={() => {}}
-        disabledTooltip="Lists coming soon"
+        isActive={currentListLabel !== 'All lists'}
+        current={currentListLabel}
+        options={listOptions.map((o) => o.label)}
+        onSelect={(label) => {
+          const match = listOptions.find((o) => o.label === label)
+          onSelectList(match?.id ?? null)
+        }}
       />
       <FilterChip
         label="Intensity"
@@ -719,21 +1197,28 @@ function SecondaryFilterBar({
         </span>
         <button
           type="button"
-          disabled
-          title="Lists coming soon"
+          disabled={saveAsListDisabled}
+          onClick={onSaveAsList}
+          title={
+            saveAsListDisabled
+              ? 'Apply a filter or search first'
+              : 'Save the current view as a list'
+          }
           style={{
             display: 'inline-flex',
             alignItems: 'center',
             gap: 5,
             padding: '5px 9px',
             borderRadius: 6,
-            background: 'transparent',
-            color: '#5E5246',
+            background: saveAsListDisabled ? 'transparent' : 'rgba(196,98,45,0.08)',
+            color: saveAsListDisabled ? '#5E5246' : '#C4622D',
             fontSize: 11,
             fontWeight: 500,
-            border: '1px dashed rgba(140,123,107,0.3)',
-            cursor: 'not-allowed',
-            opacity: 0.55,
+            border: saveAsListDisabled
+              ? '1px dashed rgba(140,123,107,0.3)'
+              : '1px solid rgba(196,98,45,0.25)',
+            cursor: saveAsListDisabled ? 'not-allowed' : 'pointer',
+            opacity: saveAsListDisabled ? 0.55 : 1,
             fontFamily: 'var(--font-body)',
           }}
         >
@@ -748,6 +1233,8 @@ function SecondaryFilterBar({
 // ── Table head ───────────────────────────────────────────────────────────────
 
 const COL_STYLES = {
+  // HOR-143: leading checkbox column for bulk-select.
+  check:     { width: 28,   flexGrow: 0, flexShrink: 0, display: 'flex', justifyContent: 'center' },
   avatar:    { width: 52,   flexGrow: 0, flexShrink: 0 },
   contact:   { flex: 2.2,   minWidth: 200 },
   roles:     { flex: 1.4,   minWidth: 130 },
@@ -759,7 +1246,15 @@ const COL_STYLES = {
   overflow:  { width: 36,   flexGrow: 0, flexShrink: 0 },
 } as const
 
-function TableHead() {
+function TableHead({
+  allChecked,
+  indeterminate,
+  onToggleAll,
+}: {
+  allChecked: boolean
+  indeterminate: boolean
+  onToggleAll: () => void
+}) {
   return (
     <div
       style={{
@@ -776,6 +1271,14 @@ function TableHead() {
         color: '#8C7B6B',
       }}
     >
+      <span style={COL_STYLES.check}>
+        <RowCheckbox
+          checked={allChecked}
+          indeterminate={indeterminate}
+          onClick={onToggleAll}
+          ariaLabel="Select all visible rows"
+        />
+      </span>
       <span style={COL_STYLES.avatar} />
       <span style={COL_STYLES.contact}>Contact</span>
       <span style={COL_STYLES.roles}>Roles</span>
@@ -786,6 +1289,75 @@ function TableHead() {
       <span style={COL_STYLES.link}>Link</span>
       <span style={COL_STYLES.overflow} />
     </div>
+  )
+}
+
+// HOR-143: small checkbox visual reused across header + rows. We don't use
+// a native <input> here because the parchment palette and 16px square spec
+// match the existing AddToListSheet's tick look — keeps the visual family
+// consistent. Indeterminate is the "some-but-not-all-visible-selected" state.
+function RowCheckbox({
+  checked,
+  indeterminate = false,
+  onClick,
+  ariaLabel,
+}: {
+  checked: boolean
+  indeterminate?: boolean
+  onClick: () => void
+  ariaLabel: string
+}) {
+  return (
+    <button
+      type="button"
+      role="checkbox"
+      aria-checked={indeterminate ? 'mixed' : checked}
+      aria-label={ariaLabel}
+      onClick={(e) => {
+        e.stopPropagation()
+        onClick()
+      }}
+      onMouseDown={(e) => e.stopPropagation()}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: 18,
+        height: 18,
+        padding: 0,
+        borderRadius: 4,
+        border: checked || indeterminate
+          ? '1px solid #3D5246'
+          : '1px solid rgba(140,123,107,0.4)',
+        background: checked || indeterminate ? '#3D5246' : '#FFFFFF',
+        color: '#FAF7F2',
+        cursor: 'pointer',
+        flexShrink: 0,
+      }}
+    >
+      {indeterminate ? (
+        <span
+          style={{
+            display: 'block',
+            width: 8,
+            height: 2,
+            background: '#FAF7F2',
+            borderRadius: 1,
+          }}
+        />
+      ) : checked ? (
+        <svg viewBox="0 0 16 16" width={11} height={11} aria-hidden>
+          <path
+            d="M3 8.5 6.5 12 13 4.5"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      ) : null}
+    </button>
   )
 }
 
@@ -800,6 +1372,8 @@ function ContactRow({
   defaultLinkUrl,
   onClick,
   onSoftDelete,
+  isSelected,
+  onToggleSelect,
 }: {
   contact: ContactGridRow
   identity: ReturnType<typeof deriveIdentity>
@@ -809,6 +1383,8 @@ function ContactRow({
   defaultLinkUrl: string | null
   onClick: () => void
   onSoftDelete: (id: string) => void
+  isSelected: boolean
+  onToggleSelect: () => void
 }) {
   const isAnon = identity === 'anonymous'
   const counts = roleCounts(contact.roles)
@@ -846,8 +1422,17 @@ function ContactRow({
         borderBottom: isLast ? 'none' : '1px solid rgba(140,123,107,0.1)',
         cursor: 'pointer',
         transition: 'background 120ms',
+        background: isSelected ? 'rgba(61,82,70,0.04)' : undefined,
       }}
     >
+      {/* HOR-143: select checkbox */}
+      <span style={COL_STYLES.check}>
+        <RowCheckbox
+          checked={isSelected}
+          onClick={onToggleSelect}
+          ariaLabel={`Select ${contact.first_name ?? contact.email ?? contact.id}`}
+        />
+      </span>
       {/* Avatar */}
       <div style={{ ...COL_STYLES.avatar, position: 'relative' }}>
         <PersonAvatar
