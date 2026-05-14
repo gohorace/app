@@ -20,6 +20,9 @@ This document is the input to the implementation pass: kill what shouldn't exist
 | 6 | `alert_form_submit` | Identified contact submits a tracked form | Push **+** Email | Owner agent | 30-min dedup | `apps/web/src/lib/notifications/push.ts` |
 | 7 | `alert_return_visit` | Contact returns (score-gated when `push_alert_mode = 'all'`) | Push **+** Email | Owner agent | 30-min dedup | `apps/web/src/lib/notifications/push.ts` |
 | 8 | SMS: threshold / form submit / return visit | Same triggers as alerts 5–7 | SMS (Twilio) | `agent_phone` | 24h dedup | `apps/web/src/lib/notifications/sms.ts` — **dormant, no UI surface** |
+| 9 | `alert_inspection_capture` ([HOR-153](https://linear.app/gohorace/issue/HOR-153)) | Prospect submits the public capture form at `/i/<token>` | Push | Owner agent | 30-min dedup, suppressed on `is_new_scan=false` (repeat submit) | `apps/web/src/lib/notifications/push.ts` |
+| 10 | `alert_inspection_revisit` ([HOR-154](https://linear.app/gohorace/issue/HOR-154)) | Captured contact triggers `alert_return_visit` or `alert_score_threshold` within 30 days of their inspection scan | Push | Owner agent | 30-min dedup; mutually exclusive with the generic threshold/return-visit alerts for the same contact | `apps/web/src/lib/scoring/engine.ts` → `apps/web/src/lib/notifications/push.ts` |
+| 11 | Daily briefing — "Open homes yesterday" section ([HOR-155](https://linear.app/gohorace/issue/HOR-155)) | Daily-briefing cron, when the agent ran an inspection in the previous 24h | Email subsection (inside the existing daily brief) | Same recipients as the daily brief | Daily, no separate dedup | `apps/web/src/app/api/cron/daily-briefing/route.ts` → `apps/web/src/lib/notifications/email.ts` |
 
 ### Per-alert detail (full audit template)
 
@@ -90,7 +93,68 @@ These three alerts share a pattern and the same principles violations.
 | Opt-out | Mode-based only (`threshold | all | hourly_digest`) — no granular toggle | Same | Same |
 | Last reviewed | Pre-brief; copy hasn't been touched recently | Same | Same |
 
-#### 8. SMS variants (dormant)
+#### 9. `alert_inspection_capture` (Doorstep)
+
+* **Trigger:** prospect submits the public capture form at `/i/<token>` after scanning the QR. Fires once per fresh scan (RPC returns `is_new_scan=false` on repeat submits → push suppressed).
+* **Channel:** Push only (push has no sign-off per copy standards; the brief's *Seize the moment — Horace* lives on email).
+* **Recipient:** owner agent (the agent who created the inspection).
+* **Frequency:** 30-min dedup per (agent, contact, type) via `notification_log`.
+* **Current push copy:**
+  * **Title:** *"Horace just met [Name] at [Address]"* (brief verbatim).
+  * **Body:** *"Worth a quick hello before they leave."*
+* **Sender identity:** first-person Horace.
+* **Opt-out:** mode-based (`push_alert_mode = 'threshold' | 'all' | 'hourly_digest'`). No granular Doorstep-only toggle — picks up the same gating as the other push alerts.
+* **Last reviewed:** 2026-05-14, current.
+* **Logged as:** `'alert_inspection_capture'` in `notification_log`.
+
+#### 10. `alert_inspection_revisit` (Doorstep)
+
+* **Trigger:** scoring engine detects a `return_visit` or `score_threshold` cross for a contact whose most recent `inspection_scans` row is within the last 30 days. Replaces the generic `alert_return_visit` / `alert_score_threshold` push for that contact + window.
+* **Channel:** Push.
+* **Recipient:** owner agent.
+* **Frequency:** 30-min dedup. Mutually exclusive with the generic return/threshold alerts for the same contact — the variant fires *instead of*, not alongside.
+* **Current push copy:**
+  * **Title:** *"[Name] from the [Street] open home is back"*.
+  * **Body:** *"[behaviour]. Worth a call."* — behaviour is computed from the triggering event: `property_view` → *"looking at properties"*, page/scroll on `/appraisal` → *"back on your appraisal page"*, anything else → *"back on your site"*.
+* **Sender identity:** first-person Horace.
+* **Opt-out:** same mode-based gate as alerts 5–7.
+* **Last reviewed:** 2026-05-14, current.
+* **Logged as:** `'alert_inspection_revisit'` in `notification_log`.
+
+#### 11. Daily briefing — "Open homes yesterday" (Doorstep digest section)
+
+* **Trigger:** existing daily-briefing cron at `0 7 * * *` UTC, agents whose local hour matches `daily_briefing_hour`. The new RPC `get_daily_briefing_inspections(p_agent_id, p_since=24h-ago)` returns `[]` for agents who didn't run any inspections, in which case the section is omitted.
+* **Channel:** email subsection inside the existing daily brief.
+* **Recipient:** same as the daily brief (`briefing_emails[]` with fallback to `agent_email`).
+* **Frequency:** daily; included whenever there's at least one inspection in the lookback window.
+* **Current copy** (per inspection block):
+  > **[Address]** — [day, time]
+  > *N scans. X already back on your site.*
+  >
+  > - [Name 1] — back on your site
+  > - [Name 2] — no revisit yet
+* **Sign-off:** carries the existing *Seize the moment — Horace* from the parent email.
+* **Sender identity:** first-person Horace.
+* **Opt-out:** inherits the daily brief's `daily_briefing_enabled` toggle.
+* **Last reviewed:** 2026-05-14, current.
+* **Note on heading wording:** "Open homes yesterday" uses the prospect-event register even though the rest of the agent surface says "Inspections". v1 only writes `inspection_type='open_home'`; when v2 ships private inspections this branches on `inspection_type`.
+
+#### 12. Doorstep prospect-facing strings (`/i/[token]` capture page)
+
+These are **not Horace-voiced**. The capture page is prospect-facing, agent-branded — Horace is invisible. Strings are recorded here so future copy reviews don't accidentally "fix" them.
+
+* **H1:** *"Sign in to today's open home"*
+* **Subhead:** *"So [Agent first name] can follow up."*
+* **Submit button:** *"Done"*
+* **Success state:** *"Thanks. [Agent first name] will be in touch."*
+* **404:** *"This open home isn't accepting sign-ins."* + *"Have a chat to the agent for the right link."*
+* **Sign-off:** none. Horace wordmark, Horace footer, and any *"Powered by Horace"* line are all explicitly forbidden on this surface.
+* **Sender identity:** the agent's, conveyed via avatar + full name at the top of the page.
+* **Last reviewed:** 2026-05-14, current.
+
+#### 13. SMS variants (dormant)
+
+*(Section number bumped from 8 when Doorstep alerts 9–12 landed; inventory table row stays at #8.)*
 
 * **Trigger:** same conditions as alerts 5–7.
 * **Channel:** SMS (Twilio).
