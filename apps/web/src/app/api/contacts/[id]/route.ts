@@ -141,29 +141,37 @@ export async function PATCH(
     if (key in body) update[key] = body[key]
   }
 
-  // HOR-130 follow-up: per-contact notes. The contacts table already has
-  // a `notes` column from v0 (no migration needed). Trim and accept null
-  // for the clear-the-note case — same shape NotesPanel sends.
-  if ('notes' in body) {
+  // HOR-130 follow-up: per-contact notes. Stored at contacts.metadata.notes
+  // (mirrors the properties.metadata.notes pattern in HOR-130). The types
+  // file claims a top-level `notes` column, but the actual migrations never
+  // created one — metadata is the safe home.
+  //
+  // Validated separately from add_role/remove_role_id because that block
+  // does its own read-modify-write on metadata. We piggy-back into that
+  // block below when the only mutation is notes.
+  const hasNotesUpdate = 'notes' in body
+  let notesValue: string | null | undefined = undefined
+  if (hasNotesUpdate) {
     const raw = body.notes
     if (raw === null) {
-      update.notes = null
+      notesValue = null
     } else if (typeof raw === 'string') {
       const trimmed = raw.slice(0, 2000).trim()
-      update.notes = trimmed.length === 0 ? null : trimmed
+      notesValue = trimmed.length === 0 ? null : trimmed
     } else {
       return NextResponse.json({ error: 'Invalid notes value' }, { status: 400 })
     }
   }
 
-  // HOR-125: role mutations via metadata.roles. Two shapes:
+  // HOR-125 + HOR-130: metadata-bucket mutations. Three flavours, all
+  // sharing the same read-modify-write so concurrent updates don't clobber
+  // unrelated keys:
   //   { add_role: { type: 'seller'|'buyer', property_id: uuid, date? } }
   //   { remove_role_id: uuid }
-  // Both require reading the current metadata to compute the merged result —
-  // we don't want to clobber other metadata keys (e.g. CRM-sync fields).
+  //   { notes: string | null }   → metadata.notes
   const hasAddRole    = 'add_role' in body && body.add_role !== null
   const hasRemoveRole = 'remove_role_id' in body && body.remove_role_id !== null
-  if (hasAddRole || hasRemoveRole) {
+  if (hasAddRole || hasRemoveRole || hasNotesUpdate) {
     const { data: current, error: readErr } = await admin
       .from('contacts')
       .select('metadata')
@@ -197,6 +205,13 @@ export async function PATCH(
         return NextResponse.json({ error: 'Invalid remove_role_id' }, { status: 400 })
       }
       nextMetadata = withRoleRemoved(nextMetadata, idCheck.data)
+    }
+    if (hasNotesUpdate) {
+      if (notesValue === null) {
+        delete nextMetadata.notes
+      } else {
+        nextMetadata = { ...nextMetadata, notes: notesValue }
+      }
     }
 
     update.metadata = nextMetadata

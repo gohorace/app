@@ -27,7 +27,7 @@ export default async function ContactDetailPage({ params }: { params: { id: stri
   ] = await Promise.all([
     admin
       .from('contacts')
-      .select('id, first_name, last_name, email, phone, score, last_seen_at, identified_at, suburb, source, metadata, notes, residence_property_id, deleted_at')
+      .select('id, first_name, last_name, email, phone, score, last_seen_at, identified_at, suburb, source, metadata, residence_property_id, deleted_at')
       .eq('id', params.id)
       .eq('agent_id', agent.id)
       .is('deleted_at', null)
@@ -160,7 +160,11 @@ export default async function ContactDetailPage({ params }: { params: { id: stri
         identifiedAt: contact.identified_at,
         score:        contact.score,
         source:       contact.source,
-        notes:        contact.notes ?? null,
+        // Notes persist on contacts.metadata.notes (the types file claims a
+        // top-level `notes` column but the migrations never created one;
+        // metadata has been on contacts since the original schema so it's
+        // the safe home).
+        notes:        ((contact.metadata as Record<string, unknown> | null)?.notes as string | undefined) ?? null,
       }}
       identity={identity}
       initials={initials}
