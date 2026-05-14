@@ -4,6 +4,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { Sidebar } from '@/components/dashboard/sidebar'
 import { MobileNav } from '@/components/dashboard/mobile-nav'
 import { PairingOverlay } from '@/components/dashboard/pairing-overlay'
+import { NotificationsSlideOver } from '@/components/notifications/slide-over'
+import { fetchAttentionCount } from '@/lib/notifications/attention-count'
 import { requireActiveSubscription } from '@/lib/billing/gate'
 
 export const dynamic = 'force-dynamic'
@@ -42,26 +44,13 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   const workspaceName = workspace?.name ?? 'My Agency'
 
-  // Attention count for the bell badge (admin client bypasses RLS for read-only count).
-  // V1 definition: high-intent contacts (score >= 50) PLUS unread notification_log
-  // entries with display copy (HOR-77 in-app feed). Continues to expand when other
-  // dispatcher surfaces (Worth-watching, etc.) ship.
+  // Attention count for the sidebar bell badge and the BellButton in
+  // page headers. V1 definition lives in `lib/notifications/attention-count.ts`
+  // — high-intent contacts (score >= 50) + unread notification_log entries
+  // with display copy. Slice B will broaden the unread half once
+  // moment_type lands.
   const admin = createAdminClient()
-  const [{ count: highIntentContacts }, { count: unreadNotifications }] = await Promise.all([
-    admin
-      .from('contacts')
-      .select('*', { count: 'exact', head: true })
-      .eq('agent_id', agent.id)
-      .is('deleted_at', null)
-      .gte('score', 50),
-    admin
-      .from('notification_log')
-      .select('*', { count: 'exact', head: true })
-      .eq('agent_id', agent.id)
-      .is('read_at', null)
-      .not('title', 'is', null),
-  ])
-  const attentionCount = (highIntentContacts ?? 0) + (unreadNotifications ?? 0)
+  const attentionCount = await fetchAttentionCount(admin, agent.id)
 
   const trialDaysLeft = computeTrialDaysLeft(
     workspace?.subscription_status,
@@ -97,6 +86,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
         * page is running in standalone display mode. Inert in all
         * other contexts. */}
       <PairingOverlay />
+
+      {/* Notifications stream slide-over (desktop only). Listens for
+        * `location.hash === '#notifications'` and renders a 420px panel
+        * from the right edge over the underlying surface. The bell
+        * button in each page's topbar toggles the hash. */}
+      <NotificationsSlideOver />
     </div>
   )
 }

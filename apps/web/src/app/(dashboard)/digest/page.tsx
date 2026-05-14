@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { DigestView, type DigestViewModel } from '@/components/digest/digest-view'
 import { type DigestSignal } from '@/components/digest/signal-card'
 import { intentForScore, guidanceForEventType } from '@/lib/design/intent'
+import { fetchAttentionCount } from '@/lib/notifications/attention-count'
 import {
   generateContactInsight,
   generateBriefingNarrative,
@@ -32,7 +33,8 @@ export default async function DigestPage({
   // can never accidentally see mock data, regardless of URL.
   const allowDemo = process.env.VERCEL_ENV !== 'production'
   if (searchParams.demo === '1' && allowDemo) {
-    return <DigestView model={demoModel()} />
+    // 3 mirrors the bell-badge count in the design comp.
+    return <DigestView model={{ ...demoModel(), attentionCount: 3 }} />
   }
 
   const supabase = await createClient()
@@ -49,6 +51,8 @@ export default async function DigestPage({
   if (!agent) {
     return <DigestView model={emptyModel(null)} />
   }
+
+  const attentionCount = await fetchAttentionCount(admin, agent.id)
 
   // HOR-138: workspace site URL for the "Post on social" activity prompt.
   const { data: settings } = await admin
@@ -70,7 +74,7 @@ export default async function DigestPage({
   const leads = rawLeads ?? []
 
   if (leads.length === 0) {
-    return <DigestView model={emptyModel(websiteUrl)} />
+    return <DigestView model={{ ...emptyModel(websiteUrl), attentionCount }} />
   }
 
   // ── Enrich each lead in parallel: events + suburb + AI insight ───────────
@@ -204,6 +208,7 @@ export default async function DigestPage({
     },
     rail: realRail(),
     websiteUrl,
+    attentionCount,
   }
 
   return <DigestView model={model} />

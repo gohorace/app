@@ -28,6 +28,12 @@ interface AddToListSheetProps {
   contactIds?: string[]
   /** Caller display string for the sheet header — e.g. the contact name. */
   subjectLabel?: string
+  /**
+   * Fired after a successful add (toggle-on or new-list+add). Used by the
+   * notifications stream to transition the moment card into its resolved
+   * confirmation state. Receives the list that was just added to.
+   */
+  onAdded?: (list: ListRecord) => void
 }
 
 export function AddToListSheet({
@@ -36,6 +42,7 @@ export function AddToListSheet({
   contactId,
   contactIds,
   subjectLabel,
+  onAdded,
 }: AddToListSheetProps) {
   const subjectIds = contactIds ?? (contactId ? [contactId] : [])
   const isBatch = (contactIds?.length ?? 0) > 1
@@ -87,12 +94,14 @@ export function AddToListSheet({
       // Batch always *adds* — we don't toggle off when N > 1 because that's
       // ambiguous. HOR-143 may add a "remove from list" separately.
       await withPending(list.id, () => addToList(list.id, subjectIds))
+      onAdded?.(list)
       return
     }
     if (list.contact_is_member) {
       await withPending(list.id, () => removeFromList(list.id, subjectIds[0]))
     } else {
       await withPending(list.id, () => addToList(list.id, subjectIds))
+      onAdded?.(list)
     }
   }
 
@@ -106,6 +115,7 @@ export function AddToListSheet({
       // Immediately add the subject to the new list.
       if (subjectIds.length > 0) {
         await addToList(list.id, subjectIds)
+        onAdded?.(list)
       }
       setNewName('')
       setCreating(false)
