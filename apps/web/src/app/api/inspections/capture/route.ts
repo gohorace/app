@@ -220,10 +220,21 @@ export async function POST(req: NextRequest) {
   }
   const t3 = Date.now()
 
-  // 8. Done. Latency telemetry: session, rpc, push.
+  // 8. Done. Latency telemetry — structured JSON so HOR-158's metrics
+  // can be computed from Vercel log search (filter on doorstep_event).
   console.log(
-    `[capture] ok contact=${result.contact_id} new_scan=${result.is_new_scan} ` +
-      `session=${t1 - t0}ms rpc=${t2 - t1}ms push=${t3 - t2}ms total=${t3 - t0}ms`,
+    JSON.stringify({
+      doorstep_event: 'inspection_capture_ok',
+      inspection_token: token,
+      contact_id: result.contact_id,
+      agent_id: result.agent_id,
+      is_new_scan: result.is_new_scan,
+      session_ms: t1 - t0,
+      rpc_ms: t2 - t1,
+      push_ms: t3 - t2,
+      total_ms: t3 - t0,
+      ts: new Date().toISOString(),
+    }),
   )
 
   return NextResponse.json({ ok: true }, { status: 200 })
