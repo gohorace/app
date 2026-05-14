@@ -269,7 +269,7 @@ function Section({
                 </div>
                 <div style={{ fontSize: 12, color: '#8C7B6B' }}>{formatScheduledAt(row.scheduled_at)}</div>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
                 <code
                   style={{
                     fontSize: 11,
@@ -283,9 +283,20 @@ function Section({
                 >
                   {publicUrl(row.token)}
                 </code>
-                <span style={{ fontSize: 10, color: '#8C7B6B' }}>
-                  Status: {row.status}
-                </span>
+                <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                  <a
+                    href={`/api/inspections/${row.id}/qr`}
+                    style={{
+                      fontSize: 11,
+                      color: '#C4622D',
+                      textDecoration: 'none',
+                      fontWeight: 500,
+                    }}
+                  >
+                    Download QR
+                  </a>
+                  <span style={{ fontSize: 10, color: '#8C7B6B' }}>{row.status}</span>
+                </div>
               </div>
             </div>
           ))}
