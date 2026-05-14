@@ -1,8 +1,9 @@
 import Link from 'next/link'
-import { Sparkles, ListPlus, Bookmark } from 'lucide-react'
+import { Sparkles } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { BUILTIN_LISTS } from '@/lib/lists/builtin'
+import { ListRow } from '@/components/lists/list-row'
 
 export const dynamic = 'force-dynamic'
 
@@ -223,127 +224,27 @@ export default async function ListsPage() {
               background: '#FAF7F2',
               border: '1px solid rgba(140,123,107,0.2)',
               borderRadius: 10,
-              overflow: 'hidden',
+              // HOR-168: intentionally not `overflow: hidden` — the
+              // RowOverflowMenu popover renders below its trigger via
+              // position:absolute and would otherwise be clipped. The last
+              // row has no border-bottom, so nothing bleeds past the
+              // rounded corners visually.
             }}
           >
-            {savedLists.map((l, idx) => {
-              const isLast = idx === savedLists.length - 1
-              const isSaved = l.kind === 'saved_filter'
-              const count = isSaved ? null : (memberCount.get(l.id) ?? 0)
-              return (
-                <Link
-                  key={l.id}
-                  href={`/contacts?list_id=${l.id}`}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 14,
-                    padding: '14px 18px',
-                    borderBottom: isLast ? 'none' : '1px solid rgba(140,123,107,0.1)',
-                    textDecoration: 'none',
-                    color: 'inherit',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <span
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      width: 28,
-                      height: 28,
-                      borderRadius: 7,
-                      background: isSaved ? 'rgba(61,82,70,0.1)' : 'rgba(196,98,45,0.08)',
-                      color: isSaved ? '#3D5246' : '#C4622D',
-                      flexShrink: 0,
-                    }}
-                  >
-                    {isSaved ? (
-                      <Bookmark style={{ width: 13, height: 13 }} aria-hidden />
-                    ) : (
-                      <ListPlus style={{ width: 13, height: 13 }} aria-hidden />
-                    )}
-                  </span>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'baseline',
-                        gap: 8,
-                        flexWrap: 'wrap',
-                      }}
-                    >
-                      <span
-                        style={{
-                          fontSize: 14,
-                          fontWeight: 500,
-                          color: '#1A1612',
-                        }}
-                      >
-                        {l.name}
-                      </span>
-                      <span
-                        style={{
-                          fontSize: 10,
-                          fontWeight: 600,
-                          letterSpacing: '0.08em',
-                          textTransform: 'uppercase',
-                          color: isSaved ? '#3D5246' : '#C4622D',
-                        }}
-                      >
-                        {isSaved ? 'Saved view' : 'List'}
-                      </span>
-                    </div>
-                    {l.description && (
-                      <div
-                        style={{
-                          fontSize: 12,
-                          color: '#8C7B6B',
-                          marginTop: 2,
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        {l.description}
-                      </div>
-                    )}
-                  </div>
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 14,
-                      flexShrink: 0,
-                    }}
-                  >
-                    {count !== null && (
-                      <span
-                        style={{
-                          fontFamily: 'var(--font-mono)',
-                          fontSize: 11,
-                          color: '#5E5246',
-                          background: 'rgba(140,123,107,0.12)',
-                          padding: '2px 8px',
-                          borderRadius: 9999,
-                        }}
-                      >
-                        {count} {count === 1 ? 'member' : 'members'}
-                      </span>
-                    )}
-                    <span
-                      style={{
-                        fontFamily: 'var(--font-mono)',
-                        fontSize: 11,
-                        color: '#8C7B6B',
-                      }}
-                    >
-                      {formatRelative(l.updated_at)}
-                    </span>
-                  </div>
-                </Link>
-              )
-            })}
+            {savedLists.map((l, idx) => (
+              <ListRow
+                key={l.id}
+                isLast={idx === savedLists.length - 1}
+                list={{
+                  id: l.id,
+                  name: l.name,
+                  description: l.description,
+                  kind: l.kind as 'manual' | 'saved_filter',
+                  updated_at: l.updated_at,
+                  memberCount: l.kind === 'manual' ? (memberCount.get(l.id) ?? 0) : null,
+                }}
+              />
+            ))}
           </div>
         )}
       </div>
