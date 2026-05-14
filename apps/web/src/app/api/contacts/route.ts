@@ -3,6 +3,38 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveResidence, type SelectedAddressInput } from '@/lib/contacts/residence'
 
+/**
+ * HOR-137 — GET /api/contacts
+ *
+ * Lists the caller's contacts. Used by AttachContactDialog (Property Detail)
+ * and any future surface that needs a contact picker. Capped at 200; the
+ * picker filters client-side.
+ */
+export async function GET(_req: NextRequest) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const admin = createAdminClient()
+  const { data: agent } = await admin
+    .from('agents')
+    .select('id')
+    .eq('user_id', user.id)
+    .maybeSingle()
+  if (!agent) return NextResponse.json({ error: 'Agent not found' }, { status: 404 })
+
+  const { data: contacts, error } = await admin
+    .from('contacts')
+    .select('id, first_name, last_name, email, phone, score, last_seen_at')
+    .eq('agent_id', agent.id)
+    .is('deleted_at', null)
+    .order('score', { ascending: false })
+    .limit(200)
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ contacts: contacts ?? [] })
+}
+
 export async function POST(req: NextRequest) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
