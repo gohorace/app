@@ -48,6 +48,10 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/login') ||
     pathname.startsWith('/signup') ||
     pathname.startsWith('/check-email') ||
+    // HOR-201: /invite/accept/[token] must be reachable pre-auth — the common
+    // case is a brand-new invitee who doesn't have an account yet. Without
+    // this, the magic-link send CTA is gated behind /login and the flow stalls.
+    pathname.startsWith('/invite/') ||
     pathname.startsWith('/auth/callback') ||
     pathname.startsWith('/api/auth') ||
     pathname.startsWith('/api/t') ||

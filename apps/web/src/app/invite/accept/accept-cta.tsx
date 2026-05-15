@@ -2,8 +2,11 @@
  * HOR-100 — Client CTA for the invite-accept page.
  *
  * Sends a magic link to the invited email via Supabase Auth. The
- * `emailRedirectTo` carries `invite_id` so that /auth/callback can
- * call accept_workspace_invite() once the session is established.
+ * `emailRedirectTo` carries the invite id as a URL **path segment**
+ * (HOR-201) so it survives the verify → redirect round-trip even when
+ * a Supabase Redirect URLs allowlist or mail scanner would strip query
+ * params. The path-based callback at /auth/callback/invite/[id] then
+ * calls accept_workspace_invite() once the session is established.
  *
  * shouldCreateUser is true — the invited email may not exist yet.
  */
@@ -29,9 +32,11 @@ export function AcceptInviteCta({ inviteId, email }: Props) {
     setError(null)
 
     const supabase = createClient()
-    const callback = new URL('/auth/callback', window.location.origin)
-    callback.searchParams.set('invite_id', inviteId)
-    callback.searchParams.set('redirectTo', '/dashboard')
+    // HOR-201: invite_id rides in the path, not the query string.
+    const callback = new URL(
+      `/auth/callback/invite/${encodeURIComponent(inviteId)}`,
+      window.location.origin,
+    )
 
     const { error: sendErr } = await supabase.auth.signInWithOtp({
       email,
