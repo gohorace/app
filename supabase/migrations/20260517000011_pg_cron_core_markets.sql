@@ -18,27 +18,35 @@
 -- 1. pg_cron + pg_net extensions enabled in the Supabase project
 --    (Dashboard → Database → Extensions). Requires superuser — can't
 --    be done via app migrations.
--- 2. Two Postgres parameters set on the database (Dashboard →
---    Database → Settings → Database Settings, or via SQL):
 --
---      ALTER DATABASE postgres SET app.cron_worker_url =
---        'https://gohorace.com/api/cron/process-core-market-imports';
+-- 2. Two Vault secrets set on the project (Dashboard → Project Settings
+--    → Vault, or via SQL editor as service_role):
 --
---      ALTER DATABASE postgres SET app.cron_secret =
---        '<the same value as CRON_SECRET env var on Vercel>';
+--      SELECT vault.create_secret(
+--        'https://gohorace.com/api/cron/process-core-market-imports',
+--        'cron_worker_url',
+--        'Core Markets worker URL — HOR-193'
+--      );
+--      SELECT vault.create_secret(
+--        '<the same value as CRON_SECRET env var on Vercel>',
+--        'cron_secret',
+--        'Bearer token for Horace cron routes — shared by all /api/cron/*'
+--      );
 --
---    Both must be set BEFORE this migration applies, otherwise the
---    scheduled job will fire silently into thin air.
+--    Supabase's hosted Postgres doesn't grant superuser, so we can't
+--    use ALTER DATABASE … SET for these. Vault is the canonical
+--    Supabase pattern — encrypted at rest, looked up at cron-fire
+--    time via the vault.decrypted_secrets view.
 --
--- If either prereq is missing the migration STILL applies cleanly
--- (we don't probe), but the cron will no-op until they're in place.
--- See docs/cron-pg_cron-setup.md (TODO post-merge).
+-- If either secret is missing, current_setting fallback returns NULL,
+-- the cron body's http_post call gets a NULL url, and pg_net silently
+-- drops the request. The migration applies cleanly regardless; setting
+-- the secrets later un-stalls the schedule on the next tick.
 -- ============================================================
 
--- pg_cron and pg_net live in the `cron` and `net` schemas respectively;
--- both are created by their extensions. We just need our search_path
--- to find them while we write the schedule.
-SET LOCAL search_path = public, cron, net;
+-- pg_cron, pg_net, vault live in their own schemas; we add them to
+-- search_path so the schedule body and our DO block find them.
+SET LOCAL search_path = public, cron, net, vault;
 
 -- Idempotent: drop any prior schedule with the same name before
 -- re-creating. cron.unschedule(name) raises if the name doesn't
@@ -55,14 +63,18 @@ END $$;
 -- is sub-millisecond. The actual import work happens inside the
 -- Next.js route, which has up to 60s on Vercel Hobby (the route sets
 -- maxDuration to make this explicit).
+--
+-- The URL + secret are looked up from Vault on every fire. SECURITY
+-- DEFINER is implicit — cron jobs run as the user who scheduled them
+-- (the `postgres` role here), which has SELECT on vault.decrypted_secrets.
 SELECT cron.schedule(
   'process-core-market-imports',
   '* * * * *',
   $cron$
     SELECT net.http_post(
-      url := current_setting('app.cron_worker_url', true),
+      url := (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'cron_worker_url'),
       headers := jsonb_build_object(
-        'Authorization', 'Bearer ' || current_setting('app.cron_secret', true),
+        'Authorization', 'Bearer ' || (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'cron_secret'),
         'Content-Type',  'application/json'
       ),
       body := '{}'::jsonb,
