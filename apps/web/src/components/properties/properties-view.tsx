@@ -7,6 +7,7 @@ import {
   BookmarkPlus,
   ChevronDown,
   Clock,
+  Link2,
   List,
   Map,
   MapPin,
@@ -26,6 +27,8 @@ import {
   type AvatarStackPerson,
 } from '@/lib/design/badges'
 import { AddPropertyModal } from './add-property-modal'
+import { EmptyNoCoreMarket } from './empty-no-core-market'
+import { PropertiesMap, type MapProperty } from './properties-map'
 
 export interface PropertyGridRow {
   id: string
@@ -40,18 +43,44 @@ export interface PropertyGridRow {
   lastActivityAt: string | null
   linkedContacts: AvatarStackPerson[]
   totalLinkedCount: number
+  /** HOR-195: lat/lng for the map view. Null when unavailable (pre-G-NAF rows). */
+  latitude:  number | null
+  longitude: number | null
+  /** HOR-195: full names of linked contacts so search can match by person. */
+  linkedContactNames: string[]
+  /** HOR-195: street_name for the street-prefix filter. */
+  streetName: string | null
+}
+
+/** HOR-195: per-agent core_markets row, passed in from the server page. */
+export interface CoreMarketSummary {
+  id:            string
+  locality_pid:  string
+  locality_name: string
+  state_abbrev:  string
+  /** Optional centre — used by the map view as a fallback if no plottable properties. */
+  latitude:      number | null
+  longitude:     number | null
 }
 
 type Tab = 'all' | 'listed' | 'appraising' | 'watching' | 'sold'
+type ViewMode = 'list' | 'map'
 
 type TimeWindow = 'Active anytime' | 'Today' | 'This week' | 'This month' | 'Ever'
 const TIME_WINDOWS: TimeWindow[] = ['Active anytime', 'Today', 'This week', 'This month', 'Ever']
+
+type LinkedFilter = 'All' | 'Linked' | 'Unlinked'
+const LINKED_OPTIONS: LinkedFilter[] = ['All', 'Linked', 'Unlinked']
 
 interface SecondaryFilters {
   list:      'All lists'
   intensity: 'Any' | 'High' | 'Medium' | 'Low'
   time:      TimeWindow
   suburb:    string  // 'All suburbs' or a suburb name
+  /** HOR-195: street name prefix filter (case-insensitive). */
+  street:    string
+  /** HOR-195: linked-contact presence filter. */
+  linked:    LinkedFilter
 }
 
 const DEFAULT_FILTERS: SecondaryFilters = {
@@ -59,6 +88,8 @@ const DEFAULT_FILTERS: SecondaryFilters = {
   intensity: 'Any',
   time:      'Active anytime',
   suburb:    'All suburbs',
+  street:    '',
+  linked:    'All',
 }
 
 const HOR_137_TIME_WINDOW_MS: Record<Exclude<TimeWindow, 'Active anytime' | 'Ever'>, number> = {
@@ -81,12 +112,20 @@ interface Props {
   initialQ?: string
   /** When true, the Add Property modal opens on mount (used by /properties/new). */
   defaultModalOpen?: boolean
+  /** HOR-195: current agent's active core markets. Empty → full-screen empty state. */
+  coreMarkets?: CoreMarketSummary[]
 }
 
-export function PropertiesView({ properties, initialQ = '', defaultModalOpen = false }: Props) {
+export function PropertiesView({
+  properties,
+  initialQ = '',
+  defaultModalOpen = false,
+  coreMarkets = [],
+}: Props) {
   const router = useRouter()
   const [search, setSearch] = useState(initialQ)
   const [tab, setTab] = useState<Tab>('all')
+  const [view, setView] = useState<ViewMode>('list')
   const [filters, setFilters] = useState<SecondaryFilters>(DEFAULT_FILTERS)
   const [addOpen, setAddOpen] = useState(defaultModalOpen)
   // HOR-137: optimistic soft-delete state (mirrors the Contacts grid).
@@ -96,11 +135,23 @@ export function PropertiesView({ properties, initialQ = '', defaultModalOpen = f
     [properties, deletedIds],
   )
 
+  // HOR-195: brief — "If agent has no core market set, Properties screen
+  // shows a primary empty state (not a dismissible banner). Single CTA
+  // opens the suburb picker. Disappears once at least one core market is
+  // set. Returns if agent removes their last core market."
+  // Branch happens in the JSX below to keep hook order stable across renders.
+  const noMarkets = coreMarkets.length === 0
+
+  // HOR-195: suburb dropdown source — union of agent's core_markets
+  // localities (so they're selectable even before imports populate
+  // properties) AND any other suburbs already present on properties
+  // (legacy CSV imports, listing scrapes).
   const suburbOptions = useMemo(() => {
     const set = new Set<string>()
+    for (const m of coreMarkets) set.add(m.locality_name)
     for (const p of visibleProperties) if (p.suburb) set.add(p.suburb)
     return ['All suburbs', ...Array.from(set).sort()]
-  }, [visibleProperties])
+  }, [coreMarkets, visibleProperties])
 
   const tabCounts = useMemo(() => ({
     all:        visibleProperties.length,
@@ -129,12 +180,35 @@ export function PropertiesView({ properties, initialQ = '', defaultModalOpen = f
     if (filters.time !== 'Active anytime') {
       rows = rows.filter((p) => passesTimeWindow(p.lastActivityAt, filters.time))
     }
+    // HOR-195: street-name prefix filter (case-insensitive). Empty string = no-op.
+    const streetPrefix = filters.street.trim().toLowerCase()
+    if (streetPrefix) {
+      rows = rows.filter((p) =>
+        (p.streetName ?? '').toLowerCase().startsWith(streetPrefix),
+      )
+    }
+    // HOR-195: linked / unlinked toggle. "Linked" = at least one
+    // contact-property reference (residence_property_id or any
+    // contact_property_relationships row, both surfaced in
+    // totalLinkedCount by the server page).
+    if (filters.linked === 'Linked') {
+      rows = rows.filter((p) => p.totalLinkedCount > 0)
+    } else if (filters.linked === 'Unlinked') {
+      rows = rows.filter((p) => p.totalLinkedCount === 0)
+    }
 
     const q = search.trim().toLowerCase()
     if (q) {
-      rows = rows.filter((p) =>
-        [p.address, p.suburb].filter(Boolean).join(' ').toLowerCase().includes(q),
-      )
+      // HOR-195: search widens to include linked contact names so an
+      // agent can find a property by its resident's name.
+      rows = rows.filter((p) => {
+        const hay = [
+          p.address,
+          p.suburb,
+          ...p.linkedContactNames,
+        ].filter(Boolean).join(' ').toLowerCase()
+        return hay.includes(q)
+      })
     }
 
     return rows
@@ -142,6 +216,9 @@ export function PropertiesView({ properties, initialQ = '', defaultModalOpen = f
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+      {noMarkets ? (
+        <EmptyNoCoreMarket />
+      ) : (
       <div style={{ flex: 1, overflowY: 'auto', padding: '28px 32px 80px' }}>
         <div style={{ maxWidth: 1200 }}>
           {/* Page header */}
@@ -180,7 +257,7 @@ export function PropertiesView({ properties, initialQ = '', defaultModalOpen = f
               </p>
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
-              <ViewToggle />
+              <ViewToggle view={view} onChange={setView} />
               <button
                 type="button"
                 onClick={() => setAddOpen(true)}
@@ -264,34 +341,52 @@ export function PropertiesView({ properties, initialQ = '', defaultModalOpen = f
             totalCount={visibleProperties.length}
           />
 
-          {/* Table */}
-          <div
-            style={{
-              background: '#FAF7F2',
-              border: '1px solid rgba(140,123,107,0.2)',
-              borderRadius: 10,
-              overflow: 'hidden',
-            }}
-          >
-            <TableHead />
-            {filtered.length === 0 ? (
-              <EmptyState onAdd={() => setAddOpen(true)} hasAny={visibleProperties.length > 0} search={search} />
-            ) : (
-              filtered.map((p, idx) => (
-                <PropertyRow
-                  key={p.id}
-                  property={p}
-                  isLast={idx === filtered.length - 1}
-                  onSoftDelete={(id) => setDeletedIds((prev) => {
-                    const next = new Set(prev)
-                    next.add(id)
-                    return next
-                  })}
-                  onClick={() => router.push(`/properties/${p.id}`)}
-                />
-              ))
-            )}
-          </div>
+          {/* List / Map content — view toggle in the header decides */}
+          {view === 'map' ? (
+            <PropertiesMap
+              properties={filtered.map((p): MapProperty => ({
+                id:         p.id,
+                address:    p.address,
+                suburb:     p.suburb,
+                latitude:   p.latitude,
+                longitude:  p.longitude,
+                engagement: p.engagement,
+              }))}
+              fallbackCenter={
+                coreMarkets[0]?.latitude != null && coreMarkets[0]?.longitude != null
+                  ? { lat: coreMarkets[0].latitude, lng: coreMarkets[0].longitude }
+                  : null
+              }
+            />
+          ) : (
+            <div
+              style={{
+                background: '#FAF7F2',
+                border: '1px solid rgba(140,123,107,0.2)',
+                borderRadius: 10,
+                overflow: 'hidden',
+              }}
+            >
+              <TableHead />
+              {filtered.length === 0 ? (
+                <EmptyState onAdd={() => setAddOpen(true)} hasAny={visibleProperties.length > 0} search={search} />
+              ) : (
+                filtered.map((p, idx) => (
+                  <PropertyRow
+                    key={p.id}
+                    property={p}
+                    isLast={idx === filtered.length - 1}
+                    onSoftDelete={(id) => setDeletedIds((prev) => {
+                      const next = new Set(prev)
+                      next.add(id)
+                      return next
+                    })}
+                    onClick={() => router.push(`/properties/${p.id}`)}
+                  />
+                ))
+              )}
+            </div>
+          )}
 
           <p
             style={{
@@ -305,6 +400,7 @@ export function PropertiesView({ properties, initialQ = '', defaultModalOpen = f
           </p>
         </div>
       </div>
+      )}
 
       {addOpen && (
         <AddPropertyModal
@@ -319,9 +415,30 @@ export function PropertiesView({ properties, initialQ = '', defaultModalOpen = f
   )
 }
 
-// ── View toggle (List | Map) ─────────────────────────────────────────────────
+// ── View toggle (List | Map) — HOR-195 wires the Map button live ─────────────
 
-function ViewToggle() {
+function ViewToggle({
+  view,
+  onChange,
+}: {
+  view: ViewMode
+  onChange: (v: ViewMode) => void
+}) {
+  const tabStyle = (active: boolean): React.CSSProperties => ({
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 5,
+    padding: '6px 11px',
+    borderRadius: 5,
+    background: active ? '#1A1612' : 'transparent',
+    color:      active ? '#FAF7F2' : '#8C7B6B',
+    fontSize: 12,
+    fontWeight: 500,
+    border: 'none',
+    cursor: 'pointer',
+    fontFamily: 'var(--font-body)',
+    transition: 'all 120ms ease-out',
+  })
   return (
     <div
       style={{
@@ -334,60 +451,21 @@ function ViewToggle() {
     >
       <button
         type="button"
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 5,
-          padding: '6px 11px',
-          borderRadius: 5,
-          background: '#1A1612',
-          color: '#FAF7F2',
-          fontSize: 12,
-          fontWeight: 500,
-          border: 'none',
-          cursor: 'pointer',
-          fontFamily: 'var(--font-body)',
-        }}
+        onClick={() => onChange('list')}
+        aria-pressed={view === 'list'}
+        style={tabStyle(view === 'list')}
       >
         <List style={{ width: 13, height: 13 }} />
         List
       </button>
       <button
         type="button"
-        disabled
-        title="Map view coming soon"
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 5,
-          padding: '6px 11px',
-          borderRadius: 5,
-          background: 'transparent',
-          color: '#8C7B6B',
-          fontSize: 12,
-          fontWeight: 500,
-          border: 'none',
-          cursor: 'not-allowed',
-          fontFamily: 'var(--font-body)',
-        }}
+        onClick={() => onChange('map')}
+        aria-pressed={view === 'map'}
+        style={tabStyle(view === 'map')}
       >
         <Map style={{ width: 13, height: 13 }} />
         Map
-        <span
-          style={{
-            fontSize: 9,
-            fontWeight: 600,
-            letterSpacing: '0.06em',
-            textTransform: 'uppercase',
-            background: 'rgba(140,123,107,0.18)',
-            color: '#8C7B6B',
-            padding: '1px 5px',
-            borderRadius: 3,
-            marginLeft: 3,
-          }}
-        >
-          soon
-        </span>
       </button>
     </div>
   )
@@ -538,6 +616,73 @@ function FilterChip({
   )
 }
 
+// HOR-195: street-name prefix typeahead chip. Renders inline as a
+// chip-shaped text input — no dropdown, just a filter-as-you-type
+// since street values are open-set.
+function StreetFilterInput({
+  value,
+  onChange,
+}: {
+  value: string
+  onChange: (v: string) => void
+}) {
+  const active = value.trim().length > 0
+  return (
+    <div
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 6,
+        padding: '4px 11px',
+        borderRadius: 6,
+        fontSize: 11.5,
+        fontWeight: 500,
+        background: active ? 'rgba(196,98,45,0.08)' : '#FAF7F2',
+        color: active ? '#C4622D' : '#5E5246',
+        border: `1px solid ${active ? 'rgba(196,98,45,0.25)' : 'rgba(140,123,107,0.22)'}`,
+        fontFamily: 'var(--font-body)',
+      }}
+    >
+      <MapPin style={{ width: 11, height: 11, opacity: 0.7 }} />
+      Street:
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="Any"
+        style={{
+          background: 'transparent',
+          border: 'none',
+          outline: 'none',
+          fontSize: 11.5,
+          fontFamily: 'var(--font-body)',
+          color: active ? '#C4622D' : '#1A1612',
+          width: 90,
+        }}
+      />
+      {active && (
+        <button
+          type="button"
+          onClick={() => onChange('')}
+          aria-label="Clear street filter"
+          style={{
+            background: 'transparent',
+            border: 'none',
+            padding: 0,
+            cursor: 'pointer',
+            fontSize: 13,
+            lineHeight: 1,
+            color: '#C4622D',
+            opacity: 0.6,
+          }}
+        >
+          ×
+        </button>
+      )}
+    </div>
+  )
+}
+
 function SecondaryFilterBar({
   filters,
   suburbOptions,
@@ -594,6 +739,22 @@ function SecondaryFilterBar({
         current={filters.suburb}
         options={suburbOptions}
         onSelect={(v) => onChange({ suburb: v })}
+      />
+      {/* HOR-195: linked / unlinked toggle */}
+      <FilterChip
+        label="Contacts"
+        Icon={Link2}
+        isActive={filters.linked !== 'All'}
+        current={filters.linked}
+        options={LINKED_OPTIONS as unknown as string[]}
+        onSelect={(v) => onChange({ linked: v as LinkedFilter })}
+      />
+      {/* HOR-195: street-name prefix typeahead. Keeps the chip layout
+          consistent but uses an inline input instead of a dropdown
+          because street values are open-set. */}
+      <StreetFilterInput
+        value={filters.street}
+        onChange={(v) => onChange({ street: v })}
       />
 
       <div
