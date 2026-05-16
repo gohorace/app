@@ -1,0 +1,175 @@
+/* Suburb picker — typeahead with chip selections.
+ * Used in onboarding (HOR-194) and Settings (HOR-196). Reuses the
+ * Horace cream/charcoal/terracotta palette from onboarding.module.css. */
+
+.container {
+  position: relative;
+  width: 100%;
+  max-width: 520px;
+}
+
+/* ── Chip rail ───────────────────────────────────────────────────── */
+.chipRail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+  min-height: 0; /* collapses cleanly when no chips */
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px 6px 12px;
+  background: var(--color-terracotta-dim);
+  border: 1px solid rgba(196, 98, 45, 0.32);
+  border-radius: 999px;
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--color-ink);
+}
+
+.chipLabel {
+  line-height: 1.1;
+}
+
+.chipPostcode {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--color-stone-aa);
+  letter-spacing: 0.02em;
+  margin-left: 4px;
+}
+
+.chipRemove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--color-stone-aa);
+  padding: 2px;
+  border-radius: 999px;
+  transition: all 120ms var(--ease-out);
+}
+
+.chipRemove:hover {
+  color: var(--color-ink);
+  background: rgba(0, 0, 0, 0.05);
+}
+
+/* ── Input ───────────────────────────────────────────────────────── */
+.inputWrap {
+  position: relative;
+}
+
+.inputIcon {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--color-stone-aa);
+  pointer-events: none;
+}
+
+.input {
+  width: 100%;
+  padding: 12px 14px 12px 40px;
+  background: var(--color-cream);
+  border: 1px solid var(--border-default);
+  border-radius: 10px;
+  font-family: var(--font-body);
+  font-size: 15px;
+  color: var(--color-ink);
+  transition: all 120ms var(--ease-out);
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--color-terracotta);
+  box-shadow: 0 0 0 3px rgba(196, 98, 45, 0.15);
+}
+
+.input:disabled {
+  background: var(--bg-hover);
+  color: var(--color-stone-aa);
+  cursor: not-allowed;
+}
+
+.input::placeholder {
+  color: var(--color-stone);
+}
+
+/* ── Spinner ─────────────────────────────────────────────────────── */
+.spinner {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  margin-top: -7px;
+  border: 2px solid var(--color-stone);
+  border-top-color: var(--color-terracotta);
+  border-radius: 50%;
+  animation: spin 700ms linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Dropdown ────────────────────────────────────────────────────── */
+.dropdown {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.option {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: var(--font-body);
+  color: var(--color-ink);
+  transition: background 100ms var(--ease-out);
+}
+
+.optionActive {
+  background: var(--color-terracotta-dim);
+}
+
+.optionName {
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.optionMeta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--color-stone-aa);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.error {
+  margin-top: 8px;
+  font-size: 13px;
+  color: #B91C1C;
+}
