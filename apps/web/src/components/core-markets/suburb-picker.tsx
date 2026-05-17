@@ -48,11 +48,21 @@ interface Props {
 const DEBOUNCE_MS = 250
 const MAX_RESULTS = 10
 
+// Module-level constant so the default doesn't allocate a fresh `[]` literal
+// on every render. Without this, `hiddenPids` (a useMemo with disabledLocalityPids
+// in its deps) invalidates on every parent render, which churns the fetch
+// useEffect, which fires `ctrl.abort()` on every render — silently killing
+// every in-flight `/api/localities/search` request before it leaves the
+// browser. Symptoms: Network tab full of "(canceled)" entries, picker shows
+// the loading spinner forever, no results ever render. Caught smoke-testing
+// against PR #89 preview.
+const EMPTY_DISABLED_PIDS: string[] = []
+
 export function SuburbPicker({
   selected,
   onChange,
   max = 3,
-  disabledLocalityPids = [],
+  disabledLocalityPids = EMPTY_DISABLED_PIDS,
   autoFocus = false,
   placeholder = 'Type a suburb…',
 }: Props) {
