@@ -74,7 +74,11 @@ const STAGING_TABLES = [
       'state_pid', 'date_created', 'date_retired',
       'state_name', 'state_abbreviation',
     ],
-    perState: false, // single national file
+    // FEB26 ships per-state STATE files (e.g. QLD_STATE_psv.psv), each
+    // containing the single row for that state. Older PSMA releases used
+    // a national Authority_Code_STATE_psv.psv (or bare STATE_psv.psv) —
+    // see the `matcherFallback` logic below for that legacy path.
+    perState: true,
   },
   {
     name: 'locality',
