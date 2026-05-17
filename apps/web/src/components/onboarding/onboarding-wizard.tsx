@@ -5,18 +5,25 @@ import { useRouter } from 'next/navigation'
 import type { OnboardingStep } from '@/lib/onboarding/state'
 import { Rail, type RailStepId } from './rail'
 import { StepScript } from './step-script'
+import { StepCoreMarkets } from './step-core-markets'
 import { StepContacts } from './step-contacts'
 import { StepNotify } from './step-notify'
 import { StepPair } from './step-pair'
 import { StepReveal } from './step-reveal'
 import styles from './onboarding.module.css'
 
-type WizardStep = 'script' | 'contacts' | 'notify' | 'pair' | 'done'
+// 'core_markets' added between 'script' and 'contacts' in HOR-194.
+// Total user-facing steps = 6 (script through pair, with reveal as 'done').
+type WizardStep = 'script' | 'core_markets' | 'contacts' | 'notify' | 'pair' | 'done'
 
 const STAGE_COPY: Record<Exclude<WizardStep, 'done'>, { title: string; body: string }> = {
   script: {
     title: 'One line. Then Horace listens.',
     body: 'Paste a small snippet on your site — or send it to your developer. The moment it lands, Horace starts reading visitor behaviour.',
+  },
+  core_markets: {
+    title: 'Where you work.',
+    body: 'Tell Horace which suburbs you cover. The whole patch comes in, ready to be matched against the names you already know.',
   },
   contacts: {
     title: 'Names you already know.',
@@ -32,6 +39,8 @@ const STAGE_COPY: Record<Exclude<WizardStep, 'done'>, { title: string; body: str
   },
 }
 
+const TOTAL_STEPS = 6 // script, core_markets, contacts, notify, pair, reveal
+
 interface Props {
   agentId: string
   snippetKey: string
@@ -41,12 +50,13 @@ interface Props {
 }
 
 function resumeStep(last: OnboardingStep | null): WizardStep {
-  if (!last || last === 'profile') return 'script'
-  if (last === 'done') return 'done'
-  if (last === 'script') return 'contacts'
-  if (last === 'contacts') return 'notify'
-  if (last === 'notify') return 'pair'
-  if (last === 'pair') return 'done'
+  if (!last || last === 'profile')   return 'script'
+  if (last === 'done')               return 'done'
+  if (last === 'script')             return 'core_markets'
+  if (last === 'core_markets')       return 'contacts'
+  if (last === 'contacts')           return 'notify'
+  if (last === 'notify')             return 'pair'
+  if (last === 'pair')               return 'done'
   return 'script'
 }
 
@@ -64,10 +74,17 @@ export function OnboardingWizard({
   // includes profile, so we track completed steps in that namespace.
   const [completed, setCompleted] = useState<Set<RailStepId>>(() => {
     const s = new Set<RailStepId>(['profile'])
-    if (lastCompletedStep === 'script' || lastCompletedStep === 'contacts' || lastCompletedStep === 'notify' || lastCompletedStep === 'pair' || lastCompletedStep === 'done') s.add('script')
-    if (lastCompletedStep === 'contacts' || lastCompletedStep === 'notify' || lastCompletedStep === 'pair' || lastCompletedStep === 'done') s.add('contacts')
-    if (lastCompletedStep === 'notify' || lastCompletedStep === 'pair' || lastCompletedStep === 'done') s.add('notify')
-    if (lastCompletedStep === 'pair' || lastCompletedStep === 'done') s.add('pair')
+    // Step-precedence chain. last_completed_step at any non-NULL value
+    // implies every prior step is done.
+    const order: OnboardingStep[] = ['script', 'core_markets', 'contacts', 'notify', 'pair', 'done']
+    const lastIdx = lastCompletedStep ? order.indexOf(lastCompletedStep) : -1
+    if (lastIdx >= 0) {
+      // Add every step at or below lastIdx (except 'done' which isn't a RailStepId).
+      for (let i = 0; i <= lastIdx; i++) {
+        const id = order[i]
+        if (id !== 'done') s.add(id as RailStepId)
+      }
+    }
     return s
   })
 
@@ -114,24 +131,33 @@ export function OnboardingWizard({
             appUrl={appUrl}
             firstName={firstName}
             stepNumber={2}
-            totalSteps={5}
-            onNext={() => advance('script', 'contacts')}
+            totalSteps={TOTAL_STEPS}
+            onNext={() => advance('script', 'core_markets')}
+          />
+        )}
+
+        {step === 'core_markets' && (
+          <StepCoreMarkets
+            stepNumber={3}
+            totalSteps={TOTAL_STEPS}
+            onNext={() => advance('core_markets', 'contacts')}
+            onBack={() => setStep('script')}
           />
         )}
 
         {step === 'contacts' && (
           <StepContacts
-            stepNumber={3}
-            totalSteps={5}
+            stepNumber={4}
+            totalSteps={TOTAL_STEPS}
             onNext={() => advance('contacts', 'notify')}
-            onBack={() => setStep('script')}
+            onBack={() => setStep('core_markets')}
           />
         )}
 
         {step === 'notify' && (
           <StepNotify
-            stepNumber={4}
-            totalSteps={5}
+            stepNumber={5}
+            totalSteps={TOTAL_STEPS}
             onNext={() => advance('notify', 'pair')}
             onBack={() => setStep('contacts')}
           />
@@ -139,8 +165,8 @@ export function OnboardingWizard({
 
         {step === 'pair' && (
           <StepPair
-            stepNumber={5}
-            totalSteps={5}
+            stepNumber={6}
+            totalSteps={TOTAL_STEPS}
             onNext={() => advance('pair', 'done')}
             onBack={() => setStep('notify')}
           />

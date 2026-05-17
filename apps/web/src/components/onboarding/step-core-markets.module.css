@@ -1,0 +1,44 @@
+/* StepCoreMarkets — onboarding "Where you work." step.
+ * Light pane around the SuburbPicker so the chips + dropdown
+ * read as the focal affordance, not a bare form input. */
+
+.pickerCard {
+  margin-top: 32px;
+  padding: 24px;
+  background: var(--color-cream);
+  border: 1px solid var(--border-subtle);
+  border-radius: 16px;
+}
+
+.helpText {
+  margin-top: 14px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-stone-aa);
+  font-family: var(--font-body);
+}
+
+.acceptedNote {
+  margin-top: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--color-moss-dim);
+  border: 1px solid rgba(61, 82, 70, 0.2);
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--color-ink);
+  line-height: 1.4;
+}
+
+.acceptedNote svg {
+  color: var(--color-moss);
+  flex-shrink: 0;
+}
+
+.error {
+  margin-top: 14px;
+  font-size: 13px;
+  color: #B91C1C;
+}

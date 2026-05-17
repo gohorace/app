@@ -1,9 +1,10 @@
 'use client'
 
-import { User, Code2, Users, Bell, Smartphone, Check } from 'lucide-react'
+import { User, Code2, MapPin, Users, Bell, Smartphone, Check } from 'lucide-react'
 import styles from './onboarding.module.css'
 
-export type RailStepId = 'profile' | 'script' | 'contacts' | 'notify' | 'pair'
+// 'core_markets' added in HOR-194 between 'script' and 'contacts'.
+export type RailStepId = 'profile' | 'script' | 'core_markets' | 'contacts' | 'notify' | 'pair'
 
 interface RailStep {
   id: RailStepId
@@ -11,19 +12,21 @@ interface RailStep {
 }
 
 const RAIL_STEPS: RailStep[] = [
-  { id: 'profile',  short: 'Your details' },
-  { id: 'script',   short: 'Tracking script' },
-  { id: 'contacts', short: 'Your contacts' },
-  { id: 'notify',   short: 'Browser alerts' },
-  { id: 'pair',     short: 'Mobile push' },
+  { id: 'profile',      short: 'Your details' },
+  { id: 'script',       short: 'Tracking script' },
+  { id: 'core_markets', short: 'Your patch' },
+  { id: 'contacts',     short: 'Your contacts' },
+  { id: 'notify',       short: 'Browser alerts' },
+  { id: 'pair',         short: 'Mobile push' },
 ]
 
 const ICONS: Record<RailStepId, React.ComponentType<{ className?: string }>> = {
-  profile:  User,
-  script:   Code2,
-  contacts: Users,
-  notify:   Bell,
-  pair:     Smartphone,
+  profile:      User,
+  script:       Code2,
+  core_markets: MapPin,
+  contacts:     Users,
+  notify:       Bell,
+  pair:         Smartphone,
 }
 
 interface RailProps {
