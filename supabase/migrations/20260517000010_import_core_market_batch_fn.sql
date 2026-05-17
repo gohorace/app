@@ -184,14 +184,20 @@ BEGIN
   -- size, so there's no more source data after the new cursor. Flip
   -- to 'complete' and stamp completed_at. heartbeat_at gets refreshed
   -- whether we're done or not so the claim RPC's stuck-detection works.
-  UPDATE core_market_imports
-     SET batch_cursor  = COALESCE(v_new_cursor, batch_cursor),
-         rows_imported = rows_imported + v_imported,
-         rows_matched  = rows_matched + v_matched,
+  --
+  -- Table aliased to `cmi` so column refs are unambiguous — RETURNS
+  -- TABLE (done, batch_cursor, ...) declares those names as OUT
+  -- parameters inside the function body, which would otherwise collide
+  -- with `core_market_imports.batch_cursor` and trigger error 42702.
+  -- Caught during the first real prod run 2026-05-18.
+  UPDATE core_market_imports cmi
+     SET batch_cursor  = COALESCE(v_new_cursor, cmi.batch_cursor),
+         rows_imported = cmi.rows_imported + v_imported,
+         rows_matched  = cmi.rows_matched + v_matched,
          heartbeat_at  = now(),
-         status        = CASE WHEN v_imported < p_batch_size THEN 'complete' ELSE status END,
-         completed_at  = CASE WHEN v_imported < p_batch_size THEN now() ELSE completed_at END
-   WHERE id = p_import_id;
+         status        = CASE WHEN v_imported < p_batch_size THEN 'complete' ELSE cmi.status END,
+         completed_at  = CASE WHEN v_imported < p_batch_size THEN now() ELSE cmi.completed_at END
+   WHERE cmi.id = p_import_id;
 
   -- ── 5. Return ──────────────────────────────────────────────────────
   done         := (v_imported < p_batch_size);

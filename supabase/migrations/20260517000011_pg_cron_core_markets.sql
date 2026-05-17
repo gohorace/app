@@ -38,10 +38,16 @@
 --    Supabase pattern — encrypted at rest, looked up at cron-fire
 --    time via the vault.decrypted_secrets view.
 --
--- If either secret is missing, current_setting fallback returns NULL,
--- the cron body's http_post call gets a NULL url, and pg_net silently
--- drops the request. The migration applies cleanly regardless; setting
--- the secrets later un-stalls the schedule on the next tick.
+-- If either secret is missing, the http_get call gets a NULL url and
+-- pg_net silently drops the request. The migration applies cleanly
+-- regardless; setting the secrets later un-stalls the schedule on the
+-- next tick.
+--
+-- NB: http_get (not http_post). The worker route is `export async
+-- function GET(...)` — matches the existing /api/cron/* convention
+-- (daily-briefing, purge-soft-deleted) and Vercel cron docs. An earlier
+-- version of this migration used net.http_post which silently 405'd
+-- every minute against the deployed GET route. Caught 2026-05-17.
 -- ============================================================
 
 -- pg_cron, pg_net, vault live in their own schemas; we add them to
@@ -58,10 +64,10 @@ BEGIN
   END IF;
 END $$;
 
--- Every minute. pg_net.http_post is async — returns a request_id and
--- the HTTPS call happens in the background, so the cron tick itself
--- is sub-millisecond. The actual import work happens inside the
--- Next.js route, which has up to 60s on Vercel Hobby (the route sets
+-- Every minute. pg_net is async — returns a request_id and the HTTPS
+-- call happens in the background, so the cron tick itself is sub-
+-- millisecond. The actual import work happens inside the Next.js
+-- route, which has up to 60s on Vercel Hobby (the route sets
 -- maxDuration to make this explicit).
 --
 -- The URL + secret are looked up from Vault on every fire. SECURITY
@@ -71,13 +77,11 @@ SELECT cron.schedule(
   'process-core-market-imports',
   '* * * * *',
   $cron$
-    SELECT net.http_post(
+    SELECT net.http_get(
       url := (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'cron_worker_url'),
       headers := jsonb_build_object(
-        'Authorization', 'Bearer ' || (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'cron_secret'),
-        'Content-Type',  'application/json'
+        'Authorization', 'Bearer ' || (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'cron_secret')
       ),
-      body := '{}'::jsonb,
       timeout_milliseconds := 5000
     );
   $cron$
