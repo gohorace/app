@@ -103,6 +103,34 @@ BEGIN
       src.address_detail_pid AS detail_pid_for_cursor
     FROM src
   ),
+  with_hash AS (
+    SELECT b.*,
+           compute_address_hash(
+             b.street_number, b.street_name, b.suburb, b.state, b.postcode, NULL
+           ) AS computed_hash
+    FROM built b
+    WHERE compute_address_hash(
+            b.street_number, b.street_name, b.suburb, b.state, b.postcode, NULL
+          ) IS NOT NULL
+  ),
+  -- PSMA ships alias address_detail_pids that collapse to the same
+  -- (street_number, street_name, suburb, state, postcode) tuple — i.e.
+  -- two source rows produce the same address_hash. Without dedupe,
+  -- the INSERT ... ON CONFLICT DO UPDATE bombs out with PostgreSQL
+  -- error 21000 ("ON CONFLICT DO UPDATE command cannot affect row a
+  -- second time") because a single statement can update each target
+  -- row at most once. Dedupe within the batch, keeping the lowest
+  -- detail_pid for stability so re-runs are deterministic.
+  --
+  -- Caught during the first prod run 2026-05-18 at batch_size=2000.
+  -- A longer-term fix would filter aliases out in the ingest script
+  -- itself (WHERE alias_principal = 'P'), avoiding the duplication
+  -- in gnaf.address_principal entirely.
+  deduped AS (
+    SELECT DISTINCT ON (computed_hash) *
+    FROM with_hash
+    ORDER BY computed_hash, detail_pid_for_cursor
+  ),
   inserted AS (
     INSERT INTO properties (
       workspace_id, gnaf_address_detail_pid,
@@ -111,16 +139,14 @@ BEGIN
       address_hash, status, first_seen_at, last_activity_at
     )
     SELECT
-      b.workspace_id,
-      b.gnaf_address_detail_pid,
-      b.street_number, b.street_name, b.suburb, b.state, b.postcode,
-      b.latitude, b.longitude,
-      compute_address_hash(
-        b.street_number, b.street_name, b.suburb, b.state, b.postcode, NULL
-      ) AS address_hash,
+      d.workspace_id,
+      d.gnaf_address_detail_pid,
+      d.street_number, d.street_name, d.suburb, d.state, d.postcode,
+      d.latitude, d.longitude,
+      d.computed_hash,
       'residence_only',
       now(), now()
-    FROM built b
+    FROM deduped d
     -- The unique index is `(workspace_id, address_hash) WHERE deleted_at IS NULL`.
     -- ON CONFLICT requires the matching predicate.
     ON CONFLICT (workspace_id, address_hash) WHERE deleted_at IS NULL DO UPDATE
@@ -133,13 +159,16 @@ BEGIN
   agg AS (
     SELECT
       array_agg(i.address_hash) AS hashes,
-      count(*)::int             AS row_count,
+      -- Use src count rather than inserted count so `done` stays accurate.
+      -- Dedupe can collapse a batch below p_batch_size; we'd otherwise
+      -- think the import was done when we still have source rows to page.
+      (SELECT count(*)::int FROM src)             AS src_count,
       (SELECT max(b.detail_pid_for_cursor) FROM built b) AS new_cursor
     FROM inserted i
   )
   SELECT
     COALESCE(hashes, ARRAY[]::text[]),
-    COALESCE(row_count, 0),
+    COALESCE(src_count, 0),
     new_cursor
   INTO v_new_hashes, v_imported, v_new_cursor
   FROM agg;
