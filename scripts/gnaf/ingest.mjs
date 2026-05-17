@@ -324,6 +324,14 @@ async function main() {
   const client = new Client({ connectionString: DB_URL, statement_timeout: 0 })
   await client.connect()
 
+  // The constructor's `statement_timeout: 0` doesn't always stick through
+  // Supabase's pooler — defensively set it again here. 30 min is comfortable
+  // for any single step on Nano compute (build step took 44s on QLD dry-run
+  // but Nano load can spike; default Supabase server-side timeout is ~60s).
+  await client.query(`SET statement_timeout = '30min'`)
+  await client.query(`SET lock_timeout      = '5min'`)
+  await client.query(`SET idle_in_transaction_session_timeout = '30min'`)
+
   try {
     // ── 3. Stage raw PSMA tables in `gnaf_staging` ───────────────────
     log('preparing gnaf_staging schema')
