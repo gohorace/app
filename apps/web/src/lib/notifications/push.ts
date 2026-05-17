@@ -106,7 +106,15 @@ async function logAlert(
   })
 }
 
-async function pushToAgent(agentId: string, payload: PushPayload): Promise<void> {
+/**
+ * Push a payload to every active subscription for an agent.
+ *
+ * Exported so non-alert flows (e.g. Core Markets import-complete,
+ * HOR-193) can reuse the cleanup-on-expired-subscription behaviour
+ * without going through dispatchPushAlert's dedup + volume-cap path.
+ * Direct callers are responsible for their own logging.
+ */
+export async function pushToAgent(agentId: string, payload: PushPayload): Promise<void> {
   const admin = createAdminClient()
   const { data: subs } = await admin
     .from('push_subscriptions')
