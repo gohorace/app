@@ -172,6 +172,11 @@ export function CustomDomainManager({ initialDomain }: Props) {
             You&apos;ll need access to your DNS provider. If you&apos;re unsure where that is,
             email <a className="text-foreground underline" href="mailto:team@gohorace.com">team@gohorace.com</a> and we&apos;ll point you to the right place.
           </p>
+          <p className="text-amber-900">
+            <strong>If your DNS is on Cloudflare:</strong> when you add the record, set the
+            Proxy column to <strong>DNS only</strong> (grey cloud), not Proxied (orange cloud).
+            We&apos;ll remind you again at the next step.
+          </p>
         </div>
 
         <form onSubmit={handleAdd} className="space-y-3">
@@ -321,11 +326,19 @@ export function CustomDomainManager({ initialDomain }: Props) {
 
             <div className="text-muted-foreground">TTL</div>
             <div className="text-muted-foreground">Auto / 300 seconds</div>
+          </div>
+        </div>
 
-            <div className="text-muted-foreground">Proxy</div>
-            <div className="text-muted-foreground">
-              Off / DNS only <span className="text-foreground">(if using Cloudflare)</span>
-            </div>
+        <div className="flex items-start gap-3 rounded-md border border-amber-200 bg-amber-50 p-3">
+          <AlertCircle className="w-4 h-4 text-amber-700 flex-shrink-0 mt-0.5" />
+          <div className="space-y-1 text-xs text-amber-900">
+            <div className="font-medium">Using Cloudflare? Set the proxy to DNS&nbsp;only.</div>
+            <p className="text-amber-800">
+              In Cloudflare&apos;s DNS table, the cloud icon next to your record must be <strong>grey (DNS&nbsp;only)</strong>,
+              not orange (Proxied). Vercel issues the certificate directly — proxying through Cloudflare
+              produces an SSL handshake error (525). Other DNS hosts (Namecheap, Route&nbsp;53, GoDaddy)
+              don&apos;t have a proxy toggle, so you can skip this.
+            </p>
           </div>
         </div>
 
