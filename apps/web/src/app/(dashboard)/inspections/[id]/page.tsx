@@ -26,7 +26,8 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { qrDataUrl } from '@/lib/inspections/qr'
-import { inspectionOrigin } from '@/lib/inspections/origin'
+import { inspectionOrigin, inspectionOriginForWorkspace } from '@/lib/inspections/origin'
+import { getVerifiedDomainForWorkspace } from '@/lib/domains/lookup'
 
 export const dynamic = 'force-dynamic'
 
@@ -84,7 +85,7 @@ export default async function InspectionDetailPage({ params }: PageProps) {
 
   const { data: agent } = await admin
     .from('agents')
-    .select('id')
+    .select('id, workspace_id')
     .eq('user_id', user.id)
     .maybeSingle()
   if (!agent) notFound()
@@ -109,7 +110,12 @@ export default async function InspectionDetailPage({ params }: PageProps) {
   const property = propertyRow as PropertyRow | null
   const address = formatAddress(property)
 
-  const publicUrl = `${inspectionOrigin()}/i/${inspection.token}`
+  const verifiedHostname = agent.workspace_id
+    ? await getVerifiedDomainForWorkspace(agent.workspace_id)
+    : null
+  const publicUrl = agent.workspace_id
+    ? `${await inspectionOriginForWorkspace(agent.workspace_id)}/i/${inspection.token}`
+    : `${inspectionOrigin()}/i/${inspection.token}`
 
   const qr = await qrDataUrl(publicUrl)
 
@@ -136,6 +142,25 @@ export default async function InspectionDetailPage({ params }: PageProps) {
       <div style={{ fontSize: 11, color: '#8C7B6B', textTransform: 'capitalize', marginBottom: 24 }}>
         Status: {inspection.status}
       </div>
+
+      {!verifiedHostname && (
+        <div
+          style={{
+            background: '#FEF3C7',
+            border: '1px solid #FCD34D',
+            borderRadius: 8,
+            padding: 12,
+            marginBottom: 16,
+            fontSize: 13,
+            color: '#78350F',
+          }}
+        >
+          Doorstep capture paused — restore your custom domain to keep capturing.{' '}
+          <Link href="/settings/custom-domain" style={{ color: '#78350F', textDecoration: 'underline' }}>
+            Set one up →
+          </Link>
+        </div>
+      )}
 
       {/* QR — primary affordance. Big, contrast-rich, scannable from ~30cm. */}
       <div

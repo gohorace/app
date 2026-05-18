@@ -19,7 +19,8 @@ import { Plus } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { listForAgent } from '@/lib/inspections/repo'
-import { inspectionOrigin } from '@/lib/inspections/origin'
+import { inspectionOrigin, inspectionOriginForWorkspace } from '@/lib/inspections/origin'
+import { getVerifiedDomainForWorkspace } from '@/lib/domains/lookup'
 import type { Inspection } from '@/lib/inspections/types'
 
 export const dynamic = 'force-dynamic'
@@ -57,10 +58,11 @@ function formatScheduledAt(iso: string): string {
 }
 
 // Origin shared with the create + qr endpoints so a preview-minted
-// inspection's surfaces all point back at the same deploy.
-const ORIGIN = inspectionOrigin()
-function publicUrl(token: string): string {
-  return `${ORIGIN}/i/${token}`
+// inspection's surfaces all point back at the same deploy. HOR-204:
+// when the workspace has a verified custom domain we prefer that; the
+// page resolves the origin once and shares it across rows.
+function publicUrlBuilder(origin: string): (token: string) => string {
+  return (token: string) => `${origin}/i/${token}`
 }
 
 export default async function InspectionsPage() {

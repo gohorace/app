@@ -29,7 +29,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveResidence, type SelectedAddressInput } from '@/lib/contacts/residence'
 import { generate as generateToken } from '@/lib/inspections/tokens'
 import { createInspection } from '@/lib/inspections/repo'
-import { inspectionOrigin } from '@/lib/inspections/origin'
+import { inspectionOriginForWorkspace } from '@/lib/inspections/origin'
+import { getVerifiedDomainForWorkspace } from '@/lib/domains/lookup'
 
 // Token collisions at 60^8 (~1.68e14 combos) are astronomically rare,
 // but the schema's UNIQUE constraint will still raise 23505 if it
@@ -63,6 +64,21 @@ export async function POST(req: NextRequest) {
 
   if (!agent || !agent.workspace_id) {
     return NextResponse.json({ error: 'No workspace for user' }, { status: 400 })
+  }
+
+  // HOR-204: Doorstep needs a verified custom domain. Refuse new
+  // inspections when no verified row exists. Existing inspections stay
+  // readable (their detail pages render with a paused banner); only
+  // creation is gated here.
+  const verifiedHostname = await getVerifiedDomainForWorkspace(agent.workspace_id)
+  if (!verifiedHostname) {
+    return NextResponse.json(
+      {
+        error: 'custom_domain_required',
+        message: 'Doorstep needs a custom domain. Takes a couple of minutes.',
+      },
+      { status: 412 },
+    )
   }
 
   // ── Parse + validate ────────────────────────────────────────────────────────
@@ -173,7 +189,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: msg }, { status: 500 })
   }
 
-  const publicUrl = `${inspectionOrigin(req)}/i/${token}`
+  const publicUrl = `${await inspectionOriginForWorkspace(agent.workspace_id, req)}/i/${token}`
 
   return NextResponse.json({ id: inspectionId, token, public_url: publicUrl }, { status: 201 })
 }

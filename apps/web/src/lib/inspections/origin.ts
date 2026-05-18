@@ -10,18 +10,31 @@
  * doesn't have your unmerged middleware/route changes and (b) doesn't
  * know about your preview's new inspection rows.
  *
- * Fallback chain (preview first, then env, then request, then prod):
+ * Fallback chain (custom domain first, then preview, env, request, prod):
  *
- *   1. https://<VERCEL_URL>  when VERCEL_ENV='preview' and VERCEL_URL set
- *   2. NEXT_PUBLIC_APP_URL   when set (prod / staging deploys)
- *   3. new URL(req.url).origin  when a request is available (covers local dev)
- *   4. 'https://gohorace.com'  last-resort fallback
+ *   1. workspace verified custom domain (HOR-204)  — when workspaceId set
+ *   2. https://<VERCEL_URL>  when VERCEL_ENV='preview' and VERCEL_URL set
+ *   3. NEXT_PUBLIC_APP_URL   when set (prod / staging deploys)
+ *   4. new URL(req.url).origin  when a request is available (covers local dev)
+ *   5. 'https://gohorace.com'  last-resort fallback
+ *
+ * Call sites that have a workspaceId should pass it (await the async
+ * variant). Call sites that don't (or where DB access is unavailable)
+ * use the synchronous variant and accept the fallback chain.
  */
+
+import { getVerifiedDomainForWorkspace } from '@/lib/domains/lookup'
 
 export interface RequestLike {
   url: string
 }
 
+/**
+ * Resolves the public origin without considering a custom domain.
+ * Keeps the existing call sites working until they're migrated to the
+ * async variant. Prefer `inspectionOriginForWorkspace` when a workspace
+ * id is available.
+ */
 export function inspectionOrigin(req?: RequestLike | null): string {
   if (process.env.VERCEL_ENV === 'preview' && process.env.VERCEL_URL) {
     return `https://${process.env.VERCEL_URL}`
@@ -36,4 +49,26 @@ export function inspectionOrigin(req?: RequestLike | null): string {
     }
   }
   return 'https://gohorace.com'
+}
+
+/**
+ * HOR-204: workspace-aware origin. Prefers the workspace's verified
+ * custom domain when present; otherwise delegates to the sync fallback
+ * chain above.
+ */
+export async function inspectionOriginForWorkspace(
+  workspaceId: string,
+  req?: RequestLike | null,
+): Promise<string> {
+  try {
+    const hostname = await getVerifiedDomainForWorkspace(workspaceId)
+    if (hostname) {
+      return `https://${hostname}`
+    }
+  } catch (err) {
+    console.error('inspectionOriginForWorkspace lookup failed', { workspaceId, err })
+    // Fall through to the static chain — better to ship a usable URL
+    // (even if Horace-hosted) than to error out the page.
+  }
+  return inspectionOrigin(req)
 }
