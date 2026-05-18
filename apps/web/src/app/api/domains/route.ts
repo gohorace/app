@@ -93,7 +93,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  // Idempotency: if this workspace already owns the hostname, return that row.
+  // Look for an existing row for this workspace + hostname.
+  // - status in (pending | verifying | verified) → stable, return as-is.
+  // - status = 'failed' → a previous attempt errored before/during Vercel
+  //   registration. Reset to 'pending' and re-attempt registration on
+  //   this same row (don't insert a duplicate).
+  // - no row → INSERT a fresh one.
   const { data: existingRaw } = await admin
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .from('workspace_custom_domains' as any)
@@ -103,7 +108,9 @@ export async function POST(req: NextRequest) {
     .neq('status', 'removed')
     .maybeSingle()
   const existing = existingRaw as CustomDomainRow | null
-  if (existing) {
+
+  // Stable states are idempotent — return the existing row.
+  if (existing && existing.status !== 'failed') {
     return NextResponse.json({
       id: existing.id,
       hostname: existing.hostname,
@@ -115,32 +122,67 @@ export async function POST(req: NextRequest) {
     })
   }
 
-  // INSERT first so a Vercel failure doesn't orphan the row. The unique
-  // index on lower(hostname) catches cross-workspace conflicts here.
-  const { data: insertedRaw, error: insertErr } = await admin
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    .from('workspace_custom_domains' as any)
-    .insert({
-      workspace_id: agent.workspace_id,
-      hostname,
-      status: 'pending',
-      ssl_status: 'pending',
-      dns_target: 'cname.vercel-dns.com',
-    })
-    .select('*')
-    .single()
-  if (insertErr || !insertedRaw) {
-    // Most likely conflict on lower(hostname) unique index.
-    if (insertErr?.code === '23505') {
+  let row: CustomDomainRow
+
+  if (existing) {
+    // Failed row: reset and re-use the same id.
+    const { data: resetRaw, error: resetErr } = await admin
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .from('workspace_custom_domains' as any)
+      .update({
+        status: 'pending',
+        ssl_status: 'pending',
+        error_message: null,
+        last_checked_at: null,
+        verification_records: null,
+      })
+      .eq('id', existing.id)
+      .select('*')
+      .single()
+    if (resetErr || !resetRaw) {
+      console.error('Failed to reset failed workspace_custom_domain', resetErr)
+      return NextResponse.json({ error: 'Failed to retry domain' }, { status: 500 })
+    }
+    row = resetRaw as CustomDomainRow
+  } else {
+    // INSERT first so a Vercel failure doesn't orphan the row. The
+    // unique index on lower(hostname) catches cross-workspace conflicts here.
+    const { data: insertedRaw, error: insertErr } = await admin
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .from('workspace_custom_domains' as any)
+      .insert({
+        workspace_id: agent.workspace_id,
+        hostname,
+        status: 'pending',
+        ssl_status: 'pending',
+        dns_target: 'cname.vercel-dns.com',
+      })
+      .select('*')
+      .single()
+    if (insertErr || !insertedRaw) {
+      if (insertErr?.code === '23505') {
+        return NextResponse.json(
+          { error: 'That hostname is already in use by another workspace.' },
+          { status: 409 },
+        )
+      }
+      console.error('Failed to insert workspace_custom_domain', {
+        code: insertErr?.code,
+        message: insertErr?.message,
+        details: insertErr?.details,
+        hint: insertErr?.hint,
+      })
       return NextResponse.json(
-        { error: 'That hostname is already in use by another workspace.' },
-        { status: 409 },
+        {
+          error: 'Failed to create domain',
+          detail: insertErr?.message ?? null,
+          code: insertErr?.code ?? null,
+        },
+        { status: 500 },
       )
     }
-    console.error('Failed to insert workspace_custom_domain', insertErr)
-    return NextResponse.json({ error: 'Failed to create domain' }, { status: 500 })
+    row = insertedRaw as CustomDomainRow
   }
-  const row = insertedRaw as CustomDomainRow
 
   // Register with Vercel.
   try {
@@ -151,9 +193,14 @@ export async function POST(req: NextRequest) {
       .update({
         status: result.verified ? 'verified' : 'verifying',
         ssl_status: result.verified ? 'provisioning' : 'pending',
+        // Stamp `vercel_domain_id` so the verify route knows the domain
+        // reached Vercel. We use hostname itself as the id — Vercel's
+        // endpoints key off the hostname, not a separate id.
+        vercel_domain_id: hostname,
         verification_records: result.verificationRecords,
         last_checked_at: new Date().toISOString(),
         verified_at: result.verified ? new Date().toISOString() : null,
+        error_message: null,
       })
       .eq('id', row.id)
 

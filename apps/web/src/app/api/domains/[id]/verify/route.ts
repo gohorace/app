@@ -12,7 +12,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { verifyDomain, VercelDomainError } from '@/lib/vercel/domains'
+import { addDomain, verifyDomain, VercelDomainError } from '@/lib/vercel/domains'
 import { invalidateHostLookup } from '@/lib/domains/lookup'
 
 interface CustomDomainRow {
@@ -20,6 +20,7 @@ interface CustomDomainRow {
   workspace_id: string
   hostname: string
   status: string
+  vercel_domain_id: string | null
 }
 
 export async function POST(
@@ -39,7 +40,7 @@ export async function POST(
   const { data: rowRaw } = await admin
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .from('workspace_custom_domains' as any)
-    .select('id, workspace_id, hostname, status')
+    .select('id, workspace_id, hostname, status, vercel_domain_id')
     .eq('id', id)
     .maybeSingle()
   const row = rowRaw as CustomDomainRow | null
@@ -56,38 +57,65 @@ export async function POST(
   }
 
   try {
-    const status = await verifyDomain(row.hostname)
     const now = new Date().toISOString()
+    let nextStatus: 'verified' | 'verifying' = 'verifying'
+    let nextSsl: 'pending' | 'provisioning' | 'active' = 'pending'
+    let verificationRecords: Awaited<ReturnType<typeof verifyDomain>>['verificationRecords']
 
-    let nextStatus: 'verified' | 'verifying' | 'failed' = 'verifying'
-    let nextSsl: 'pending' | 'provisioning' | 'active' | 'failed' = 'pending'
-    let errorMessage: string | null = null
-
-    if (status.verified && !status.misconfigured) {
-      nextStatus = 'verified'
-      nextSsl = status.sslActive ? 'active' : 'provisioning'
-    } else if (status.verified && status.misconfigured) {
-      // Vercel marked it verified but DNS resolution still off — usually
-      // a transient state.
-      nextStatus = 'verifying'
-      nextSsl = 'pending'
+    if (!row.vercel_domain_id) {
+      // Row never reached Vercel (e.g. the create call errored with
+      // env_missing before addDomain succeeded). Run addDomain now so
+      // the Retry button on a failed row can recover without forcing
+      // the user to delete the DB row manually.
+      const result = await addDomain(row.hostname)
+      verificationRecords = result.verificationRecords
+      if (result.verified) {
+        nextStatus = 'verified'
+        nextSsl = 'provisioning'
+      } else {
+        nextStatus = 'verifying'
+        nextSsl = 'pending'
+      }
+      await admin
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .from('workspace_custom_domains' as any)
+        .update({
+          status: nextStatus,
+          ssl_status: nextSsl,
+          vercel_domain_id: row.hostname,
+          verification_records: verificationRecords,
+          last_checked_at: now,
+          verified_at: nextStatus === 'verified' ? now : null,
+          error_message: null,
+        })
+        .eq('id', row.id)
     } else {
-      nextStatus = 'verifying'
-      nextSsl = 'pending'
-    }
+      // Row is registered with Vercel — re-check verification state.
+      const status = await verifyDomain(row.hostname)
+      verificationRecords = status.verificationRecords
 
-    await admin
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .from('workspace_custom_domains' as any)
-      .update({
-        status: nextStatus,
-        ssl_status: nextSsl,
-        verification_records: status.verificationRecords,
-        last_checked_at: now,
-        verified_at: nextStatus === 'verified' ? now : null,
-        error_message: errorMessage,
-      })
-      .eq('id', row.id)
+      if (status.verified && !status.misconfigured) {
+        nextStatus = 'verified'
+        nextSsl = status.sslActive ? 'active' : 'provisioning'
+      } else {
+        // Includes the "verified but misconfigured" transient case.
+        nextStatus = 'verifying'
+        nextSsl = 'pending'
+      }
+
+      await admin
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .from('workspace_custom_domains' as any)
+        .update({
+          status: nextStatus,
+          ssl_status: nextSsl,
+          verification_records: verificationRecords,
+          last_checked_at: now,
+          verified_at: nextStatus === 'verified' ? now : null,
+          error_message: null,
+        })
+        .eq('id', row.id)
+    }
 
     invalidateHostLookup(row.hostname)
 
@@ -96,7 +124,7 @@ export async function POST(
       hostname: row.hostname,
       status: nextStatus,
       ssl_status: nextSsl,
-      verification_records: status.verificationRecords,
+      verification_records: verificationRecords,
     })
   } catch (err) {
     const message = err instanceof VercelDomainError ? err.message : 'Vercel call failed'
