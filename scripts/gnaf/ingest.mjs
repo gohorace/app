@@ -405,47 +405,86 @@ async function main() {
     //     Caught smoke-testing Currimundi: 2462 NULL + 775 S + 159 P =
     //     3396 raw rows; the old IN ('P','S') filter kept only 934.
     //     2026-05-18.
-    await client.query(`
-      INSERT INTO gnaf.address_principal_next (
-        address_detail_pid, locality_pid, street_locality_pid,
-        flat_type, flat_number_prefix, flat_number, flat_number_suffix,
-        level_type, level_number,
-        number_first_prefix, number_first, number_first_suffix,
-        number_last,
-        street_name, street_type_code, street_suffix_code,
-        locality_name, state_abbrev, postcode,
-        latitude, longitude,
-        primary_secondary, gnaf_release
-      )
-      SELECT
-        ad.address_detail_pid,
-        ad.locality_pid,
-        ad.street_locality_pid,
-        ad.flat_type_code,
-        ad.flat_number_prefix, ad.flat_number, ad.flat_number_suffix,
-        ad.level_type_code, ad.level_number,
-        ad.number_first_prefix, ad.number_first, ad.number_first_suffix,
-        ad.number_last,
-        sl.street_name,
-        sl.street_type_code,
-        sl.street_suffix_code,
-        l.locality_name,
-        s.state_abbreviation AS state_abbrev,
-        ad.postcode,
-        adg.latitude::numeric(10, 7)  AS latitude,
-        adg.longitude::numeric(10, 7) AS longitude,
-        ad.primary_secondary,
-        $1 AS gnaf_release
-      FROM gnaf_staging.address_detail ad
-      JOIN gnaf_staging.street_locality sl ON sl.street_locality_pid = ad.street_locality_pid
-      JOIN gnaf_staging.locality l         ON l.locality_pid         = ad.locality_pid
-      JOIN gnaf_staging.state s            ON s.state_pid            = l.state_pid
-      LEFT JOIN gnaf_staging.address_default_geocode adg
-        ON adg.address_detail_pid = ad.address_detail_pid
-      WHERE COALESCE(ad.confidence::int, -1) >= 0
-        AND ad.date_retired IS NULL
-        AND (ad.primary_secondary IS NULL OR ad.primary_secondary IN ('P', 'S'))
-    `, [RELEASE_TAG])
+    // Chunked INSERT — a single-statement bulk insert of 3M+ rows hits
+    // Supabase Nano's 30-min statement_timeout even with indexes-on-the-fly.
+    // Process the staging table in slices of CHUNK_SIZE rows keyed by
+    // address_detail_pid (the staging PK). Each chunk runs as its own
+    // statement and stays well under the timeout. Total wall time is
+    // similar to one big INSERT but each piece is bounded.
+    //
+    // The cursor is text-ordered on address_detail_pid (e.g.
+    // 'GAQLD123...'). Empty string sorts before any real pid, so we
+    // can use it as the initial cursor without a special-case branch.
+    const CHUNK_SIZE = 200000
+    let cursor = ''
+    let chunkNum = 0
+    let totalInserted = 0
+    while (true) {
+      chunkNum++
+      const chunkStart = Date.now()
+      const result = await client.query(`
+        WITH chunk AS (
+          SELECT ad.*
+          FROM gnaf_staging.address_detail ad
+          WHERE ad.address_detail_pid > $2
+          ORDER BY ad.address_detail_pid
+          LIMIT ${CHUNK_SIZE}
+        ),
+        ins AS (
+          INSERT INTO gnaf.address_principal_next (
+            address_detail_pid, locality_pid, street_locality_pid,
+            flat_type, flat_number_prefix, flat_number, flat_number_suffix,
+            level_type, level_number,
+            number_first_prefix, number_first, number_first_suffix,
+            number_last,
+            street_name, street_type_code, street_suffix_code,
+            locality_name, state_abbrev, postcode,
+            latitude, longitude,
+            primary_secondary, gnaf_release
+          )
+          SELECT
+            ad.address_detail_pid,
+            ad.locality_pid,
+            ad.street_locality_pid,
+            ad.flat_type_code,
+            ad.flat_number_prefix, ad.flat_number, ad.flat_number_suffix,
+            ad.level_type_code, ad.level_number,
+            ad.number_first_prefix, ad.number_first, ad.number_first_suffix,
+            ad.number_last,
+            sl.street_name,
+            sl.street_type_code,
+            sl.street_suffix_code,
+            l.locality_name,
+            s.state_abbreviation AS state_abbrev,
+            ad.postcode,
+            adg.latitude::numeric(10, 7)  AS latitude,
+            adg.longitude::numeric(10, 7) AS longitude,
+            ad.primary_secondary,
+            $1 AS gnaf_release
+          FROM chunk ad
+          JOIN gnaf_staging.street_locality sl ON sl.street_locality_pid = ad.street_locality_pid
+          JOIN gnaf_staging.locality l         ON l.locality_pid         = ad.locality_pid
+          JOIN gnaf_staging.state s            ON s.state_pid            = l.state_pid
+          LEFT JOIN gnaf_staging.address_default_geocode adg
+            ON adg.address_detail_pid = ad.address_detail_pid
+          WHERE COALESCE(ad.confidence::int, -1) >= 0
+            AND ad.date_retired IS NULL
+            AND (ad.primary_secondary IS NULL OR ad.primary_secondary IN ('P', 'S'))
+          RETURNING 1
+        )
+        SELECT
+          (SELECT count(*)::int FROM chunk) AS examined,
+          (SELECT count(*)::int FROM ins) AS inserted,
+          (SELECT max(address_detail_pid) FROM chunk) AS last_pid
+      `, [RELEASE_TAG, cursor])
+
+      const { examined, inserted, last_pid } = result.rows[0]
+      if (examined === 0) break
+      cursor = last_pid
+      totalInserted += inserted
+      const secs = ((Date.now() - chunkStart) / 1000).toFixed(1)
+      log(`  chunk ${chunkNum}: examined=${examined}, inserted=${inserted}, total=${totalInserted} (${secs}s)`)
+    }
 
     // ── 5. Build gnaf.localities_next ────────────────────────────────
     log('building gnaf.localities_next')
