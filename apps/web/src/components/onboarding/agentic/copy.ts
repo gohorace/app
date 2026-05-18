@@ -45,9 +45,33 @@ export const horace = {
     "Not the one who installs scripts? Send it to whoever does, or grab 15 minutes with me and we'll do it together.",
   t2_tracking_confirmed: (): string => "Snippet's live. I'm listening.",
 
+  // Turn 3 — patch (core markets)
+  t3_ask_patch: (): string =>
+    "Which suburbs are yours? Give me up to three.",
+  t3_locked_in: (names: string[]): string => {
+    const list = formatSuburbList(names)
+    return list ? `${list} — locked in.` : 'Patch locked in.'
+  },
+  t3_patch_aside: (): string =>
+    "I've got every address ready to match against names you know.",
+
   // Turn 7 — sign-off (the only place "Seize the moment" appears)
   t7_signoff: (): string => 'Seize the moment — Horace',
 } as const
+
+/** Render an Oxford-comma-free, AU-style suburb list:
+ *    ["Paddington"]                          → "Paddington"
+ *    ["Paddington", "Bulimba"]               → "Paddington and Bulimba"
+ *    ["Paddington", "Bulimba", "Hawthorne"]  → "Paddington, Bulimba and Hawthorne"
+ *  Exported for the copy test to verify both branches; otherwise
+ *  internal to horace.t3_locked_in. */
+export function formatSuburbList(names: string[]): string {
+  const clean = names.map((n) => n.trim()).filter(Boolean)
+  if (clean.length === 0) return ''
+  if (clean.length === 1) return clean[0]
+  const head = clean.slice(0, -1).join(', ')
+  return `${head} and ${clean[clean.length - 1]}`
+}
 
 // ─────────────────────────────────────────────────────────────────────
 // UI labels — button text, placeholders, chips.
@@ -112,6 +136,12 @@ export const HORACE_SAMPLES: ReadonlyArray<{ key: string; value: string }> = [
   { key: 't2_snippet_intro', value: horace.t2_snippet_intro() },
   { key: 't2_help_offer', value: horace.t2_help_offer() },
   { key: 't2_tracking_confirmed', value: horace.t2_tracking_confirmed() },
+  { key: 't3_ask_patch', value: horace.t3_ask_patch() },
+  { key: 't3_locked_in:one', value: horace.t3_locked_in(['Paddington']) },
+  { key: 't3_locked_in:two', value: horace.t3_locked_in(['Paddington', 'Bulimba']) },
+  { key: 't3_locked_in:three', value: horace.t3_locked_in(['Paddington', 'Bulimba', 'Hawthorne']) },
+  { key: 't3_locked_in:empty', value: horace.t3_locked_in([]) },
+  { key: 't3_patch_aside', value: horace.t3_patch_aside() },
   { key: 't7_signoff', value: horace.t7_signoff() },
 ]
 

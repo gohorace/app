@@ -113,6 +113,20 @@
   color: var(--color-stone);
 }
 
+/* Turn 3 — patch picker wrap */
+.patchInputWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.patchError {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-terracotta);
+}
+
 .turnActions {
   display: flex;
   gap: 12px;

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { BANNED_IN_HORACE, HORACE_SAMPLES, SIGNOFF_KEY, horace } from './copy'
+import { BANNED_IN_HORACE, HORACE_SAMPLES, SIGNOFF_KEY, formatSuburbList, horace } from './copy'
 
 /**
  * Voice rules for the agentic onboarding shell. Mirrors
@@ -59,5 +59,31 @@ describe('horace voice', () => {
     expect(out.length).toBeGreaterThan(0)
     expect(out).not.toContain('null')
     expect(out).not.toContain('undefined')
+  })
+})
+
+describe('formatSuburbList', () => {
+  it('renders an empty list as empty string', () => {
+    expect(formatSuburbList([])).toBe('')
+  })
+
+  it('renders a single suburb as-is', () => {
+    expect(formatSuburbList(['Paddington'])).toBe('Paddington')
+  })
+
+  it('renders two suburbs with "and"', () => {
+    expect(formatSuburbList(['Paddington', 'Bulimba'])).toBe('Paddington and Bulimba')
+  })
+
+  it('renders three suburbs comma-separated with "and" (no Oxford comma)', () => {
+    expect(formatSuburbList(['Paddington', 'Bulimba', 'Hawthorne'])).toBe(
+      'Paddington, Bulimba and Hawthorne',
+    )
+  })
+
+  it('drops empty / whitespace entries before joining', () => {
+    expect(formatSuburbList(['Paddington', '', '  ', 'Bulimba'])).toBe(
+      'Paddington and Bulimba',
+    )
   })
 })
