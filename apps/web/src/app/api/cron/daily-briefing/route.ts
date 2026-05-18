@@ -151,6 +151,32 @@ export async function GET(request: NextRequest) {
         ? settings.briefing_emails
         : settings.agent_email ? [settings.agent_email] : []
 
+      // HOR-203: support seats bound to this agent receive the same
+      // briefing. On Pro, support_seat_assignments.assigned_agent_id
+      // equals workspaces.default_agent_id; on Office/Enterprise this
+      // can be multi-assigned (HOR-189). Append support-seat emails to
+      // the recipient list — they see the agent's signals, so they
+      // get the agent's briefing.
+      const { data: supportRows } = await admin
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .from('support_seat_assignments' as any)
+        .select(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          'support_agent_id, agents:support_agent_id(email, status)' as any,
+        )
+        .eq('assigned_agent_id', settings.agent_id)
+
+      const supportEmails: string[] = (
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (supportRows as any[] | null) ?? []
+      )
+        .map((row) => (row.agents?.status !== 'departed' ? row.agents?.email : null))
+        .filter((e): e is string => typeof e === 'string' && e.length > 0)
+
+      for (const e of supportEmails) {
+        if (!recipients.includes(e)) recipients.push(e)
+      }
+
       if (recipients.length === 0) continue
 
       await resend.emails.send({

@@ -33,11 +33,12 @@ import {
   type WorkspaceInviteContext,
 } from '@/lib/notifications/email'
 import { getAppUrl } from '@/lib/url'
+import { reconcileSupportSeats } from '@/lib/stripe/support-seats'
 
 const INVITE_TTL_DAYS = 7
 const TOKEN_PREFIX = 'inv_'
 
-type InviteRole = 'manager' | 'agent'
+type InviteRole = 'manager' | 'agent' | 'support'
 
 interface WorkspaceInviteRow {
   id: string
@@ -92,9 +93,9 @@ export async function POST(
     return NextResponse.json({ error: 'Valid email required' }, { status: 400 })
   }
   const role = parsed.role
-  if (role !== 'manager' && role !== 'agent') {
+  if (role !== 'manager' && role !== 'agent' && role !== 'support') {
     return NextResponse.json(
-      { error: 'role must be "manager" or "agent"' },
+      { error: 'role must be "manager", "agent", or "support"' },
       { status: 400 },
     )
   }
@@ -205,6 +206,24 @@ export async function POST(
       return NextResponse.json({ error: 'Failed to create invite' }, { status: 500 })
     }
     invite = insertedRaw as WorkspaceInviteRow
+  }
+
+  // 4b. Support seats: reconcile Stripe quantity against the new
+  // outstanding-invite + active-seat count. Idempotent; safe across all
+  // three insert paths (new / replay-after-expire / resend) since
+  // reconciliation reads from the source of truth in the db.
+  // Best-effort: if Stripe fails we still keep the invite — the
+  // settings UI will display a reconciliation warning.
+  if (role === 'support') {
+    try {
+      await reconcileSupportSeats(workspaceId)
+    } catch (err) {
+      console.error('reconcileSupportSeats failed after invite insert', {
+        workspaceId,
+        inviteId: invite.id,
+        err,
+      })
+    }
   }
 
   // 5. Fetch workspace + inviter context for the email body.

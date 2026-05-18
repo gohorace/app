@@ -20,7 +20,7 @@ interface InviteRow {
   id: string
   workspace_id: string
   email: string
-  role: 'manager' | 'agent'
+  role: 'manager' | 'agent' | 'support'
   invited_by: string
   expires_at: string
   accepted_at: string | null
@@ -106,7 +106,12 @@ export default async function InviteAcceptPage({
   }
 
   const { invite, workspaceName, inviterName } = result
-  const roleLabel = invite.role === 'manager' ? 'manager' : 'agent'
+  const roleLabel =
+    invite.role === 'manager'
+      ? 'manager'
+      : invite.role === 'support'
+        ? 'support seat'
+        : 'agent'
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4 py-12 bg-background">

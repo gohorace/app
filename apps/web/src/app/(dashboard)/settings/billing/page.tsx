@@ -13,9 +13,31 @@ export default async function BillingPage() {
   const admin = createAdminClient()
   const { data: agent } = await admin
     .from('agents')
-    .select('workspace_id')
+    .select('id, workspace_id')
     .eq('user_id', user!.id)
     .maybeSingle()
+
+  // HOR-203: seat_type isn't in generated types yet — fetch separately
+  // and refuse access for support seats.
+  if (agent) {
+    const { data: seatRow } = await admin
+      .from('agents')
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .select('seat_type' as any)
+      .eq('id', agent.id)
+      .maybeSingle()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if ((seatRow as any)?.seat_type === 'support') {
+      return (
+        <div className="p-8 max-w-3xl">
+          <h1 className="text-2xl font-bold tracking-tight">Plan &amp; billing</h1>
+          <p className="text-muted-foreground mt-2">
+            Billing is managed by the workspace owner.
+          </p>
+        </div>
+      )
+    }
+  }
 
   const { data: workspace } = agent?.workspace_id
     ? await admin
