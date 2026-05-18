@@ -15,10 +15,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { reconcileSupportSeats } from '@/lib/stripe/support-seats'
 
 interface InviteRow {
   id: string
   workspace_id: string
+  role: 'manager' | 'agent' | 'support'
   revoked_at: string | null
 }
 
@@ -63,7 +65,7 @@ export async function DELETE(
   const { data: inviteRaw } = await admin
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .from('workspace_invites' as any)
-    .select('id, workspace_id, revoked_at')
+    .select('id, workspace_id, role, revoked_at')
     .eq('id', inviteId)
     .maybeSingle()
 
@@ -86,6 +88,20 @@ export async function DELETE(
   if (updateErr) {
     console.error('Failed to revoke invite', { inviteId, error: updateErr })
     return NextResponse.json({ error: 'Failed to revoke invite' }, { status: 500 })
+  }
+
+  // Reconcile Stripe quantity when a support invite is revoked.
+  // Best-effort: if Stripe fails we still keep the revoked row.
+  if (invite.role === 'support') {
+    try {
+      await reconcileSupportSeats(workspaceId)
+    } catch (err) {
+      console.error('reconcileSupportSeats failed after invite revoke', {
+        workspaceId,
+        inviteId,
+        err,
+      })
+    }
   }
 
   return NextResponse.json({ id: invite.id, revoked: true, already: false }, { status: 200 })

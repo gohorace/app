@@ -7,11 +7,26 @@ export default async function SettingsPage() {
   const { data: { user } } = await supabase.auth.getUser()
 
   const admin = createAdminClient()
+  // Typed query for the columns in database.types.ts.
   const { data: agent } = await admin
     .from('agents')
     .select('id, first_name, last_name, workspace_id, avatar_url')
     .eq('user_id', user!.id)
     .maybeSingle()
+
+  // HOR-203: seat_type isn't in generated types yet — fetch it separately.
+  const { data: seatRow } = agent
+    ? await admin
+        .from('agents')
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .select('seat_type' as any)
+        .eq('id', agent.id)
+        .maybeSingle()
+    : { data: null }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const seatType: 'agent' | 'support' =
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ((seatRow as any)?.seat_type ?? 'agent') as 'agent' | 'support'
 
   const { data: workspace } = agent?.workspace_id
     ? await admin
@@ -30,6 +45,7 @@ export default async function SettingsPage() {
         email={user?.email ?? null}
         avatarUrl={agent?.avatar_url ?? null}
         workspaceName={workspace?.name ?? 'My Agency'}
+        seatType={seatType}
       />
     </div>
   )

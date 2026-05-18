@@ -463,8 +463,23 @@ const MAGIC_COPY: Record<MagicLinkAction, { subject: string; heading: string; bo
 export interface WorkspaceInviteContext {
   workspaceName: string
   inviterName: string
-  /** agents.role vocabulary — 'manager' or 'agent'. */
-  role: 'manager' | 'agent'
+  /**
+   * Invite seat vocabulary — 'manager' | 'agent' | 'support'.
+   * 'support' redeems to agents.seat_type='support' (see HOR-203).
+   */
+  role: 'manager' | 'agent' | 'support'
+}
+
+function inviteRoleLabel(role: WorkspaceInviteContext['role']): string {
+  switch (role) {
+    case 'manager':
+      return 'a manager'
+    case 'support':
+      return 'a support seat'
+    case 'agent':
+    default:
+      return 'an agent'
+  }
 }
 
 export function buildMagicLinkEmail(args: {
@@ -480,7 +495,7 @@ export function buildMagicLinkEmail(args: {
   if (args.action === 'invite' && args.inviteContext) {
     const { workspaceName, inviterName, role } = args.inviteContext
     const firstName = inviterName.split(/\s+/)[0] || inviterName
-    const roleLabel = role === 'manager' ? 'a manager' : 'an agent'
+    const roleLabel = inviteRoleLabel(role)
     subject = `${firstName} invited you to ${workspaceName} on Horace`
     heading = `Join ${workspaceName} on Horace`
     body = `${inviterName} invited you to join ${workspaceName} as ${roleLabel}.`
@@ -529,7 +544,7 @@ export function buildInvitePlainText(args: {
   inviteContext: WorkspaceInviteContext
 }): string {
   const { workspaceName, inviterName, role } = args.inviteContext
-  const roleLabel = role === 'manager' ? 'a manager' : 'an agent'
+  const roleLabel = inviteRoleLabel(role)
   return [
     `${inviterName} invited you to join ${workspaceName} on Horace as ${roleLabel}.`,
     '',

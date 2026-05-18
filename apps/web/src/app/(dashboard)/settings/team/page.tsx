@@ -19,11 +19,14 @@ import { TeamManager, type MemberRow, type PendingInviteRow } from '@/components
 interface InviteFromDb {
   id: string
   email: string
-  role: 'manager' | 'agent'
+  role: 'manager' | 'agent' | 'support'
   invited_by: string
   expires_at: string
   created_at: string
 }
+
+const SUPPORT_SEATS_ENABLED =
+  process.env.NEXT_PUBLIC_SUPPORT_SEATS_ENABLED === 'true'
 
 export default async function TeamSettingsPage() {
   const supabase = await createClient()
@@ -52,13 +55,39 @@ export default async function TeamSettingsPage() {
   const workspaceId = callerMembership.workspace_id
   const callerRole = callerMembership.role as 'owner' | 'admin' | 'viewer'
 
+  // HOR-203: support seats can't manage the team. Surface a friendly
+  // empty state rather than rendering an empty member list.
+  const { data: callerAgent } = await admin
+    .from('agents')
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .select('seat_type' as any)
+    .eq('workspace_id', workspaceId)
+    .eq('user_id', user!.id)
+    .maybeSingle()
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  if ((callerAgent as any)?.seat_type === 'support') {
+    return (
+      <div className="p-8 max-w-3xl">
+        <h1 className="text-2xl font-bold tracking-tight">Team</h1>
+        <p className="text-muted-foreground mt-2">
+          Team management is handled by the workspace owner. Ask them if you
+          need access changed.
+        </p>
+      </div>
+    )
+  }
+
   // Fetch members. workspace_members carries the auth role; agents carries
   // the operational role + name + email. Two queries + stitch in JS — small
   // member counts per workspace make this fine.
+  // Also fetch the workspace's plan so the UI can gate Pro-only behaviour
+  // (single agent slot, support-only invite dropdown).
   const [
     { data: memberRows },
     { data: agentRows },
     { data: invitesRaw },
+    { data: workspaceRow },
   ] = await Promise.all([
     admin
       .from('workspace_members')
@@ -67,7 +96,7 @@ export default async function TeamSettingsPage() {
     admin
       .from('agents')
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .select('user_id, first_name, last_name, email, role, status, joined_at' as any)
+      .select('user_id, first_name, last_name, email, role, seat_type, status, joined_at' as any)
       .eq('workspace_id', workspaceId),
     admin
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -77,6 +106,11 @@ export default async function TeamSettingsPage() {
       .is('accepted_at', null)
       .is('revoked_at', null)
       .order('created_at', { ascending: false }),
+    admin
+      .from('workspaces')
+      .select('plan')
+      .eq('id', workspaceId)
+      .maybeSingle(),
   ])
 
   // Stitch agents into members by user_id.
@@ -93,6 +127,7 @@ export default async function TeamSettingsPage() {
       isSelf: m.user_id === user!.id,
       authRole: m.role as MemberRow['authRole'],
       agentRole: (a?.role ?? 'agent') as MemberRow['agentRole'],
+      seatType: (a?.seat_type ?? 'agent') as MemberRow['seatType'],
       firstName: a?.first_name ?? null,
       lastName: a?.last_name ?? null,
       email: a?.email ?? null,
@@ -145,6 +180,8 @@ export default async function TeamSettingsPage() {
             workspaceId={workspaceId}
             callerRole={callerRole}
             ownerCount={ownerCount}
+            workspacePlan={(workspaceRow?.plan as string | null) ?? null}
+            supportSeatsEnabled={SUPPORT_SEATS_ENABLED}
             initialMembers={members}
             initialInvites={invites}
           />

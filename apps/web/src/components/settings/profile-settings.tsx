@@ -14,6 +14,8 @@ interface ProfileSettingsProps {
   email: string | null
   avatarUrl: string | null
   workspaceName: string
+  /** HOR-203: support seats see a reduced nav (no Team / Billing). */
+  seatType?: 'agent' | 'support'
 }
 
 const NAV_ITEMS = [
@@ -29,7 +31,18 @@ const NAV_ITEMS = [
   { href: '/help',                    label: 'Help & guides',      icon: LifeBuoy,  desc: 'Walkthroughs and answers' },
 ]
 
-export function ProfileSettings({ agentId, firstName, lastName, email, avatarUrl, workspaceName }: ProfileSettingsProps) {
+// Support seats don't manage the workspace — Team and Billing are
+// hidden from their nav (and gated server-side at the page level).
+const NAV_ITEMS_HIDDEN_FOR_SUPPORT = new Set<string>([
+  '/settings/team',
+  '/settings/billing',
+])
+
+export function ProfileSettings({ agentId, firstName, lastName, email, avatarUrl, workspaceName, seatType = 'agent' }: ProfileSettingsProps) {
+  const navItems =
+    seatType === 'support'
+      ? NAV_ITEMS.filter((item) => !NAV_ITEMS_HIDDEN_FOR_SUPPORT.has(item.href))
+      : NAV_ITEMS
   const router = useRouter()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
@@ -196,7 +209,7 @@ export function ProfileSettings({ agentId, firstName, lastName, email, avatarUrl
         borderRadius: '12px',
         overflow: 'hidden',
       }}>
-        {NAV_ITEMS.map(({ href, label, icon: Icon, desc }, i) => (
+        {navItems.map(({ href, label, icon: Icon, desc }, i) => (
           <Link
             key={href}
             href={href}

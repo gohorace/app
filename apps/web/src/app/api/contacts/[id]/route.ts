@@ -31,6 +31,12 @@ export async function GET(
 
   if (!agent) return NextResponse.json({ error: 'Agent not found' }, { status: 404 })
 
+  // HOR-203: support seats see signals for their assigned agent(s).
+  const { getSeatPermissions } = await import('@/lib/seats/permissions')
+  const seats = await getSeatPermissions(admin, user.id)
+  const allowedAgentIds =
+    seats.allowedAgentIds.length > 0 ? seats.allowedAgentIds : [agent.id]
+
   // ?include_deleted=true lets the restore flow fetch a soft-deleted contact
   // for the "Restore Sarah?" confirmation surface. Default reads hide them.
   const includeDeleted = req.nextUrl.searchParams.get('include_deleted') === 'true'
@@ -39,7 +45,7 @@ export async function GET(
     .from('contacts')
     .select('id, first_name, last_name, full_name_raw, email, phone, score, last_seen_at, property_address, suburb, source, medium, deleted_at, residence_property_id, metadata')
     .eq('id', params.id)
-    .eq('agent_id', agent.id)
+    .in('agent_id', allowedAgentIds)
 
   const [{ data: contact }, { data: events }, { data: scoreHistory }] = await Promise.all([
     (includeDeleted ? contactQuery : contactQuery.is('deleted_at', null)).maybeSingle(),
@@ -48,7 +54,7 @@ export async function GET(
       .from('score_history')
       .select('id, delta, reason, score_after, occurred_at')
       .eq('contact_id', params.id)
-      .eq('agent_id', agent.id)
+      .in('agent_id', allowedAgentIds)
       .order('occurred_at', { ascending: false })
       .limit(30),
   ])
@@ -128,6 +134,14 @@ export async function PATCH(
 
   if (!agent) return NextResponse.json({ error: 'Agent not found' }, { status: 404 })
 
+  // HOR-203: support seats can action signals on contacts owned by
+  // their assigned agent(s). Resolve allowed agent IDs once; reuse
+  // for every ownership filter below.
+  const { getSeatPermissions } = await import('@/lib/seats/permissions')
+  const seats = await getSeatPermissions(admin, user.id)
+  const allowedAgentIds =
+    seats.allowedAgentIds.length > 0 ? seats.allowedAgentIds : [agent.id]
+
   const body = await req.json() as Record<string, unknown>
 
   // Slice 4: the legacy property_address / suburb columns are no longer
@@ -176,7 +190,7 @@ export async function PATCH(
       .from('contacts')
       .select('metadata')
       .eq('id', params.id)
-      .eq('agent_id', agent.id)
+      .in('agent_id', allowedAgentIds)
       .is('deleted_at', null)
       .maybeSingle()
 
@@ -244,11 +258,13 @@ export async function PATCH(
   }
 
   // Refuse edits on soft-deleted contacts. Restore first, then edit.
+  // HOR-203: ownership scope expanded — support seats can action signals
+  // on contacts owned by their assigned agent(s) (allowedAgentIds).
   const { error } = await admin
     .from('contacts')
     .update(update)
     .eq('id', params.id)
-    .eq('agent_id', agent.id) // scoped — agent can only update their own contacts
+    .in('agent_id', allowedAgentIds)
     .is('deleted_at', null)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

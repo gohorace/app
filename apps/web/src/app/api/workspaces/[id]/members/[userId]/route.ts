@@ -17,6 +17,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { reconcileSupportSeats } from '@/lib/stripe/support-seats'
 
 export async function DELETE(
   request: NextRequest,
@@ -122,6 +123,19 @@ export async function DELETE(
       error: membershipErr,
     })
     return NextResponse.json({ error: 'Failed to remove member' }, { status: 500 })
+  }
+
+  // Reconcile Stripe support-seat quantity (no-op when the removed
+  // member was an agent seat). Best-effort; status='departed' already
+  // excludes the row from the next reconcile pass regardless.
+  try {
+    await reconcileSupportSeats(workspaceId)
+  } catch (err) {
+    console.error('reconcileSupportSeats failed after member remove', {
+      workspaceId,
+      targetUserId,
+      err,
+    })
   }
 
   return NextResponse.json({ removed: true }, { status: 200 })
