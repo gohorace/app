@@ -13,6 +13,11 @@ export interface OnboardingContext {
   snippetKey: string
   appUrl: string
   firstName: string | null
+  /** The agent's auth email. Used by Turn 2 to suggest "your site is
+   *  reidproperty.com.au — that right?" pre-fill. May be empty if the
+   *  Supabase user has no email (shouldn't happen via magic-link flow,
+   *  but defensive default avoids a null check at every turn). */
+  email: string
   lastCompletedStep: OnboardingStep | null
   onboardingFlow: 'agentic' | 'classic'
 }
@@ -189,6 +194,7 @@ export async function bootstrapOnboardingContext(): Promise<OnboardingContext> {
     appUrl,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     firstName: ((agent as any).first_name as string | null) ?? null,
+    email: user.email ?? '',
     lastCompletedStep: lastCompleted,
     onboardingFlow,
   }

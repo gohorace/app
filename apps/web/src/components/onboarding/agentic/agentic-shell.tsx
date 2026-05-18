@@ -13,6 +13,7 @@ import {
 } from './turn-controller'
 import { Turn0Intro } from './turns/turn-0-intro'
 import { Turn1Greet } from './turns/turn-1-greet'
+import { Turn2Script } from './turns/turn-2-script'
 
 /**
  * Agentic onboarding shell — the chat surface.
@@ -37,13 +38,16 @@ interface Props {
   snippetKey: string
   appUrl: string
   firstName: string | null
+  /** Auth email — used by Turn 2 to suggest the agent's site domain. */
+  email: string
   initialTurnId?: TurnId
 }
 
 export function AgenticShell({
-  // agentId, snippetKey, appUrl are wired but only consumed by Turn 2+.
-  // Kept on the prop interface so the contract is stable as turns light up.
+  snippetKey,
+  appUrl,
   firstName,
+  email,
   initialTurnId = 0,
 }: Props) {
   const [state, dispatch] = useReducer(reducer, createInitialState(initialTurnId))
@@ -83,6 +87,14 @@ export function AgenticShell({
                 firstName={firstName}
                 dispatch={dispatch}
                 onAdvance={() => advance(2)}
+              />
+            ) : state.turnId === 2 ? (
+              <Turn2Script
+                email={email}
+                snippetKey={snippetKey}
+                appUrl={appUrl}
+                dispatch={dispatch}
+                onAdvance={() => advance(3)}
               />
             ) : (
               <TurnPlaceholder turnId={state.turnId} />

@@ -13,7 +13,8 @@
  *     strikes. The shell renders <BailPrompt /> off bailVisible.
  */
 
-export type TurnId = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7
+export type { TurnId } from '@/lib/onboarding/resume'
+import type { TurnId } from '@/lib/onboarding/resume'
 
 export type PillKind = 'work' | 'ok' | 'err'
 

@@ -34,6 +34,17 @@ export const horace = {
   t1_greet_sub: (): string =>
     "I won't ring or message unless it's worth your time.",
 
+  // Turn 2 — tracking script
+  t2_suggest_site: (host: string): string =>
+    `Looks like you're at ${host} — that right?`,
+  t2_ask_site: (): string => "What's the URL of your site?",
+  t2_found_site: (): string => 'Found it.',
+  t2_snippet_intro: (): string =>
+    "Drop this on your site once and I'll start reading the moment it lands.",
+  t2_help_offer: (): string =>
+    "Not the one who installs scripts? Send it to whoever does, or grab 15 minutes with me and we'll do it together.",
+  t2_tracking_confirmed: (): string => "Snippet's live. I'm listening.",
+
   // Turn 7 — sign-off (the only place "Seize the moment" appears)
   t7_signoff: (): string => 'Seize the moment — Horace',
 } as const
@@ -95,6 +106,12 @@ export const HORACE_SAMPLES: ReadonlyArray<{ key: string; value: string }> = [
   { key: 't1_greet:with-name', value: horace.t1_greet('Davey') },
   { key: 't1_greet:no-name', value: horace.t1_greet(null) },
   { key: 't1_greet_sub', value: horace.t1_greet_sub() },
+  { key: 't2_suggest_site', value: horace.t2_suggest_site('reidproperty.com.au') },
+  { key: 't2_ask_site', value: horace.t2_ask_site() },
+  { key: 't2_found_site', value: horace.t2_found_site() },
+  { key: 't2_snippet_intro', value: horace.t2_snippet_intro() },
+  { key: 't2_help_offer', value: horace.t2_help_offer() },
+  { key: 't2_tracking_confirmed', value: horace.t2_tracking_confirmed() },
   { key: 't7_signoff', value: horace.t7_signoff() },
 ]
 

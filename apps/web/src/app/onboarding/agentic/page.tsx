@@ -1,5 +1,6 @@
 import { AgenticShell } from '@/components/onboarding/agentic/agentic-shell'
 import { bootstrapOnboardingContext } from '@/lib/onboarding/bootstrap'
+import { resumeTurnId } from '@/lib/onboarding/resume'
 
 /**
  * Conversational v2 onboarding shell. Default destination for new agents.
@@ -18,6 +19,8 @@ export default async function OnboardingAgenticPage() {
       snippetKey={ctx.snippetKey}
       appUrl={ctx.appUrl}
       firstName={ctx.firstName}
+      email={ctx.email}
+      initialTurnId={resumeTurnId(ctx.lastCompletedStep)}
     />
   )
 }
