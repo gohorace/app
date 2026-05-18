@@ -28,7 +28,7 @@ import {
 } from '@/lib/design/badges'
 import { AddPropertyModal } from './add-property-modal'
 import { EmptyNoCoreMarket } from './empty-no-core-market'
-import { PropertiesMap, type MapProperty } from './properties-map'
+import { PropertiesMap } from './properties-map'
 import { TimeScrubber } from './time-scrubber'
 import { MAP_COPY } from '@/lib/copy/map-view'
 import type { MapPayload, TimeWindow as MapTimeWindow } from '@/lib/map/rpc-types'
@@ -440,15 +440,13 @@ export function PropertiesView({
                   transition: 'filter 220ms ease-out',
                 }}
               >
+                {/* HOR-218: PropertiesMap now consumes the full server
+                    `MapPayload` — heat + suburbs + tiered pins all driven
+                    from one contract. List-view chip filters no longer
+                    apply to the map (the map is the server-authoritative
+                    view; filters are a list-only concern in V1). */}
                 <PropertiesMap
-                  properties={filtered.map((p): MapProperty => ({
-                    id:         p.id,
-                    address:    p.address,
-                    suburb:     p.suburb,
-                    latitude:   p.latitude,
-                    longitude:  p.longitude,
-                    engagement: p.engagement,
-                  }))}
+                  payload={mapPayload}
                   fallbackCenter={
                     coreMarkets[0]?.latitude != null && coreMarkets[0]?.longitude != null
                       ? { lat: coreMarkets[0].latitude, lng: coreMarkets[0].longitude }
