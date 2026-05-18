@@ -29,7 +29,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveResidence, type SelectedAddressInput } from '@/lib/contacts/residence'
 import { generate as generateToken } from '@/lib/inspections/tokens'
 import { createInspection } from '@/lib/inspections/repo'
-import { inspectionOriginForWorkspace } from '@/lib/inspections/origin'
+import { inspectionPublicUrl } from '@/lib/inspections/origin'
 import { getVerifiedDomainForWorkspace } from '@/lib/domains/lookup'
 
 // Token collisions at 60^8 (~1.68e14 combos) are astronomically rare,
@@ -189,7 +189,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: msg }, { status: 500 })
   }
 
-  const publicUrl = `${await inspectionOriginForWorkspace(agent.workspace_id, req)}/i/${token}`
+  const publicUrl = await inspectionPublicUrl(agent.workspace_id, token, req)
 
   return NextResponse.json({ id: inspectionId, token, public_url: publicUrl }, { status: 201 })
 }

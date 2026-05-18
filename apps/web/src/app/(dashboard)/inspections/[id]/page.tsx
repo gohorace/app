@@ -26,7 +26,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { qrDataUrl } from '@/lib/inspections/qr'
-import { inspectionOrigin, inspectionOriginForWorkspace } from '@/lib/inspections/origin'
+import { inspectionOrigin, inspectionPublicUrl } from '@/lib/inspections/origin'
 import { getVerifiedDomainForWorkspace } from '@/lib/domains/lookup'
 
 export const dynamic = 'force-dynamic'
@@ -114,7 +114,7 @@ export default async function InspectionDetailPage({ params }: PageProps) {
     ? await getVerifiedDomainForWorkspace(agent.workspace_id)
     : null
   const publicUrl = agent.workspace_id
-    ? `${await inspectionOriginForWorkspace(agent.workspace_id)}/i/${inspection.token}`
+    ? await inspectionPublicUrl(agent.workspace_id, inspection.token)
     : `${inspectionOrigin()}/i/${inspection.token}`
 
   const qr = await qrDataUrl(publicUrl)

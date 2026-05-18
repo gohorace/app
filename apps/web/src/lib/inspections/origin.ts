@@ -55,6 +55,11 @@ export function inspectionOrigin(req?: RequestLike | null): string {
  * HOR-204: workspace-aware origin. Prefers the workspace's verified
  * custom domain when present; otherwise delegates to the sync fallback
  * chain above.
+ *
+ * Prefer `inspectionPublicUrl()` over this helper when you're building
+ * the full public capture URL — it handles the path-shape difference
+ * between custom-domain (root) and Horace-hosted (/i/) capture paths
+ * in one place.
  */
 export async function inspectionOriginForWorkspace(
   workspaceId: string,
@@ -71,4 +76,34 @@ export async function inspectionOriginForWorkspace(
     // (even if Horace-hosted) than to error out the page.
   }
   return inspectionOrigin(req)
+}
+
+/**
+ * HOR-204: single source of truth for the public capture URL.
+ *
+ * URL shape depends on whether the workspace has a verified custom
+ * domain:
+ *   - Custom domain:  https://inspections.<agent>.com/<token>
+ *                     (the middleware on the custom host rewrites
+ *                     /<token> → /i/<token> internally; the URL bar
+ *                     stays short and branded)
+ *   - Horace-hosted:  https://gohorace.com/i/<token>
+ *
+ * Use this everywhere the URL is rendered — QR code, create-response
+ * `public_url`, inspection detail page, daily-briefing links.
+ */
+export async function inspectionPublicUrl(
+  workspaceId: string,
+  token: string,
+  req?: RequestLike | null,
+): Promise<string> {
+  try {
+    const hostname = await getVerifiedDomainForWorkspace(workspaceId)
+    if (hostname) {
+      return `https://${hostname}/${token}`
+    }
+  } catch (err) {
+    console.error('inspectionPublicUrl lookup failed', { workspaceId, token, err })
+  }
+  return `${inspectionOrigin(req)}/i/${token}`
 }
