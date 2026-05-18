@@ -396,9 +396,15 @@ async function main() {
     //     Buderim addresses present at `>= 1`). 2026-05-18.
     //   • date_retired: NULL means active. Anything non-null means
     //     the address was withdrawn — exclude.
-    //   • primary_secondary IN ('P','S'): P = principal building,
-    //     S = sub-dwelling (unit/flat). Both kinds become independent
-    //     properties rows per the Core Markets brief.
+    //   • primary_secondary: PSMA marks address_detail rows as 'P'
+    //     (principal of a complex with sub-dwellings), 'S' (sub-dwelling
+    //     within a P), or NULL (standalone address — no hierarchy). The
+    //     V1 ingest only kept P + S, which dropped ~70% of legitimate
+    //     addresses (every standalone house etc.). Now keep NULL too —
+    //     a standalone house is still a property we want in the picker.
+    //     Caught smoke-testing Currimundi: 2462 NULL + 775 S + 159 P =
+    //     3396 raw rows; the old IN ('P','S') filter kept only 934.
+    //     2026-05-18.
     await client.query(`
       INSERT INTO gnaf.address_principal_next (
         address_detail_pid, locality_pid, street_locality_pid,
@@ -438,7 +444,7 @@ async function main() {
         ON adg.address_detail_pid = ad.address_detail_pid
       WHERE COALESCE(ad.confidence::int, -1) >= 0
         AND ad.date_retired IS NULL
-        AND ad.primary_secondary IN ('P', 'S')
+        AND (ad.primary_secondary IS NULL OR ad.primary_secondary IN ('P', 'S'))
     `, [RELEASE_TAG])
 
     // ── 5. Build gnaf.localities_next ────────────────────────────────
