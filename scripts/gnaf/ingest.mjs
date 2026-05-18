@@ -383,13 +383,17 @@ async function main() {
     // excluded — keeping them would pollute the suburb-picker results
     // and the per-suburb import counts.
     //
-    // Confidence filter: `confidence >= 1` keeps PSMA's verified rows.
-    // Confidence -1 / 0 are sites with ambiguous geocoding; we drop them.
     // Note on filters:
     //   • COPY's `NULL ''` config converts empty PSV cells → SQL NULL,
     //     so we don't need an `OR field = ''` branch anywhere.
-    //   • confidence: PSMA's verified scale (1, 2). 0 and -1 are
-    //     unverified / ambiguous geocoding; we drop them.
+    //   • confidence: PSMA's scale is -1 (no geocode), 0 (low / approx
+    //     geocode), 1 (good), 2 (high). Original V1 used `>= 1` but
+    //     that dropped ~90% of real addresses in some suburbs — they
+    //     were ABS-known dwellings with imprecise lat/lng. Loosened to
+    //     `>= 0` so we keep low-confidence-geocode addresses (the
+    //     postal address is still valid; the map view just won't get a
+    //     precise pin). Caught smoke-testing Currimundi (only 5 of 59
+    //     Buderim addresses present at `>= 1`). 2026-05-18.
     //   • date_retired: NULL means active. Anything non-null means
     //     the address was withdrawn — exclude.
     //   • primary_secondary IN ('P','S'): P = principal building,
@@ -432,7 +436,7 @@ async function main() {
       JOIN gnaf_staging.state s            ON s.state_pid            = l.state_pid
       LEFT JOIN gnaf_staging.address_default_geocode adg
         ON adg.address_detail_pid = ad.address_detail_pid
-      WHERE COALESCE(ad.confidence::int, 0) >= 1
+      WHERE COALESCE(ad.confidence::int, -1) >= 0
         AND ad.date_retired IS NULL
         AND ad.primary_secondary IN ('P', 'S')
     `, [RELEASE_TAG])
