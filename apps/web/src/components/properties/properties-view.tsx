@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Activity,
@@ -29,6 +29,9 @@ import {
 import { AddPropertyModal } from './add-property-modal'
 import { EmptyNoCoreMarket } from './empty-no-core-market'
 import { PropertiesMap, type MapProperty } from './properties-map'
+import { TimeScrubber } from './time-scrubber'
+import { MAP_COPY } from '@/lib/copy/map-view'
+import type { MapPayload, TimeWindow as MapTimeWindow } from '@/lib/map/rpc-types'
 
 export interface PropertyGridRow {
   id: string
@@ -114,6 +117,12 @@ interface Props {
   defaultModalOpen?: boolean
   /** HOR-195: current agent's active core markets. Empty → full-screen empty state. */
   coreMarkets?: CoreMarketSummary[]
+  /**
+   * HOR-217: time window for the map view's signal payload + the list's
+   * engagement column. Mirrors `?timeWindow=` on the URL; the scrubber updates
+   * both the URL and the local fetch. Defaults to `7d` server-side.
+   */
+  initialTimeWindow?: MapTimeWindow
 }
 
 export function PropertiesView({
@@ -121,6 +130,7 @@ export function PropertiesView({
   initialQ = '',
   defaultModalOpen = false,
   coreMarkets = [],
+  initialTimeWindow = '7d',
 }: Props) {
   const router = useRouter()
   const [search, setSearch] = useState(initialQ)
@@ -128,12 +138,80 @@ export function PropertiesView({
   const [view, setView] = useState<ViewMode>('list')
   const [filters, setFilters] = useState<SecondaryFilters>(DEFAULT_FILTERS)
   const [addOpen, setAddOpen] = useState(defaultModalOpen)
+  // HOR-217: scrubber time window + map payload. The scrubber is only mounted
+  // when view==='map' (HOR-220 mirrors the chrome onto list view), so the
+  // fetch only fires when the agent is looking at the map. `mapLoading` drives
+  // the parchment-desaturation hint during refetch — no spinner, per brief.
+  const [timeWindow, setTimeWindow] = useState<MapTimeWindow>(initialTimeWindow)
+  const [mapPayload, setMapPayload] = useState<MapPayload | null>(null)
+  const [mapLoading, setMapLoading] = useState(false)
+  // Debounce + abort handling so a rapid run of scrubber clicks coalesces to
+  // a single in-flight fetch. The previous attempt is aborted; the latest wins.
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const fetchAbortRef = useRef<AbortController | null>(null)
   // HOR-137: optimistic soft-delete state (mirrors the Contacts grid).
   const [deletedIds, setDeletedIds] = useState<Set<string>>(() => new Set())
   const visibleProperties = useMemo(
     () => properties.filter((p) => !deletedIds.has(p.id)),
     [properties, deletedIds],
   )
+
+  // ─── HOR-217: Map payload fetch ────────────────────────────────────────────
+  //
+  // Fires when (a) the agent first opens the map view, or (b) the scrubber
+  // time window changes. Debounced 250ms; aborts any in-flight prior request
+  // so a fast click-through doesn't pile responses on top of each other.
+
+  useEffect(() => {
+    if (view !== 'map') return
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+
+    debounceRef.current = setTimeout(() => {
+      if (fetchAbortRef.current) fetchAbortRef.current.abort()
+      const controller = new AbortController()
+      fetchAbortRef.current = controller
+
+      setMapLoading(true)
+      fetch(`/api/properties/map-payload?timeWindow=${timeWindow}`, {
+        signal: controller.signal,
+        // No cache — Haiku summary is server-cached for 1h; the route itself
+        // is cheap to refetch on each scrubber click.
+        cache: 'no-store',
+      })
+        .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+        .then((payload: MapPayload) => {
+          if (controller.signal.aborted) return
+          setMapPayload(payload)
+        })
+        .catch((err) => {
+          if (controller.signal.aborted) return
+          console.error('[properties-view] map-payload fetch failed:', err)
+        })
+        .finally(() => {
+          if (controller.signal.aborted) return
+          setMapLoading(false)
+        })
+    }, 250)
+
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+    }
+  }, [view, timeWindow])
+
+  // ─── HOR-217: URL sync for the time window ────────────────────────────────
+  //
+  // Use `history.replaceState` rather than `router.replace` so the change
+  // doesn't trigger a Next.js navigation/re-render. Reload still picks up the
+  // value via the server page; navigating away preserves it.
+
+  const handleScrubberChange = (next: MapTimeWindow) => {
+    setTimeWindow(next)
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href)
+      url.searchParams.set('timeWindow', next)
+      window.history.replaceState(null, '', url.toString())
+    }
+  }
 
   // HOR-195: brief — "If agent has no core market set, Properties screen
   // shows a primary empty state (not a dismissible banner). Single CTA
@@ -253,7 +331,10 @@ export function PropertiesView({
                   lineHeight: 1.5,
                 }}
               >
-                Your patch — what&rsquo;s drawing attention, and where the opportunities sit.
+                {/* HOR-217: subtitle moved into the Horace-voice locale.
+                    Same string for both views — the brief treats Properties
+                    as a single surface with two presentations. */}
+                {MAP_COPY.headerSubtitle}
               </p>
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
@@ -281,6 +362,13 @@ export function PropertiesView({
               </button>
             </div>
           </div>
+
+          {/* HOR-217: Horace strip — Horace voice summary + signal counter row.
+              Visible only on the Map view in this PR; HOR-220 mirrors it onto
+              the List view for a11y / cross-view parity. */}
+          {view === 'map' && (
+            <HoraceStrip payload={mapPayload} loading={mapLoading} />
+          )}
 
           {/* Tabs + search */}
           <div
@@ -343,21 +431,37 @@ export function PropertiesView({
 
           {/* List / Map content — view toggle in the header decides */}
           {view === 'map' ? (
-            <PropertiesMap
-              properties={filtered.map((p): MapProperty => ({
-                id:         p.id,
-                address:    p.address,
-                suburb:     p.suburb,
-                latitude:   p.latitude,
-                longitude:  p.longitude,
-                engagement: p.engagement,
-              }))}
-              fallbackCenter={
-                coreMarkets[0]?.latitude != null && coreMarkets[0]?.longitude != null
-                  ? { lat: coreMarkets[0].latitude, lng: coreMarkets[0].longitude }
-                  : null
-              }
-            />
+            <>
+              {/* HOR-217: desaturation hint during a payload refetch. No
+                  spinner — per brief, agents shouldn't feel they're waiting. */}
+              <div
+                style={{
+                  filter: mapLoading ? 'saturate(0.6)' : 'none',
+                  transition: 'filter 220ms ease-out',
+                }}
+              >
+                <PropertiesMap
+                  properties={filtered.map((p): MapProperty => ({
+                    id:         p.id,
+                    address:    p.address,
+                    suburb:     p.suburb,
+                    latitude:   p.latitude,
+                    longitude:  p.longitude,
+                    engagement: p.engagement,
+                  }))}
+                  fallbackCenter={
+                    coreMarkets[0]?.latitude != null && coreMarkets[0]?.longitude != null
+                      ? { lat: coreMarkets[0].latitude, lng: coreMarkets[0].longitude }
+                      : null
+                  }
+                />
+              </div>
+              <TimeScrubber
+                value={timeWindow}
+                onChange={handleScrubberChange}
+                pending={mapLoading}
+              />
+            </>
           ) : (
             <div
               style={{
@@ -411,6 +515,115 @@ export function PropertiesView({
           }}
         />
       )}
+    </div>
+  )
+}
+
+// ── Horace strip (HOR-217) ───────────────────────────────────────────────────
+// Sits below the page header on the map view. Three things in one row:
+//   1. The Horace voice line — italic Playfair sentence prefixed by `• HORACE`.
+//   2. (right) The counter chip row — `7 warm · 12 active · 4 stirring`.
+//
+// Pre-payload state: a quiet placeholder line + dashed counters. We don't fall
+// back to fake counts; better to look mid-render than to lie.
+
+function HoraceStrip({
+  payload,
+  loading,
+}: {
+  payload: MapPayload | null
+  loading: boolean
+}) {
+  const hasPayload = payload !== null
+  const counters = payload?.counters ?? { warm: 0, active: 0, stirring: 0 }
+  // Empty state copy when the workspace has no signal at all in the window.
+  const totalSignal = counters.warm + counters.active + counters.stirring
+  const summary =
+    hasPayload
+      ? (payload!.summary || (totalSignal === 0 ? MAP_COPY.emptyState : ''))
+      : ''
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 24,
+        marginBottom: 18,
+        padding: '12px 14px',
+        background: '#FAF7F2',
+        border: '1px solid rgba(140,123,107,0.18)',
+        borderRadius: 8,
+        opacity: loading ? 0.78 : 1,
+        transition: 'opacity 180ms ease-out',
+      }}
+    >
+      {/* Horace voice */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, flex: 1, minWidth: 0 }}>
+        <span
+          aria-hidden
+          style={{
+            width: 8,
+            height: 8,
+            borderRadius: '50%',
+            background: '#C4622D',
+            marginTop: 6,
+            flexShrink: 0,
+          }}
+        />
+        <span
+          style={{
+            fontFamily: 'var(--font-mono)',
+            fontSize: 10,
+            letterSpacing: '0.12em',
+            color: '#8C7B6B',
+            marginTop: 4,
+            flexShrink: 0,
+          }}
+        >
+          {MAP_COPY.horaceTag}
+        </span>
+        <span
+          style={{
+            fontFamily: 'var(--font-display)',
+            fontStyle: 'italic',
+            fontSize: 14.5,
+            lineHeight: 1.45,
+            color: '#1A1612',
+            letterSpacing: '-0.005em',
+          }}
+        >
+          {summary || (hasPayload ? ' ' : '…')}
+        </span>
+      </div>
+
+      {/* Counter row — mixed units per design (warm/stirring are suburbs,
+          active is properties). Each chip is monospaced number + lowercase
+          label, no pluralisation logic per the Horace copy rule. */}
+      <div style={{ display: 'flex', gap: 18, flexShrink: 0 }}>
+        <CounterChip value={counters.warm}     label={MAP_COPY.counterLabels.warm}     />
+        <CounterChip value={counters.active}   label={MAP_COPY.counterLabels.active}   />
+        <CounterChip value={counters.stirring} label={MAP_COPY.counterLabels.stirring} />
+      </div>
+    </div>
+  )
+}
+
+function CounterChip({ value, label }: { value: number; label: string }) {
+  return (
+    <div style={{ display: 'inline-flex', alignItems: 'baseline', gap: 6 }}>
+      <span
+        style={{
+          fontFamily: 'var(--font-mono)',
+          fontSize: 18,
+          fontWeight: 600,
+          color: '#1A1612',
+          letterSpacing: '-0.01em',
+        }}
+      >
+        {value}
+      </span>
+      <span style={{ fontSize: 12, color: '#8C7B6B' }}>{label}</span>
     </div>
   )
 }

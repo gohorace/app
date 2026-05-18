@@ -137,6 +137,7 @@ export default async function PropertiesPage({
         coreMarkets={coreMarkets}
         initialQ={q}
         defaultModalOpen={defaultModalOpen}
+        initialTimeWindow={timeWindow}
       />
     )
   }
@@ -257,6 +258,7 @@ export default async function PropertiesPage({
       coreMarkets={coreMarkets}
       initialQ={q}
       defaultModalOpen={defaultModalOpen}
+      initialTimeWindow={timeWindow}
     />
   )
 }
