@@ -12,7 +12,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { addDomain, verifyDomain, VercelDomainError } from '@/lib/vercel/domains'
+import { addDomain, getDomainStatus, verifyDomain, VercelDomainError } from '@/lib/vercel/domains'
 import { invalidateHostLookup } from '@/lib/domains/lookup'
 
 interface CustomDomainRow {
@@ -67,11 +67,15 @@ export async function POST(
       // env_missing before addDomain succeeded). Run addDomain now so
       // the Retry button on a failed row can recover without forcing
       // the user to delete the DB row manually.
-      const result = await addDomain(row.hostname)
-      verificationRecords = result.verificationRecords
-      if (result.verified) {
+      await addDomain(row.hostname)
+      // Don't trust addDomain.verified alone — see comment in
+      // /api/domains POST. Check misconfigured via getDomainStatus.
+      const status = await getDomainStatus(row.hostname)
+      verificationRecords = status.verificationRecords
+      const dnsReady = status.verified && !status.misconfigured
+      if (dnsReady) {
         nextStatus = 'verified'
-        nextSsl = 'provisioning'
+        nextSsl = status.sslActive ? 'active' : 'provisioning'
       } else {
         nextStatus = 'verifying'
         nextSsl = 'pending'

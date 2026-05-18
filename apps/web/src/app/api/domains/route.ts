@@ -24,6 +24,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
   addDomain,
+  getDomainStatus,
   isValidHostname,
   VercelDomainError,
   type VercelVerificationRecord,
@@ -184,22 +185,58 @@ export async function POST(req: NextRequest) {
     row = insertedRaw as CustomDomainRow
   }
 
-  // Register with Vercel.
+  // Register with Vercel, then immediately check DNS reachability.
+  //
+  // `addDomain.verified` is true whenever Vercel's team already owns the
+  // parent zone, even if the subdomain has no CNAME yet. The real
+  // signal is `getDomainStatus.misconfigured` from the /v6/config
+  // endpoint — that's what tells us the DNS record actually resolves
+  // to Vercel. Without this double-check the user sees a misleading
+  // "You're set" state immediately after Add and only finds out their
+  // DNS is missing when they try to load the URL.
   try {
-    const result = await addDomain(hostname)
+    const addResult = await addDomain(hostname)
+    let status
+    try {
+      status = await getDomainStatus(hostname)
+    } catch (statusErr) {
+      // Falling back to addResult is safer than failing the whole
+      // request — getDomainStatus may transiently 404 on the config
+      // endpoint right after addDomain. UI stays in 'verifying' and
+      // the next Check status / cron pass settles it.
+      console.warn('getDomainStatus failed immediately after addDomain', {
+        hostname,
+        err: statusErr,
+      })
+      status = {
+        verified: addResult.verified,
+        misconfigured: !addResult.verified,
+        sslActive: false,
+        verificationRecords: addResult.verificationRecords,
+      }
+    }
+
+    const dnsReady = status.verified && !status.misconfigured
+    const nextStatus: 'verified' | 'verifying' = dnsReady ? 'verified' : 'verifying'
+    const nextSsl: 'pending' | 'provisioning' | 'active' = dnsReady
+      ? (status.sslActive ? 'active' : 'provisioning')
+      : 'pending'
+
     await admin
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .from('workspace_custom_domains' as any)
       .update({
-        status: result.verified ? 'verified' : 'verifying',
-        ssl_status: result.verified ? 'provisioning' : 'pending',
+        status: nextStatus,
+        ssl_status: nextSsl,
         // Stamp `vercel_domain_id` so the verify route knows the domain
         // reached Vercel. We use hostname itself as the id — Vercel's
         // endpoints key off the hostname, not a separate id.
         vercel_domain_id: hostname,
-        verification_records: result.verificationRecords,
+        verification_records: status.verificationRecords.length > 0
+          ? status.verificationRecords
+          : addResult.verificationRecords,
         last_checked_at: new Date().toISOString(),
-        verified_at: result.verified ? new Date().toISOString() : null,
+        verified_at: nextStatus === 'verified' ? new Date().toISOString() : null,
         error_message: null,
       })
       .eq('id', row.id)
@@ -209,10 +246,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       id: row.id,
       hostname,
-      status: result.verified ? 'verified' : 'verifying',
-      ssl_status: result.verified ? 'provisioning' : 'pending',
+      status: nextStatus,
+      ssl_status: nextSsl,
       dns_target: 'cname.vercel-dns.com',
-      verification_records: result.verificationRecords,
+      verification_records: status.verificationRecords.length > 0
+        ? status.verificationRecords
+        : addResult.verificationRecords,
     })
   } catch (err) {
     const message = err instanceof VercelDomainError ? err.message : 'Vercel call failed'
