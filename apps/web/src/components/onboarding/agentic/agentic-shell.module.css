@@ -127,6 +127,97 @@
   color: var(--color-terracotta);
 }
 
+/* Free-text recovery affordance + panel (HOR-213) */
+.patchRecoveryToggle {
+  align-self: flex-start;
+  background: transparent;
+  border: none;
+  padding: 0;
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--color-stone-aa);
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  transition: color 180ms var(--ease-out);
+}
+
+.patchRecoveryToggle:hover:not(:disabled) {
+  color: var(--color-ink);
+}
+
+.patchRecoveryToggle:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.patchRecoveryPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px;
+  background: var(--color-cream);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  margin-top: 4px;
+}
+
+.patchRecoveryLabel {
+  font-size: 12px;
+  font-family: var(--font-mono);
+  color: var(--color-stone-aa);
+  letter-spacing: 0.04em;
+}
+
+.patchRecoveryInput {
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--color-parchment);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--color-ink);
+}
+
+.patchRecoveryInput:focus {
+  outline: none;
+  border-color: var(--color-terracotta);
+  box-shadow: 0 0 0 3px rgba(196, 98, 45, 0.15);
+}
+
+.patchRecoveryResults {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.patchRecoveryChip {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--color-ink);
+  cursor: pointer;
+  transition: all 180ms var(--ease-out);
+}
+
+.patchRecoveryChip:hover:not(:disabled) {
+  border-color: var(--color-terracotta);
+  color: var(--color-terracotta-text);
+}
+
+.patchRecoveryChip:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .turnActions {
   display: flex;
   gap: 12px;

@@ -7,6 +7,10 @@ import {
   type SelectedLocality,
 } from '@/components/core-markets/suburb-picker'
 import type { PatchStatsResponse } from '@/app/api/onboarding/patch-stats/types'
+import type {
+  RecoverTextResponse,
+  SuburbCandidate,
+} from '@/app/api/onboarding/recover-text/types'
 import wizardStyles from '../../onboarding.module.css'
 import styles from '../agentic-shell.module.css'
 import { horace } from '../copy'
@@ -39,6 +43,15 @@ export function Turn3Patch({ dispatch, onAdvance }: Props) {
   const [selected, setSelected] = useState<SelectedLocality[]>([])
   const [phase, setPhase] = useState<Phase>('choosing')
   const [error, setError] = useState<string | null>(null)
+  // Free-text recovery (HOR-213): when the picker can't find it, the
+  // agent types a description ("northern beaches") and we ask Haiku
+  // to extract candidate suburb names, validated server-side via
+  // search_localities. Two empty results dispatches show_bail.
+  const [recoveryOpen, setRecoveryOpen] = useState(false)
+  const [recoveryText, setRecoveryText] = useState('')
+  const [recoveryLoading, setRecoveryLoading] = useState(false)
+  const [recoveryItems, setRecoveryItems] = useState<SuburbCandidate[]>([])
+  const recoveryFailsRef = useRef(0)
 
   // Opening Horace line on mount.
   useEffect(() => {
@@ -154,6 +167,53 @@ export function Turn3Patch({ dispatch, onAdvance }: Props) {
     onAdvance()
   }, [canSubmit, dispatch, onAdvance, selected])
 
+  async function runRecovery() {
+    const trimmed = recoveryText.trim()
+    if (!trimmed || recoveryLoading) return
+    setRecoveryLoading(true)
+    setRecoveryItems([])
+    try {
+      const res = await fetch('/api/onboarding/recover-text', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          turn: 'patch',
+          input: trimmed,
+          context: { selectedSuburbs: selected.map((s) => s.locality_name) },
+        }),
+      })
+      const data = (await res.json()) as RecoverTextResponse
+      if (data.kind === 'suburb_candidates' && data.items.length > 0) {
+        recoveryFailsRef.current = 0
+        setRecoveryItems(data.items)
+      } else {
+        recoveryFailsRef.current += 1
+        setRecoveryItems([])
+        if (recoveryFailsRef.current >= 2) {
+          dispatch({ type: 'show_bail' })
+        }
+      }
+    } catch {
+      recoveryFailsRef.current += 1
+      if (recoveryFailsRef.current >= 2) {
+        dispatch({ type: 'show_bail' })
+      }
+    } finally {
+      setRecoveryLoading(false)
+    }
+  }
+
+  function addRecoveredCandidate(c: SuburbCandidate) {
+    if (selected.some((s) => s.locality_pid === c.locality_pid)) return
+    if (selected.length >= 3) return
+    setSelected([...selected, c])
+    // Close the recovery panel once a pick lands so the agent can
+    // either lock in or keep searching from the main picker.
+    setRecoveryOpen(false)
+    setRecoveryText('')
+    setRecoveryItems([])
+  }
+
   const skip = useCallback(async () => {
     setError(null)
     setPhase('locking')
@@ -181,6 +241,85 @@ export function Turn3Patch({ dispatch, onAdvance }: Props) {
       />
 
       {error ? <p className={styles.patchError}>{error}</p> : null}
+
+      {!recoveryOpen ? (
+        <button
+          type="button"
+          className={styles.patchRecoveryToggle}
+          onClick={() => setRecoveryOpen(true)}
+          disabled={phase === 'locking' || selected.length >= 3}
+        >
+          Can&rsquo;t find it? Describe your patch instead.
+        </button>
+      ) : (
+        <div className={styles.patchRecoveryPanel}>
+          <label htmlFor="onb-recover" className={styles.patchRecoveryLabel}>
+            Describe your patch — e.g. &ldquo;northern beaches&rdquo;, &ldquo;by the Gabba&rdquo;.
+          </label>
+          <input
+            id="onb-recover"
+            type="text"
+            className={styles.patchRecoveryInput}
+            value={recoveryText}
+            onChange={(e) => setRecoveryText(e.target.value)}
+            placeholder="northern beaches"
+            disabled={recoveryLoading}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                void runRecovery()
+              }
+            }}
+          />
+          <div className={styles.turnActions} style={{ marginTop: 8 }}>
+            <button
+              type="button"
+              className={`${wizardStyles.btn} ${wizardStyles.btnSecondary}`}
+              onClick={() => void runRecovery()}
+              disabled={!recoveryText.trim() || recoveryLoading}
+            >
+              {recoveryLoading ? 'Looking…' : 'Find suburbs'}
+            </button>
+            <button
+              type="button"
+              className={`${wizardStyles.btn} ${wizardStyles.btnGhost}`}
+              onClick={() => {
+                setRecoveryOpen(false)
+                setRecoveryItems([])
+                setRecoveryText('')
+              }}
+              disabled={recoveryLoading}
+            >
+              Back to typeahead
+            </button>
+          </div>
+          {recoveryItems.length > 0 ? (
+            <div className={styles.patchRecoveryResults}>
+              {recoveryItems.map((c) => (
+                <button
+                  key={c.locality_pid}
+                  type="button"
+                  className={styles.patchRecoveryChip}
+                  onClick={() => addRecoveredCandidate(c)}
+                  disabled={
+                    selected.some((s) => s.locality_pid === c.locality_pid) ||
+                    selected.length >= 3
+                  }
+                >
+                  {c.locality_name}, {c.state_abbrev}
+                  {c.postcode ? ` ${c.postcode}` : ''}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          {!recoveryLoading && recoveryFailsRef.current > 0 && recoveryItems.length === 0 ? (
+            <p className={styles.patchError}>
+              I couldn&rsquo;t map that to suburbs. Try something more specific —
+              or use the typeahead.
+            </p>
+          ) : null}
+        </div>
+      )}
 
       <div className={styles.turnActions} style={{ marginTop: 16 }}>
         <button
