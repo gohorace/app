@@ -1,4 +1,4 @@
-import type { CmsKind } from './route'
+import type { CmsKind } from './validate'
 
 /**
  * Pure HTML heuristics for the site-probe response.

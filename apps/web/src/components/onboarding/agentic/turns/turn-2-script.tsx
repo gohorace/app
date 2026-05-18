@@ -12,7 +12,7 @@ import { markStepComplete } from '../mark-step'
 import { suggestedUrlFromEmail } from '@/lib/onboarding/email-domain'
 import { trackingSnippet } from '@/lib/onboarding/snippet'
 import { makePill, type Action } from '../turn-controller'
-import type { SiteProbeResponse, CmsKind } from '@/app/api/onboarding/site-probe/route'
+import type { SiteProbeResponse, CmsKind } from '@/app/api/onboarding/site-probe/validate'
 
 interface Props {
   email: string

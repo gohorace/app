@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { normaliseUrl, classifyError } from './route'
+import { normaliseUrl, classifyError } from './validate'
 
 describe('normaliseUrl', () => {
   it('prepends https:// when scheme is missing', () => {

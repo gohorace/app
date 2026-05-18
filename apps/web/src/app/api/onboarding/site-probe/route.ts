@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { z } from 'zod'
 import { detectCms, countListings, nextPageUrl } from './detect'
+import { classifyError, normaliseUrl, type SiteProbeResponse } from './validate'
 
 /**
  * POST /api/onboarding/site-probe
@@ -14,29 +15,18 @@ import { detectCms, countListings, nextPageUrl } from './detect'
  * have to distinguish HTTP-level vs domain-level failures — the turn
  * counts two non-ok responses to flip the bail prompt. HOR-214 (PR 9)
  * may swap the listings heuristic for a sitemap-driven count once we
- * have telemetry; the response shape stays fixed.
+ * have telemetry; the response shape (defined in ./validate) stays
+ * fixed.
  *
  * Auth-gated to match every other onboarding endpoint.
+ *
+ * Types + helpers live in ./validate. Next.js 14 App Router only
+ * permits a fixed export surface from route.ts (HTTP verbs + config
+ * exports like `runtime`); the type aliases and normaliseUrl /
+ * classifyError helpers would otherwise trip the type check.
  */
 
 export const runtime = 'nodejs'
-
-export type CmsKind =
-  | 'wordpress'
-  | 'wix'
-  | 'squarespace'
-  | 'domain_portal'
-  | 'rea_portal'
-  | 'shopify'
-  | 'webflow'
-  | 'custom'
-  | 'unknown'
-
-export type SiteProbeFailReason = 'unreachable' | 'blocked' | 'parse' | 'timeout'
-
-export type SiteProbeResponse =
-  | { ok: true; finalUrl: string; host: string; listings: number; cms: CmsKind }
-  | { ok: false; reason: SiteProbeFailReason }
 
 const schema = z.object({
   url: z.string().min(1).max(2048),
@@ -46,39 +36,6 @@ const FETCH_TIMEOUT_MS = 8_000
 const BODY_CAP_BYTES = 1_048_576 // 1 MiB
 const USER_AGENT = 'HoraceBot/1.0 (+https://gohorace.com)'
 const LISTING_CAP = 200
-
-export function normaliseUrl(input: string): URL | null {
-  const trimmed = input.trim()
-  if (!trimmed) return null
-  // Only prepend https:// when the input has no scheme at all. If the
-  // agent typed file:// / ftp:// / javascript:, we keep the scheme so
-  // the protocol check below can reject it explicitly — otherwise
-  // "https://file:///etc/passwd" parses as host=file, which is sneaky.
-  const hasAnyScheme = /^[a-z][a-z0-9+.-]*:/i.test(trimmed)
-  const withScheme = hasAnyScheme ? trimmed : `https://${trimmed}`
-  let u: URL
-  try {
-    u = new URL(withScheme)
-  } catch {
-    return null
-  }
-  if (u.protocol !== 'http:' && u.protocol !== 'https:') return null
-  const host = u.hostname.toLowerCase()
-  // Reject LANs and internal networks even at validation time, before
-  // we ever issue the outbound fetch. Belt-and-braces against SSRF.
-  if (
-    host === 'localhost' ||
-    host.startsWith('127.') ||
-    host.startsWith('10.') ||
-    host.startsWith('192.168.') ||
-    host.endsWith('.local') ||
-    /^169\.254\./.test(host) ||
-    /^172\.(1[6-9]|2[0-9]|3[01])\./.test(host)
-  ) {
-    return null
-  }
-  return u
-}
 
 /**
  * Fetch a URL with a hard timeout + body cap. Returns the decoded text
@@ -126,21 +83,6 @@ async function fetchHtml(url: URL): Promise<{ html: string; finalUrl: URL }> {
   } finally {
     clearTimeout(timeout)
   }
-}
-
-export function classifyError(err: unknown): SiteProbeFailReason {
-  if (err && typeof err === 'object') {
-    const e = err as { name?: string; code?: string; cause?: { code?: string } }
-    if (e.name === 'AbortError') return 'timeout'
-    if (e.name === 'BlockedError') return 'blocked'
-    // node's undici surfaces DNS/connect failures as TypeError with a
-    // .cause.code like ENOTFOUND / ECONNREFUSED — call that unreachable.
-    const code = e.code ?? e.cause?.code
-    if (code === 'ENOTFOUND' || code === 'ECONNREFUSED' || code === 'EAI_AGAIN') {
-      return 'unreachable'
-    }
-  }
-  return 'unreachable'
 }
 
 export async function POST(req: NextRequest) {
