@@ -229,16 +229,34 @@
 
 .tierFeatured .unit { color: rgba(245,240,232,0.5); }
 
+.priceMeta {
+  margin-bottom: 24px;
+  min-height: 36px;
+}
+
 .priceNote {
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--color-stone);
   letter-spacing: 0.02em;
   min-height: 16px;
-  margin-bottom: 24px;
 }
 
 .tierFeatured .priceNote { color: var(--color-ember, #E8956D); }
+
+.priceSubLine {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--color-stone);
+  letter-spacing: 0.02em;
+  margin-top: 4px;
+  opacity: 0.85;
+}
+
+.tierFeatured .priceSubLine {
+  color: rgba(245,240,232,0.6);
+  opacity: 1;
+}
 
 .tierCta {
   display: inline-flex;
