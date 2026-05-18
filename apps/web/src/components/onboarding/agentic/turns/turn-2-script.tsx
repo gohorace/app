@@ -12,7 +12,7 @@ import { markStepComplete } from '../mark-step'
 import { suggestedUrlFromEmail } from '@/lib/onboarding/email-domain'
 import { trackingSnippet } from '@/lib/onboarding/snippet'
 import { makePill, type Action } from '../turn-controller'
-import type { SiteProbeResponse } from '@/app/api/onboarding/site-probe/route'
+import type { SiteProbeResponse, CmsKind } from '@/app/api/onboarding/site-probe/route'
 
 interface Props {
   email: string
@@ -46,8 +46,14 @@ export function Turn2Script({
   const [phase, setPhase] = useState<Phase>('asking')
   const [url, setUrl] = useState(() => suggestedUrlFromEmail(email))
   const [helpOpen, setHelpOpen] = useState<HelpKind | null>(null)
-  const [probePillId, setProbePillId] = useState<string | null>(null)
   const [verified, setVerified] = useState(false)
+  /** Probe-failure counter, scoped to this turn. The brief's bail rule:
+   *  "Site URL fetch fails twice → bail to classic Step 2". We track it
+   *  locally rather than via the controller's generic `unparseable_inc`
+   *  because a probe failure isn't an unparseable input — it's a
+   *  domain-specific signal, and Turn 3's free-text suburb fail will
+   *  use a different counter when HOR-213 lands. */
+  const probeFailsRef = useRef(0)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const stopAtRef = useRef<number>(0)
 
@@ -105,15 +111,17 @@ export function Turn2Script({
     dispatch({ type: 'user_says', text: trimmed })
     setPhase('probing')
 
-    // Spawn the work pill. The probe (stubbed in PR 3) resolves the
-    // pill to ok/err and dispatches the Horace follow-up.
+    // Spawn the work pill. The probe (HOR-209) resolves the pill to
+    // ok/err and dispatches the Horace follow-up.
     const pill = makePill('work', 'Reading your site')
-    setProbePillId(pill.id)
     dispatch({
       type: 'horace_says',
       text: '', // placeholder bubble that owns the pills
       pills: [pill],
     })
+
+    let probeFailed = false
+    let failLabel = "Couldn't reach your site"
 
     try {
       const res = await fetch('/api/onboarding/site-probe', {
@@ -124,40 +132,46 @@ export function Turn2Script({
       const data = (await res.json()) as SiteProbeResponse
 
       if (data.ok) {
-        // PR 3 stub returns listings=0, cms='unknown' — the pill label
-        // stays generic until PR 4 swaps in real values. The contract is
-        // already in place; nothing here changes when real data lands.
-        const label =
-          data.listings > 0
-            ? `${data.listings} live listings`
-            : 'Site found'
+        probeFailsRef.current = 0
+        // Pill label shows what Horace just learned about the site.
+        // Multiple facts (listings count + CMS) render as a single
+        // concatenated label so it reads as one chip, not two.
+        const parts: string[] = []
+        if (data.listings > 0) parts.push(`${data.listings} live listings`)
+        else parts.push('Site found')
+        const cmsLabel = cmsToLabel(data.cms)
+        if (cmsLabel) parts.push(cmsLabel)
         dispatch({
           type: 'pill_update',
           id: pill.id,
-          patch: { kind: 'ok', label },
+          patch: { kind: 'ok', label: parts.join(' · ') },
         })
         dispatch({ type: 'horace_says', text: horace.t2_found_site() })
         dispatch({ type: 'horace_says', text: horace.t2_snippet_intro() })
         setPhase('snippet')
         startPolling()
-      } else {
-        // PR 4 handles the two-fails-bail count. PR 3 just marks the
-        // pill as an error and keeps the agent on this turn — they can
-        // re-edit the URL and retry, or use the persistent escape hatch.
-        dispatch({
-          type: 'pill_update',
-          id: pill.id,
-          patch: { kind: 'err', label: probeReasonLabel(data.reason) },
-        })
-        setPhase('asking')
+        return
       }
+      probeFailed = true
+      failLabel = probeReasonLabel(data.reason)
     } catch {
+      probeFailed = true
+    }
+
+    if (probeFailed) {
       dispatch({
         type: 'pill_update',
         id: pill.id,
-        patch: { kind: 'err', label: "Couldn't reach your site" },
+        patch: { kind: 'err', label: failLabel },
       })
+      probeFailsRef.current += 1
       setPhase('asking')
+      // Two strikes on the same turn → show the inline bail prompt.
+      // The persistent header link is the always-available escape;
+      // this is the contextual "you're stuck, take the out" affordance.
+      if (probeFailsRef.current >= 2) {
+        dispatch({ type: 'show_bail' })
+      }
     }
   }
 
@@ -168,9 +182,6 @@ export function Turn2Script({
   }
 
   const snippet = trackingSnippet(snippetKey, appUrl)
-  // probePillId is read by future PRs when we want to attach more pills
-  // to the same Horace line; intentionally referenced to keep eslint quiet.
-  void probePillId
 
   return (
     <>
@@ -290,5 +301,28 @@ function probeReasonLabel(reason: 'unreachable' | 'blocked' | 'parse' | 'timeout
     case 'unreachable':
     default:
       return "Couldn't reach your site"
+  }
+}
+
+function cmsToLabel(cms: CmsKind): string | null {
+  switch (cms) {
+    case 'wordpress':
+      return 'WordPress detected'
+    case 'wix':
+      return 'Wix detected'
+    case 'squarespace':
+      return 'Squarespace detected'
+    case 'shopify':
+      return 'Shopify detected'
+    case 'webflow':
+      return 'Webflow detected'
+    case 'rea_portal':
+      return 'realestate.com.au portal'
+    case 'domain_portal':
+      return 'Domain portal'
+    case 'unknown':
+    case 'custom':
+    default:
+      return null
   }
 }
