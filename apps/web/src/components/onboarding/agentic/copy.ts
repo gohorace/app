@@ -73,7 +73,32 @@ export const horace = {
   t4_csv_parse_fail: (): string =>
     "I couldn't read that file. Want to try a different export — or use the classic setup?",
 
-  // Turn 7 — sign-off (the only place "Seize the moment" appears)
+  // Turn 5 — browser notifications
+  t5_ask_notify: (): string =>
+    "When something's worth your attention, I'll tap you on the shoulder. Two or three times a week, max — never more.",
+  t5_granted: (): string => "Sorted. I'll only break through when it matters.",
+  t5_blocked: (): string =>
+    "Blocked. You can switch this on in Settings whenever you change your mind.",
+  t5_unsupported: (): string =>
+    "This browser doesn't do push. I'll catch you on email and on your phone.",
+
+  // Turn 6 — mobile push (pairing)
+  t6_ask_pair: (): string =>
+    "Most signals land while you're out — at a listing, in the car. Want me on your phone too?",
+  t6_paired: (): string =>
+    "Sorted. Open the link on your phone, add me to your home screen, and I'll travel with you.",
+  t6_pair_skip: (): string =>
+    "Fair enough. You can pair from Settings whenever you like.",
+
+  // Turn 7 — live (the only place "Seize the moment" appears)
+  t7_live: (firstName: string | null): string =>
+    firstName
+      ? `${firstName}, you're live. I'm watching your site right now.`
+      : "You're live. I'm watching your site right now.",
+  t7_sample_intro: (): string =>
+    "Here's what one of my mornings looks like once you're humming:",
+  t7_first_signal: (): string =>
+    "The first real visit just landed. You're not in samples anymore.",
   t7_signoff: (): string => 'Seize the moment — Horace',
 } as const
 
@@ -167,6 +192,17 @@ export const HORACE_SAMPLES: ReadonlyArray<{ key: string; value: string }> = [
   { key: 't4_in_patch:one-in-patch', value: horace.t4_in_patch(1, 100) },
   { key: 't4_in_patch:many', value: horace.t4_in_patch(23, 1847) },
   { key: 't4_csv_parse_fail', value: horace.t4_csv_parse_fail() },
+  { key: 't5_ask_notify', value: horace.t5_ask_notify() },
+  { key: 't5_granted', value: horace.t5_granted() },
+  { key: 't5_blocked', value: horace.t5_blocked() },
+  { key: 't5_unsupported', value: horace.t5_unsupported() },
+  { key: 't6_ask_pair', value: horace.t6_ask_pair() },
+  { key: 't6_paired', value: horace.t6_paired() },
+  { key: 't6_pair_skip', value: horace.t6_pair_skip() },
+  { key: 't7_live:with-name', value: horace.t7_live('Davey') },
+  { key: 't7_live:no-name', value: horace.t7_live(null) },
+  { key: 't7_sample_intro', value: horace.t7_sample_intro() },
+  { key: 't7_first_signal', value: horace.t7_first_signal() },
   { key: 't7_signoff', value: horace.t7_signoff() },
 ]
 
