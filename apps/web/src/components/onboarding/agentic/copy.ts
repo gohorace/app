@@ -55,6 +55,24 @@ export const horace = {
   t3_patch_aside: (): string =>
     "I've got every address ready to match against names you know.",
 
+  // Turn 4 — contacts (CSV import)
+  t4_ask_contacts: (): string =>
+    "Last thing I need — your address book. Drop a CSV from your CRM and I'll match every name to anyone who visits your site.",
+  t4_skip_ack: (): string =>
+    "No worries. You can hand me your contacts whenever — I'll keep watching the strangers in the meantime.",
+  t4_in_patch: (inPatch: number, total: number): string => {
+    if (total === 0) return ''
+    if (inPatch === 0) {
+      return `${total} contacts in. None in your patch yet — I'll be ready when one moves on it.`
+    }
+    if (inPatch === 1) {
+      return `${total} contacts in. One of them already lives in your patch. The moment they land on your site, you'll hear from me.`
+    }
+    return `${total} contacts in. ${inPatch} of them already live in your patch. The moment any of them lands on your site, you'll hear from me.`
+  },
+  t4_csv_parse_fail: (): string =>
+    "I couldn't read that file. Want to try a different export — or use the classic setup?",
+
   // Turn 7 — sign-off (the only place "Seize the moment" appears)
   t7_signoff: (): string => 'Seize the moment — Horace',
 } as const
@@ -142,6 +160,13 @@ export const HORACE_SAMPLES: ReadonlyArray<{ key: string; value: string }> = [
   { key: 't3_locked_in:three', value: horace.t3_locked_in(['Paddington', 'Bulimba', 'Hawthorne']) },
   { key: 't3_locked_in:empty', value: horace.t3_locked_in([]) },
   { key: 't3_patch_aside', value: horace.t3_patch_aside() },
+  { key: 't4_ask_contacts', value: horace.t4_ask_contacts() },
+  { key: 't4_skip_ack', value: horace.t4_skip_ack() },
+  { key: 't4_in_patch:zero-total', value: horace.t4_in_patch(0, 0) || 'No contacts' },
+  { key: 't4_in_patch:zero-in-patch', value: horace.t4_in_patch(0, 100) },
+  { key: 't4_in_patch:one-in-patch', value: horace.t4_in_patch(1, 100) },
+  { key: 't4_in_patch:many', value: horace.t4_in_patch(23, 1847) },
+  { key: 't4_csv_parse_fail', value: horace.t4_csv_parse_fail() },
   { key: 't7_signoff', value: horace.t7_signoff() },
 ]
 

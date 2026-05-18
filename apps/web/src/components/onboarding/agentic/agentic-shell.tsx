@@ -15,6 +15,7 @@ import { Turn0Intro } from './turns/turn-0-intro'
 import { Turn1Greet } from './turns/turn-1-greet'
 import { Turn2Script } from './turns/turn-2-script'
 import { Turn3Patch } from './turns/turn-3-patch'
+import { Turn4Contacts } from './turns/turn-4-contacts'
 
 /**
  * Agentic onboarding shell — the chat surface.
@@ -99,6 +100,8 @@ export function AgenticShell({
               />
             ) : state.turnId === 3 ? (
               <Turn3Patch dispatch={dispatch} onAdvance={() => advance(4)} />
+            ) : state.turnId === 4 ? (
+              <Turn4Contacts dispatch={dispatch} onAdvance={() => advance(5)} />
             ) : (
               <TurnPlaceholder turnId={state.turnId} />
             )}
