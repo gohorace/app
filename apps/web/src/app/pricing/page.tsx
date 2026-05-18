@@ -19,6 +19,10 @@ const tiers = [
     price: { monthly: '$149', annual: '$125' },
     unit: { monthly: '/month', annual: '/month' },
     note: { monthly: 'Billed monthly', annual: '$1500 billed annually — save $288' },
+    subPrice: {
+      monthly: 'Support seats $39/mo · unlimited',
+      annual: 'Support seats $39/mo · unlimited',
+    },
     cta: 'Start free trial',
     ctaHref: '/login',
     plan: 'pro' as const,
@@ -27,7 +31,8 @@ const tiers = [
       'Lead identification — know when a contact returns',
       'Real-time nudges, not just weekly',
       '12 months of signal history',
-      '1 website',
+      'Your website + Doorstep',
+      'Support seats for your admin or PA',
     ],
     goodFor: 'Solo agents who want every signal that matters.',
     featured: true,
@@ -38,6 +43,10 @@ const tiers = [
     price: { monthly: '$119', annual: '$99' },
     unit: { monthly: '/mo', annual: '/mo' },
     note: { monthly: 'per agent · 3 agents min', annual: 'per agent · billed annually' },
+    subPrice: {
+      monthly: 'Support seats $39/mo · unlimited',
+      annual: 'Support seats $39/mo · unlimited',
+    },
     cta: 'Coming soon',
     ctaHref: '#',
     comingSoon: true as const,
@@ -204,7 +213,12 @@ export default function PricingPage() {
                   </span>
                   {tier.unit[period] && <span className={styles.unit}>{tier.unit[period]}</span>}
                 </div>
-                <div className={styles.priceNote}>{tier.note[period]}</div>
+                <div className={styles.priceMeta}>
+                  <div className={styles.priceNote}>{tier.note[period]}</div>
+                  {'subPrice' in tier && tier.subPrice && (
+                    <div className={styles.priceSubLine}>{tier.subPrice[period]}</div>
+                  )}
+                </div>
                 {'plan' in tier && tier.plan === 'pro' ? (
                   <button
                     type="button"
@@ -259,11 +273,13 @@ export default function PricingPage() {
                 ['Weekly digest',              '●','●','●'],
                 ['Lead identification',        '●','●','●'],
                 ['Real-time nudges',           '●','●','●'],
+                ['Doorstep',                   '●','●','●'],
                 ['Signal history',             '12 months','12 months','Custom'],
                 ['Websites',                   '1','Multiple','Multiple'],
                 ['Shared team intelligence',   '–','●','●'],
                 ['Lead routing',               '–','●','●'],
                 ['Onboarding support',         'Self-serve','Guided','Dedicated'],
+                ['Support seats',              '$39/mo each','$39/mo each','$39/mo each'],
                 ['SSO & security review',      '–','–','●'],
               ].map(([label, pro, office, enterprise]) => (
                 <tr key={label as string}>
@@ -300,6 +316,10 @@ export default function PricingPage() {
               <div>
                 <div className={styles.worthItemTitle}>Free trial on Pro.</div>
                 <div className={styles.worthItemBody}>14 days. No card needed. Add a card before day 14 to keep going — no card, no charge, your trial just ends. Your data is preserved either way.</div>
+              </div>
+              <div>
+                <div className={styles.worthItemTitle}>Support seats.</div>
+                <div className={styles.worthItemBody}>For admins, PAs, and sales support. They see your signals and can action them — they don&apos;t have their own pipeline. Available on every plan. On Office, support seats don&apos;t count toward the 3-agent minimum.</div>
               </div>
               <div>
                 <div className={styles.worthItemTitle}>Pricing in AUD.</div>
