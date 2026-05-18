@@ -1,34 +1,57 @@
 'use client'
 
-import { useState } from 'react'
-import Link from 'next/link'
-import wizardStyles from '../onboarding.module.css'
+import { useCallback, useReducer } from 'react'
 import styles from './agentic-shell.module.css'
+import { BailPrompt } from './bail-prompt'
+import { EscapeHatch } from './escape-hatch'
+import { HoraceBubble } from './horace-bubble'
+import { UserBubble } from './user-bubble'
+import {
+  createInitialState,
+  reducer,
+  type TurnId,
+} from './turn-controller'
+import { Turn0Intro } from './turns/turn-0-intro'
+import { Turn1Greet } from './turns/turn-1-greet'
 
 /**
- * Agentic onboarding shell — PR 1 stub.
+ * Agentic onboarding shell — the chat surface.
  *
- * Renders Turn 0 (intro + "Let's go" CTA) and the persistent escape
- * hatch that bails to the classic wizard. PR 2 will swap the centered
- * hero for the proper chat surface (message bubbles, background-work
- * pills, primary-input dock, reducer-backed turn controller).
+ * State sits in a single reducer (turn-controller.ts). Turns render as
+ * thin components that:
+ *   • dispatch horace_says on mount to push their lines into history,
+ *   • own their primary input + background work,
+ *   • call onAdvance() when complete.
  *
- * Props mirror what bootstrapOnboardingContext() returns so this signature
- * is stable as later turns light up.
+ * Bail mechanics:
+ *   • Header link (always mounted) routes to /onboarding/classic.
+ *   • Inline bail-prompt slides in beneath the last bubble when
+ *     state.bailVisible flips (twice-unparseable or explicit
+ *     show_bail from a turn — site-probe / CSV failures, etc.).
+ *
+ * Props mirror bootstrapOnboardingContext() so adding more context
+ * (workspaceId, snippet, …) for later turns is additive.
  */
 interface Props {
   agentId: string
   snippetKey: string
   appUrl: string
   firstName: string | null
+  initialTurnId?: TurnId
 }
 
-export function AgenticShell({ firstName }: Props) {
-  const [advanced, setAdvanced] = useState(false)
-  // agentId, snippetKey, appUrl are wired here in PR 1 as a stable contract
-  // but unused until PR 2 + later turns. Suppress the unused-vars lint via
-  // the destructure above being partial; they're available on Props for
-  // downstream PRs.
+export function AgenticShell({
+  // agentId, snippetKey, appUrl are wired but only consumed by Turn 2+.
+  // Kept on the prop interface so the contract is stable as turns light up.
+  firstName,
+  initialTurnId = 0,
+}: Props) {
+  const [state, dispatch] = useReducer(reducer, createInitialState(initialTurnId))
+
+  const advance = useCallback(
+    (to: TurnId) => dispatch({ type: 'advance', to }),
+    [],
+  )
 
   return (
     <div className={styles.shell}>
@@ -37,46 +60,50 @@ export function AgenticShell({ firstName }: Props) {
           <span className={styles.brandDot} aria-hidden />
           <span>Horace</span>
         </div>
-        <Link
-          href="/onboarding/classic"
-          className={styles.escapeHatch}
-          prefetch={false}
-        >
-          Use the classic setup instead
-        </Link>
+        <EscapeHatch />
       </header>
 
       <main id="onboarding-main" className={styles.main}>
-        {!advanced ? (
-          <div className={styles.stage}>
-            <p className={styles.horaceLine}>G&rsquo;day. I&rsquo;m Horace.</p>
-            <p className={styles.horaceLine}>
-              I&rsquo;ll get myself set up while we talk &mdash; your details,
-              your site, your patch, your contacts. Takes a few minutes.
-              I&rsquo;ll do most of the work.
-            </p>
-            <div className={styles.actions}>
-              <button
-                type="button"
-                className={`${wizardStyles.btn} ${wizardStyles.btnPrimary}`}
-                onClick={() => setAdvanced(true)}
-              >
-                Let&rsquo;s go
-              </button>
-            </div>
+        <div className={styles.stage}>
+          <div className={styles.history}>
+            {state.history.map((m) =>
+              m.role === 'horace' ? (
+                <HoraceBubble key={m.id} text={m.text} pills={m.pills} />
+              ) : (
+                <UserBubble key={m.id} text={m.text} />
+              ),
+            )}
           </div>
-        ) : (
-          <div className={styles.stage}>
-            <p className={styles.horaceLine}>
-              {firstName ? `Got it, ${firstName}.` : 'Got it.'}
-            </p>
-            <p className={styles.placeholder}>
-              More turns wire up in PR 2. Bail to classic any time via the
-              link top-right.
-            </p>
+
+          <div className={styles.turnSlot} key={`turn-${state.turnId}`}>
+            {state.turnId === 0 ? (
+              <Turn0Intro dispatch={dispatch} onAdvance={() => advance(1)} />
+            ) : state.turnId === 1 ? (
+              <Turn1Greet
+                firstName={firstName}
+                dispatch={dispatch}
+                onAdvance={() => advance(2)}
+              />
+            ) : (
+              <TurnPlaceholder turnId={state.turnId} />
+            )}
           </div>
-        )}
+
+          {state.bailVisible ? <BailPrompt /> : null}
+        </div>
       </main>
     </div>
+  )
+}
+
+/** Stand-in for turns 2–7 (wire up in later PRs). Renders nothing
+ *  Horace-voiced — purely a build-time signpost so the agent never sees
+ *  raw "TODO" prose. */
+function TurnPlaceholder({ turnId }: { turnId: TurnId }) {
+  return (
+    <p className={styles.placeholder}>
+      Next: Turn {turnId}. Wires up in a later PR. Bail any time via the
+      link top-right.
+    </p>
   )
 }
