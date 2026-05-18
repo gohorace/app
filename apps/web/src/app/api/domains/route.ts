@@ -30,6 +30,7 @@ import {
   type VercelVerificationRecord,
 } from '@/lib/vercel/domains'
 import { invalidateHostLookup } from '@/lib/domains/lookup'
+import { detectDnsProvider, type DnsProvider } from '@/lib/dns/detect'
 
 const bodySchema = z.object({
   hostname: z.string().min(1).max(253),
@@ -44,6 +45,7 @@ interface CustomDomainRow {
   dns_target: string
   verification_records: VercelVerificationRecord[] | null
   vercel_domain_id: string | null
+  dns_provider: DnsProvider | null
   error_message: string | null
   created_at: string
   updated_at: string
@@ -119,9 +121,18 @@ export async function POST(req: NextRequest) {
       ssl_status: existing.ssl_status,
       dns_target: existing.dns_target,
       verification_records: existing.verification_records,
+      dns_provider: existing.dns_provider ?? 'unknown',
       already: true,
     })
   }
+
+  // Resolve DNS provider in parallel with the Vercel work below.
+  // Used only to render provider-tailored CNAME instructions in the
+  // pending state — never gates flow, so failures are silently 'unknown'.
+  const dnsProviderPromise = detectDnsProvider(hostname).catch((err) => {
+    console.warn('detectDnsProvider failed', { hostname, err })
+    return 'unknown' as DnsProvider
+  })
 
   let row: CustomDomainRow
 
@@ -222,6 +233,16 @@ export async function POST(req: NextRequest) {
       ? (status.sslActive ? 'active' : 'provisioning')
       : 'pending'
 
+    const dnsProvider = await dnsProviderPromise
+    console.log(
+      JSON.stringify({
+        doorstep_event: 'dns_provider_detected',
+        workspace_id: agent.workspace_id,
+        hostname,
+        dns_provider: dnsProvider,
+      }),
+    )
+
     await admin
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .from('workspace_custom_domains' as any)
@@ -238,6 +259,7 @@ export async function POST(req: NextRequest) {
         last_checked_at: new Date().toISOString(),
         verified_at: nextStatus === 'verified' ? new Date().toISOString() : null,
         error_message: null,
+        dns_provider: dnsProvider,
       })
       .eq('id', row.id)
 
@@ -252,6 +274,7 @@ export async function POST(req: NextRequest) {
       verification_records: status.verificationRecords.length > 0
         ? status.verificationRecords
         : addResult.verificationRecords,
+      dns_provider: dnsProvider,
     })
   } catch (err) {
     const message = err instanceof VercelDomainError ? err.message : 'Vercel call failed'

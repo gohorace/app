@@ -26,6 +26,7 @@ interface DomainRowFromDb {
   dns_target: string
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   verification_records: any
+  dns_provider: 'cloudflare' | 'route53' | 'namecheap' | 'godaddy' | 'vercel' | 'other' | 'unknown' | null
   error_message: string | null
   created_at: string
   verified_at: string | null
@@ -89,6 +90,7 @@ export default async function CustomDomainSettingsPage() {
         verificationRecords: Array.isArray(row.verification_records)
           ? row.verification_records
           : [],
+        dnsProvider: row.dns_provider ?? 'unknown',
         errorMessage: row.error_message,
         createdAt: row.created_at,
         verifiedAt: row.verified_at,

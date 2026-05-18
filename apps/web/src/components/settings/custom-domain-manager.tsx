@@ -25,6 +25,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { CheckCircle2, AlertCircle, Clock, Copy } from 'lucide-react'
+import { DnsProviderGuide, type DnsProvider } from './dns-provider-guide'
 
 export interface VerificationRecord {
   type: string
@@ -40,6 +41,7 @@ export interface CustomDomainRow {
   sslStatus: 'pending' | 'provisioning' | 'active' | 'failed'
   dnsTarget: string
   verificationRecords: VerificationRecord[]
+  dnsProvider: DnsProvider
   errorMessage: string | null
   createdAt: string
   verifiedAt: string | null
@@ -79,6 +81,7 @@ export function CustomDomainManager({ initialDomain }: Props) {
         sslStatus: body.ssl_status,
         dnsTarget: body.dns_target,
         verificationRecords: body.verification_records ?? [],
+        dnsProvider: (body.dns_provider ?? 'unknown') as DnsProvider,
         errorMessage: null,
         createdAt: new Date().toISOString(),
         verifiedAt: null,
@@ -282,7 +285,7 @@ export function CustomDomainManager({ initialDomain }: Props) {
   // Hosts vary: some accept the full FQDN, some only the label, some
   // either. We show the label as the default and surface the full host
   // for clarity.
-  const subdomainLabel = domain.hostname.split('.').slice(0, -2).join('.') || domain.hostname
+  const subdomainLabel = labelOf(domain.hostname)
 
   return (
     <div className="space-y-5">
@@ -329,25 +332,16 @@ export function CustomDomainManager({ initialDomain }: Props) {
           </div>
         </div>
 
-        <div className="flex items-start gap-3 rounded-md border border-amber-200 bg-amber-50 p-3">
-          <AlertCircle className="w-4 h-4 text-amber-700 flex-shrink-0 mt-0.5" />
-          <div className="space-y-1 text-xs text-amber-900">
-            <div className="font-medium">Using Cloudflare? Set the proxy to DNS&nbsp;only.</div>
-            <p className="text-amber-800">
-              In Cloudflare&apos;s DNS table, the cloud icon next to your record must be <strong>grey (DNS&nbsp;only)</strong>,
-              not orange (Proxied). Vercel issues the certificate directly — proxying through Cloudflare
-              produces an SSL handshake error (525). Other DNS hosts (Namecheap, Route&nbsp;53, GoDaddy)
-              don&apos;t have a proxy toggle, so you can skip this.
-            </p>
-          </div>
-        </div>
+        <DnsProviderGuide
+          provider={domain.dnsProvider}
+          hostname={domain.hostname}
+          apex={apexOf(domain.hostname)}
+          subdomainLabel={subdomainLabel}
+        />
 
-        <ol className="ml-4 list-decimal space-y-1.5 text-xs text-muted-foreground">
-          <li>Log in to your DNS host (Cloudflare, Namecheap, Route 53, GoDaddy, etc.).</li>
-          <li>Add the record above to <span className="font-mono">{domain.hostname.split('.').slice(-2).join('.')}</span>.</li>
-          <li>Save / publish the record.</li>
-          <li>Wait 30–120 seconds for propagation, then click <strong>Check status</strong>.</li>
-        </ol>
+        <p className="text-xs text-muted-foreground">
+          Once saved, wait 30–120 seconds for propagation and click <strong>Check status</strong>.
+        </p>
 
         <details className="text-xs text-muted-foreground">
           <summary className="cursor-pointer text-foreground">Verify from your terminal (optional)</summary>
@@ -392,4 +386,29 @@ export function CustomDomainManager({ initialDomain }: Props) {
       {error && <p className="text-sm text-destructive">{error}</p>}
     </div>
   )
+}
+
+// Mirrors the multi-label-TLD logic in lib/dns/detect.ts. Kept duplicated
+// here (client-side) rather than importing the server module — the
+// detect helper depends on node:dns which isn't available in the browser.
+const MULTI_LABEL_TLDS = new Set([
+  'com.au', 'net.au', 'org.au', 'co.uk', 'co.nz', 'com.nz',
+])
+
+function apexOf(hostname: string): string {
+  const parts = hostname.toLowerCase().split('.')
+  if (parts.length < 2) return hostname
+  const lastTwo = parts.slice(-2).join('.')
+  if (MULTI_LABEL_TLDS.has(lastTwo) && parts.length >= 3) {
+    return parts.slice(-3).join('.')
+  }
+  return lastTwo
+}
+
+function labelOf(hostname: string): string {
+  const apex = apexOf(hostname)
+  const stripped = hostname.toLowerCase().endsWith('.' + apex)
+    ? hostname.slice(0, -(apex.length + 1))
+    : hostname
+  return stripped || hostname
 }

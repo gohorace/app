@@ -28,6 +28,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { qrDataUrl } from '@/lib/inspections/qr'
 import { inspectionOrigin, inspectionPublicUrl } from '@/lib/inspections/origin'
 import { getVerifiedDomainForWorkspace } from '@/lib/domains/lookup'
+import { ShareLinkBlock } from '@/components/inspections/share-link-block'
 
 export const dynamic = 'force-dynamic'
 
@@ -199,27 +200,7 @@ export default async function InspectionDetailPage({ params }: PageProps) {
         </p>
       </div>
 
-      <div
-        style={{
-          marginTop: 16,
-          padding: '12px 14px',
-          background: '#FAF7F2',
-          border: '1px solid rgba(140,123,107,0.15)',
-          borderRadius: 8,
-        }}
-      >
-        <div style={{ fontSize: 11, color: '#8C7B6B', marginBottom: 4 }}>Or share the link directly:</div>
-        <code
-          style={{
-            fontSize: 12,
-            fontFamily: 'var(--font-mono)',
-            color: '#3D332B',
-            wordBreak: 'break-all',
-          }}
-        >
-          {publicUrl}
-        </code>
-      </div>
+      <ShareLinkBlock url={publicUrl} />
 
       <div style={{ marginTop: 18, fontSize: 13 }}>
         <a
