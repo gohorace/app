@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Check, Mail, Link2, Calendar, ArrowRight } from 'lucide-react'
 import { CopyButton } from '@/components/ui/copy-button'
+import { trackingSnippet } from '@/lib/onboarding/snippet'
 import { HelpModal, type HelpKind } from './help-modal'
 import styles from './onboarding.module.css'
 import scriptStyles from './step-script.module.css'
@@ -32,15 +33,10 @@ export function StepScript({
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const stopAtRef = useRef<number>(0)
 
-  const snippet = `<!-- Horace -->
-<script>
-  window.RIQ = {
-    key: '${snippetKey}',
-    apiUrl: '${appUrl}/api',
-    propertyPattern: '/property/'
-  };
-</script>
-<script src="${appUrl}/tracker.min.js" defer></script>`
+  // Shared with the v2 agentic Turn 2 — single source of truth lives
+  // in lib/onboarding/snippet.ts (HOR-208) so both surfaces emit a
+  // character-identical snippet.
+  const snippet = trackingSnippet(snippetKey, appUrl)
 
   const startPolling = useCallback(() => {
     if (pollRef.current) clearInterval(pollRef.current)
