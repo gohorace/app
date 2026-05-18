@@ -493,9 +493,22 @@ async function main() {
       CREATE TABLE gnaf.localities_next (LIKE gnaf.localities INCLUDING ALL);
     `)
     // Lat/lng centroid is computed from gnaf.address_principal_next we
-    // just built (cheaper than re-joining the staging tables and lets
-    // us reuse the confidence/retired filtering).
+    // just built. Single GROUP BY pass (one seq/index scan + hash agg)
+    // rather than the per-locality LATERAL aggregate the original used.
+    // On 3.3M rows + 3,545 localities, the LATERAL took >25 min and
+    // hit Supabase Nano's 30-min statement_timeout. The GROUP BY does
+    // the same work in one pass and completes in ~30s. 2026-05-18.
+    //
+    // NULL lat/lng on address rows are skipped — AVG ignores NULLs
+    // natively, so no WHERE filter needed.
     await client.query(`
+      WITH centroids AS (
+        SELECT locality_pid,
+               AVG(latitude)  AS latitude,
+               AVG(longitude) AS longitude
+        FROM gnaf.address_principal_next
+        GROUP BY locality_pid
+      )
       INSERT INTO gnaf.localities_next (
         locality_pid, locality_name, state_abbrev, postcode,
         latitude, longitude, gnaf_release
@@ -505,17 +518,12 @@ async function main() {
         l.locality_name,
         s.state_abbreviation AS state_abbrev,
         l.primary_postcode   AS postcode,
-        cent.latitude,
-        cent.longitude,
+        c.latitude,
+        c.longitude,
         $1 AS gnaf_release
       FROM gnaf_staging.locality l
       JOIN gnaf_staging.state s ON s.state_pid = l.state_pid
-      LEFT JOIN LATERAL (
-        SELECT AVG(latitude)  AS latitude,
-               AVG(longitude) AS longitude
-        FROM gnaf.address_principal_next ap
-        WHERE ap.locality_pid = l.locality_pid
-      ) cent ON true
+      LEFT JOIN centroids c     ON c.locality_pid = l.locality_pid
       WHERE l.date_retired IS NULL
     `, [RELEASE_TAG])
 
