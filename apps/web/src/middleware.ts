@@ -1,7 +1,63 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { getCustomDomain } from '@/lib/domains/lookup'
+
+// 8-char base62 token format minted by lib/inspections/tokens.ts.
+const INSPECTION_TOKEN_RE = /^[A-Za-z0-9]{8}$/
+
+// Force Node runtime — getCustomDomain uses createAdminClient which
+// reads SUPABASE_SERVICE_ROLE_KEY. The edge runtime exposes env vars
+// fine but the supabase-js client is happier on Node.
+export const runtime = 'nodejs'
 
 export async function middleware(request: NextRequest) {
+  // HOR-204: requests on a verified custom Doorstep domain get rewritten
+  // to the internal `/i/<token>` route so the URL bar stays branded.
+  // All other paths on that host 404 — we don't want marketing or the
+  // dashboard bleeding onto the agent's domain.
+  const host = request.headers.get('host')?.toLowerCase() ?? null
+  const appHost = (() => {
+    try {
+      return new URL(process.env.NEXT_PUBLIC_APP_URL ?? '').host.toLowerCase()
+    } catch {
+      return ''
+    }
+  })()
+  const previewHost = (process.env.VERCEL_URL ?? '').toLowerCase()
+
+  if (host && host !== appHost && host !== previewHost && !host.endsWith('.vercel.app')) {
+    const lookup = await getCustomDomain(host)
+    if (lookup && lookup.status === 'verified') {
+      const pathname = request.nextUrl.pathname
+      // Allowed paths on the custom host:
+      //   /                → 404 (we don't render a landing page yet)
+      //   /<8-char-token>  → rewrite to /i/<token>
+      //   /api/inspections/capture (POST) → serve as-is
+      //   /_next/* /favicon.ico → serve as-is (Vercel project assets)
+      if (
+        pathname.startsWith('/_next/') ||
+        pathname === '/favicon.ico' ||
+        pathname === '/apple-touch-icon.png'
+      ) {
+        return NextResponse.next()
+      }
+      if (pathname.startsWith('/api/inspections/capture')) {
+        return NextResponse.next()
+      }
+      const stripped = pathname.replace(/^\//, '')
+      if (INSPECTION_TOKEN_RE.test(stripped)) {
+        const url = request.nextUrl.clone()
+        url.pathname = `/i/${stripped}`
+        return NextResponse.rewrite(url)
+      }
+      return new NextResponse('Not found', { status: 404 })
+    }
+    // Unverified custom host or unknown host that isn't the app — let
+    // the request fall through to the standard middleware. Edge cases
+    // (e.g. a hostname that was just removed) get a normal 404 from the
+    // app's route tree, which is the right behaviour.
+  }
+
   let supabaseResponse = NextResponse.next({ request })
 
   const supabase = createServerClient(
