@@ -9,7 +9,7 @@ import { bootstrapOnboardingContext } from '@/lib/onboarding/bootstrap'
  *   1. ?flow=classic|agentic query string (used by the persistent bail
  *      link, and for debugging deep links).
  *   2. agents.onboarding_flow column (defaults to 'agentic' for new
- *      agents — migration 20260518000001).
+ *      agents — migration 20260518000020).
  *
  * Bootstrap (workspace creation, heal-forward, snippet fetch) is shared
  * with the child routes via lib/onboarding/bootstrap.ts. Calling it here

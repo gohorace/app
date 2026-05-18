@@ -121,7 +121,7 @@ export async function bootstrapOnboardingContext(): Promise<OnboardingContext> {
     })
   }
 
-  // database.types.ts lags the 20260518000001 migration that adds
+  // database.types.ts lags the 20260518000020 migration that adds
   // agents.onboarding_flow. Cast at the boundary until next
   // `supabase gen types` regen — same pattern as lib/onboarding/state.ts:57.
   const { data: agent } = await admin
