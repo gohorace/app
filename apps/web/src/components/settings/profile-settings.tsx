@@ -3,7 +3,7 @@
 import { useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ChevronRight, Bell, Code, BarChart2, Key, LogOut, Building2, Link2, Inbox, MapPin, Users, Camera, Loader2, Upload, LifeBuoy, Globe } from 'lucide-react'
+import { ChevronRight, Bell, Code, BarChart2, Key, LogOut, Building2, Link2, Inbox, MapPin, Users, Camera, Loader2, Upload, LifeBuoy, Globe, CreditCard } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { InstallPrompt } from './install-prompt'
 
@@ -20,6 +20,7 @@ interface ProfileSettingsProps {
 
 const NAV_ITEMS = [
   { href: '/settings/team',           label: 'Team',               icon: Users,     desc: 'Invite teammates, manage roles' },
+  { href: '/settings/billing',        label: 'Plan & billing',     icon: CreditCard, desc: 'Your plan, card on file, invoices' },
   { href: '/settings/custom-domain',  label: 'Custom domain',      icon: Globe,     desc: 'Where Doorstep runs — your branded URL' },
   { href: '/settings/core-markets',   label: 'Core markets',       icon: MapPin,    desc: 'Suburbs in your patch — up to three' },
   { href: '/settings/notifications',  label: 'Alerts & briefing',  icon: Bell,      desc: 'Push notifications, daily email' },
