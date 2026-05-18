@@ -98,7 +98,10 @@ export async function GET(request: NextRequest) {
 
     result = row
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
+    // Supabase RPC errors aren't Error instances — they're plain objects like
+    // { message, code, details, hint }. String(err) on those gives the useless
+    // "[object Object]". Extract real fields when present; fall back gracefully.
+    const message = formatError(err)
     console.error('[process-core-market-imports] batch error', err)
     await admin
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -148,4 +151,32 @@ export async function GET(request: NextRequest) {
     matched:      result.matched,
     batch_cursor: result.batch_cursor,
   })
+}
+
+/**
+ * Format any thrown value into a useful single-line error message.
+ *
+ * Supabase RPC errors come through as plain objects with shape
+ * `{ message, code, details, hint }` — calling `String(err)` on those
+ * gives `"[object Object]"` which loses every useful diagnostic. This
+ * helper extracts the most-useful fields when present, with a clean
+ * fallback for actual `Error` instances and unknown shapes.
+ */
+function formatError(err: unknown): string {
+  if (err instanceof Error) return err.message
+  if (err && typeof err === 'object') {
+    const e = err as { message?: string; code?: string; details?: string; hint?: string }
+    const parts = [
+      e.code ? `[${e.code}]` : null,
+      e.message ?? null,
+      e.details ?? null,
+      e.hint ? `(hint: ${e.hint})` : null,
+    ].filter(Boolean)
+    if (parts.length > 0) return parts.join(' ')
+  }
+  try {
+    return JSON.stringify(err)
+  } catch {
+    return String(err)
+  }
 }
