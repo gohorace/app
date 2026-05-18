@@ -1,0 +1,357 @@
+/* ── Agentic onboarding shell (v2) ── */
+/*
+ * The conversational surface. Renders as:
+ *   ┌ header ──────────────────────────────────────┐
+ *   │ Horace                  Use the classic …    │
+ *   ├──────────────────────────────────────────────┤
+ *   │                                              │
+ *   │     ┌─ HoraceBubble ────────┐                │
+ *   │     │ G'day. I'm Horace.   │                │
+ *   │     │ [pill] [pill]         │                │
+ *   │     └───────────────────────┘                │
+ *   │                  ┌─ UserBubble ──┐           │
+ *   │                  │ reidproperty… │           │
+ *   │                  └───────────────┘           │
+ *   │     <current turn input>                     │
+ *   │                                              │
+ *   └──────────────────────────────────────────────┘
+ *
+ * Bubbles, pills, bail-prompt all live in the same stage column so
+ * scroll behaviour is one container.
+ */
+
+.shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-parchment);
+  color: var(--color-ink);
+}
+
+/* ── Header ── */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 24px 40px;
+  border-bottom: 1px solid var(--border-subtle);
+  position: sticky;
+  top: 0;
+  background: var(--color-parchment);
+  z-index: 10;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 18px;
+  letter-spacing: -0.01em;
+}
+
+.brandDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-terracotta);
+}
+
+.escapeHatch {
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--color-stone-aa);
+  text-decoration: none;
+  border-bottom: 1px dotted var(--color-stone);
+  transition: color 180ms var(--ease-out);
+  padding-bottom: 1px;
+}
+
+.escapeHatch:hover {
+  color: var(--color-ink);
+  border-bottom-color: var(--color-ink);
+}
+
+/* ── Main column ── */
+.main {
+  flex: 1;
+  padding: 40px 32px 80px;
+  display: flex;
+  justify-content: center;
+}
+
+.stage {
+  max-width: 620px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.history {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.turnSlot {
+  margin-top: 24px;
+  animation: turnFadeIn 280ms var(--ease-out);
+}
+
+@keyframes turnFadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.placeholder {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-stone);
+}
+
+/* Turn 3 — patch picker wrap */
+.patchInputWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.patchError {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-terracotta);
+}
+
+/* Free-text recovery affordance + panel (HOR-213) */
+.patchRecoveryToggle {
+  align-self: flex-start;
+  background: transparent;
+  border: none;
+  padding: 0;
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--color-stone-aa);
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  transition: color 180ms var(--ease-out);
+}
+
+.patchRecoveryToggle:hover:not(:disabled) {
+  color: var(--color-ink);
+}
+
+.patchRecoveryToggle:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.patchRecoveryPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px;
+  background: var(--color-cream);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  margin-top: 4px;
+}
+
+.patchRecoveryLabel {
+  font-size: 12px;
+  font-family: var(--font-mono);
+  color: var(--color-stone-aa);
+  letter-spacing: 0.04em;
+}
+
+.patchRecoveryInput {
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--color-parchment);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--color-ink);
+}
+
+.patchRecoveryInput:focus {
+  outline: none;
+  border-color: var(--color-terracotta);
+  box-shadow: 0 0 0 3px rgba(196, 98, 45, 0.15);
+}
+
+.patchRecoveryResults {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.patchRecoveryChip {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--color-ink);
+  cursor: pointer;
+  transition: all 180ms var(--ease-out);
+}
+
+.patchRecoveryChip:hover:not(:disabled) {
+  border-color: var(--color-terracotta);
+  color: var(--color-terracotta-text);
+}
+
+.patchRecoveryChip:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.turnActions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+/* ── Bubbles ── */
+.bubbleRow {
+  display: flex;
+  width: 100%;
+  animation: bubbleIn 320ms var(--ease-out);
+}
+
+.bubbleRow[data-role="horace"] {
+  justify-content: flex-start;
+}
+
+.bubbleRow[data-role="user"] {
+  justify-content: flex-end;
+}
+
+.bubble {
+  max-width: 88%;
+  padding: 14px 18px;
+  border-radius: 14px;
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+.bubble[data-role="horace"] {
+  background: var(--color-cream);
+  color: var(--color-ink);
+  border: 1px solid var(--border-subtle);
+  border-bottom-left-radius: 4px;
+}
+
+.bubble[data-role="user"] {
+  background: var(--color-charcoal);
+  color: var(--color-cream);
+  border-bottom-right-radius: 4px;
+}
+
+.bubbleText {
+  margin: 0;
+  font-family: var(--font-body);
+}
+
+@keyframes bubbleIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Background-work pills ── */
+.pillRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  letter-spacing: 0.02em;
+  background: rgba(0, 0, 0, 0.04);
+  color: var(--color-stone-aa);
+  border: 1px solid var(--border-subtle);
+}
+
+.pill[data-kind="ok"] {
+  background: rgba(61, 82, 70, 0.08);
+  color: var(--color-moss);
+  border-color: rgba(61, 82, 70, 0.18);
+}
+
+.pill[data-kind="err"] {
+  background: rgba(196, 98, 45, 0.08);
+  color: var(--color-terracotta);
+  border-color: rgba(196, 98, 45, 0.18);
+}
+
+.pillIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pillDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: pillPulse 1100ms ease-in-out infinite;
+}
+
+@keyframes pillPulse {
+  0%, 100% { opacity: 0.35; transform: scale(0.85); }
+  50%      { opacity: 1;    transform: scale(1.1); }
+}
+
+/* ── Bail prompt (inline) ── */
+.bailPrompt {
+  margin-top: 24px;
+  padding: 16px 18px;
+  border-radius: 12px;
+  background: rgba(196, 98, 45, 0.06);
+  border: 1px solid rgba(196, 98, 45, 0.18);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  animation: bubbleIn 280ms var(--ease-out);
+}
+
+.bailPromptHeading {
+  margin: 0;
+  font-size: 14px;
+  color: var(--color-ink);
+}
+
+/* ── Reduced motion ── */
+@media (prefers-reduced-motion: reduce) {
+  .bubbleRow,
+  .turnSlot,
+  .bailPrompt {
+    animation: none;
+  }
+  .pillDot {
+    animation: none;
+    opacity: 0.7;
+  }
+}

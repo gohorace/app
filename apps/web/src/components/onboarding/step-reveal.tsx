@@ -5,47 +5,12 @@ import { useEffect, useRef, useState } from 'react'
 import { ArrowRight, Sparkles } from 'lucide-react'
 import styles from './onboarding.module.css'
 import revealStyles from './step-reveal.module.css'
+import { SAMPLES } from './agentic/turns/_shared/sample-signals'
 
 interface Props {
   firstName: string | null
   onFinish: () => void
 }
-
-interface SampleSignal {
-  name: string
-  initials: string
-  intent: 'high' | 'mid' | 'low'
-  intentLabel: string
-  nudge: string
-  meta: string
-}
-
-const SAMPLES: SampleSignal[] = [
-  {
-    name: 'Sarah Thompson',
-    initials: 'ST',
-    intent: 'high',
-    intentLabel: 'High intent',
-    nudge: '“Sarah’s back three times this week. Appraisal page, twice. Worth a call.”',
-    meta: '2h ago · Sample',
-  },
-  {
-    name: 'David Nguyen',
-    initials: 'DN',
-    intent: 'mid',
-    intentLabel: 'Mid intent',
-    nudge: '“Something’s stirring on Maple Street. Browsing sold results — classic pre-appraisal.”',
-    meta: 'Yesterday · Sample',
-  },
-  {
-    name: 'Claire Adeyemi',
-    initials: 'CA',
-    intent: 'low',
-    intentLabel: 'Watching',
-    nudge: '“Downloaded the suburb report. Still early — worth keeping an eye on.”',
-    meta: '3 days ago · Sample',
-  },
-]
 
 export function StepReveal({ firstName, onFinish }: Props) {
   const [hasFirstSignal, setHasFirstSignal] = useState(false)
