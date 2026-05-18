@@ -6,12 +6,12 @@
  *
  *   - No Horace wordmark, no Horace footer, no "Powered by"
  *   - User-facing strings from the brief verbatim ("Sign in to today's
- *     open home", "So <Agent> can follow up.", "Done", "Thanks…")
+ *     inspection", "So <Agent> can follow up.", "Done", "Thanks…")
  *   - Page title is the agent's name; no Horace metadata
  *
  * Server-side, we resolve the token via the inspections repo helper
  * (which already joins agent + property + workspace). 404 surface is
- * a generic non-branded "this open home isn't accepting sign-ins" —
+ * a generic non-branded "this inspection isn't accepting sign-ins" —
  * keeps malicious / random URL hits from leaking Horace-style copy.
  *
  * ── Cross-domain attribution caveat ─────────────────────────────────
@@ -52,10 +52,10 @@ async function resolveToken(token: string) {
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { token } = await params
   const data = await resolveToken(token)
-  if (!data) return { title: 'Open home sign-in' }
+  if (!data) return { title: 'Inspection sign-in' }
   const name = [data.agent.first_name, data.agent.last_name].filter(Boolean).join(' ').trim()
   return {
-    title: name ? `Sign in — ${name}` : 'Open home sign-in',
+    title: name ? `Sign in — ${name}` : 'Inspection sign-in',
     description: '',
     robots: { index: false, follow: false },
   }
@@ -170,7 +170,7 @@ export default async function PublicCapturePage({ params }: PageProps) {
             lineHeight: 1.2,
           }}
         >
-          Sign in to today&rsquo;s open home
+          Sign in to today&rsquo;s inspection
         </h1>
         <p
           style={{
