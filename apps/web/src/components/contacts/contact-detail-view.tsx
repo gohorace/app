@@ -28,6 +28,7 @@ import type { IdentityState } from '@/lib/design/badges'
 import { eventLabel, eventUrl, formatEventUrl, type MergedEvent } from '@/lib/contacts/events'
 import { AttachRoleDialog } from './attach-role-dialog'
 import { NotesPanel } from '@/components/dashboard/notes-panel'
+import { SendTrackedEmailButton } from '@/components/email/email-composer-trigger'
 import { AddToListSheet } from '@/components/lists/add-to-list-sheet'
 
 export interface ContactDetailViewProps {
@@ -320,6 +321,24 @@ export function ContactDetailView({
               >
                 Add to list
               </button>
+              {/*
+                HOR-226: tracked email send. Hidden when the contact has
+                no email on file — SendTrackedEmailButton disables itself
+                with a tooltip in that case, but we don't even render the
+                shadow row to keep the action bar tight.
+              */}
+              {contact.email && (
+                <SendTrackedEmailButton
+                  contactId={contact.id}
+                  contactEmail={contact.email}
+                  contactName={
+                    [contact.firstName, contact.lastName].filter(Boolean).join(' ') ||
+                    contact.email
+                  }
+                  source="ui"
+                  buttonStyle={secondaryBtnStyle}
+                />
+              )}
               <AddToListSheet
                 open={addToListOpen}
                 onClose={() => setAddToListOpen(false)}

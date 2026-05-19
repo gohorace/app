@@ -5,6 +5,8 @@ import { unsubscribeUrl } from '@/lib/outreach/unsubscribe'
 import { generateShortCode } from '@/lib/outreach/links'
 import { getAppUrl } from '@/lib/url'
 import { loadProfile, PROFILE_QUESTIONS, type AgentProfile } from '@/lib/mcp/profile'
+import { sendTrackedEmail, SendTrackedEmailError } from '@/lib/email/send'
+import type { EmailSendPayload } from '@/lib/email/types'
 
 export interface McpTool {
   name: string
@@ -680,6 +682,70 @@ const startProfileInterview: McpTool = {
   },
 }
 
+// ── HOR-226 / slice D — send_tracked_email ───────────────────────────────
+//
+// Same orchestrator the UI route calls. Bearer-auth path → source='mcp'.
+// MCP clients (Claude etc.) pass the same JSON the UI composer does.
+const sendTrackedEmailTool: McpTool = {
+  name: 'send_tracked_email',
+  description:
+    'Send a tracked email from the connected agent\'s Gmail account to one of their ' +
+    'contacts. The send goes through Gmail (lands in the agent\'s Sent folder), with ' +
+    'a 1×1 open-tracking pixel and link rewriting through r.gohorace.com. The ' +
+    'recipient must NOT be on the agent\'s exclusion list and must not have ' +
+    'unsubscribed. The agent must have a connected Gmail integration (see ' +
+    '/settings/integrations). Use draft_outreach first to draft the body, then this ' +
+    'tool to send it.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      contact_id: { type: 'string', description: 'UUID of the agent\'s contact to send to.' },
+      to_email: {
+        type: 'string',
+        description: 'Optional override; defaults to the contact\'s email on file.',
+      },
+      subject: { type: 'string', description: 'Subject line (1–200 chars).' },
+      body_html: {
+        type: 'string',
+        description: 'HTML body. Will be server-sanitized; <script>, <style>, on* attrs stripped.',
+      },
+      body_text: {
+        type: 'string',
+        description:
+          'Optional plain-text alternative. Server derives one from body_html if absent.',
+      },
+      tracked: {
+        type: 'boolean',
+        description: 'Defaults to true. Set false to send without pixel + link rewriting.',
+      },
+    },
+    required: ['contact_id', 'subject', 'body_html'],
+    additionalProperties: false,
+  },
+  async handler(args, ctx) {
+    const a = (args ?? {}) as EmailSendPayload
+    const admin = createAdminClient()
+    try {
+      return await sendTrackedEmail(
+        {
+          admin,
+          agentId: ctx.agentId,
+          workspaceId: ctx.workspaceId,
+          source: 'mcp',
+        },
+        a,
+      )
+    } catch (err) {
+      if (err instanceof SendTrackedEmailError) {
+        // Surface the error code so the MCP client can branch on it
+        // (e.g. show "Reconnect Gmail" for token_revoked).
+        throw new Error(`${err.code}: ${err.message}`)
+      }
+      throw err
+    }
+  },
+}
+
 export const TOOLS: McpTool[] = [
   listContacts,
   getContact,
@@ -691,6 +757,7 @@ export const TOOLS: McpTool[] = [
   recordSend,
   sendSms,
   logNote,
+  sendTrackedEmailTool,
   getAgentProfile,
   saveAgentProfile,
   startProfileInterview,
