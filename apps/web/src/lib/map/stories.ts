@@ -105,6 +105,10 @@ export function composeSuburbStory(
 ): SuburbStory {
   const window = WINDOW_LABEL[timeWindow]
   const windowShort = WINDOW_SHORT[timeWindow]
+  // Hotfix: legacy `properties.suburb = NULL` rows can yield a suburb signal
+  // with `name = null`. Use a generic fallback in the headline / body so the
+  // panel still renders coherently rather than literal "null ...".
+  const nameForCopy = s.name ?? 'This suburb'
 
   // ── Stats ──────────────────────────────────────────────────────────────
   const totalSessions = propertiesInSuburb.reduce((sum, p) => sum + p.sessionCount, 0)
@@ -126,24 +130,24 @@ export function composeSuburbStory(
   let body: string
 
   if (s.state === 'hot') {
-    headline = `${s.name} is concentrating signal ${window}.`
+    headline = `${nameForCopy} is concentrating signal ${window}.`
     body = top
       ? `Strongest interest on ${top.address}. ${activeProps.length} ${activeProps.length === 1 ? 'listing is' : 'listings are'} carrying weight across the suburb.`
       : `${activeProps.length} ${activeProps.length === 1 ? 'listing is' : 'listings are'} carrying weight across the suburb.`
   } else if (s.state === 'stirring') {
     const delta = s.signalDelta != null ? ` Signal up ${Math.round(s.signalDelta)}%.` : ''
-    headline = `${s.name} stirring — something's shifting underneath.${delta}`
+    headline = `${nameForCopy} stirring — something's shifting underneath.${delta}`
     body = top
       ? `Activity climbing fastest around ${top.address}. The kind of warmth that precedes a conversation.`
       : 'The kind of warmth that precedes a conversation.'
   } else if (s.state === 'warm') {
-    headline = `${s.name} carrying steady warmth ${window}.`
+    headline = `${nameForCopy} carrying steady warmth ${window}.`
     body = top
       ? `${activeProps.length} ${activeProps.length === 1 ? 'listing' : 'listings'} active across the suburb, ${top.address} leading.`
       : `${activeProps.length} ${activeProps.length === 1 ? 'listing' : 'listings'} active across the suburb.`
   } else {
     // quiet
-    headline = `${s.name} is quiet ${window}.`
+    headline = `${nameForCopy} is quiet ${window}.`
     body = propertiesInSuburb.length > 0
       ? `${propertiesInSuburb.length} ${propertiesInSuburb.length === 1 ? 'property' : 'properties'} in the patch, nothing pulling for attention right now.`
       : 'No properties in this suburb yet.'
@@ -204,11 +208,18 @@ export function bucketPropertiesBySuburb(
 ): Map<string, Array<Omit<PropertySignal, 'story'>>> {
   const idByName = new Map<string, string>()
   for (const s of suburbs) {
+    // Hotfix: `properties.suburb` is declared NOT NULL in the schema, but
+    // prod has legacy rows from before the constraint where suburb is null.
+    // The RPC's `coalesce(loc.locality_name, sc.suburb) as name` can't recover
+    // when both are null, so we get null `s.name` here. Skip rather than
+    // crash; the SQL-side fix lives in a follow-up migration.
+    if (!s.name) continue
     idByName.set(s.name.toLowerCase(), s.id)
   }
   const buckets = new Map<string, Array<Omit<PropertySignal, 'story'>>>()
   for (const p of properties) {
     const name = (p.suburb ?? '').toLowerCase()
+    if (!name) continue
     const id = idByName.get(name)
     if (!id) continue
     const arr = buckets.get(id) ?? []

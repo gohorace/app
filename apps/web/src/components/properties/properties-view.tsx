@@ -167,9 +167,17 @@ export function PropertiesView({
   // surface the suburb's signal tier inline. Keys match `properties.suburb`
   // case-insensitively (server keeps the canonical name; properties may have
   // legacy capitalisation).
+  //
+  // Hotfix: skip suburbs with null `name` — legacy `properties.suburb = NULL`
+  // rows can yield a suburb signal with a null name through the RPC's
+  // coalesce fallback. Skipping is safe because the list-view row's pill
+  // can't be matched to a null suburb anyway.
   const suburbStatesByName = useMemo(() => {
     const m = new Map<string, SuburbState>()
-    for (const s of mapPayload?.suburbs ?? []) m.set(s.name.toLowerCase(), s.state)
+    for (const s of mapPayload?.suburbs ?? []) {
+      if (!s.name) continue
+      m.set(s.name.toLowerCase(), s.state)
+    }
     return m
   }, [mapPayload?.suburbs])
 
