@@ -42,8 +42,19 @@ export const MAP_COPY = {
     '30d': { label: 'This month', caption: 'Last 30 days'  },
   },
 
-  /** CTA in the property panel (lands in HOR-219). */
+  /** CTA in the property panel. */
   panelCta: 'View property',
+
+  /** Labels inside the slide-in signal panel (HOR-219). */
+  panel: {
+    signalStrength:      'Signal strength',
+    knownSince:          'Known since',
+    knownContactsActive: 'Known contacts active',
+    activeProperties:    'Active properties',
+    noKnownContacts:     'No known contacts active yet.',
+    noActiveProperties:  'No active properties in this suburb yet.',
+    close:               'Close',
+  },
 } as const
 
 export type MapCopy = typeof MAP_COPY
