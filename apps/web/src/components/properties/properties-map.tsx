@@ -153,7 +153,10 @@ function suburbLabelDom(s: SuburbSignal): HTMLElement {
     // Interactive suburbs are keyboard-reachable and screen-reader-labelled.
     wrap.tabIndex = 0
     wrap.setAttribute('role', 'button')
-    wrap.setAttribute('aria-label', `${s.name} — ${s.state} suburb signal`)
+    // Hotfix: defend against null name (legacy suburb rows with no GNAF match
+    // and no `properties.suburb` value can come through). Generic fallback
+    // beats announcing "null — stirring suburb signal".
+    wrap.setAttribute('aria-label', `${s.name ?? 'Suburb'} — ${s.state} suburb signal`)
     const showRing = () => {
       wrap.style.boxShadow = '0 0 0 3px rgba(196,98,45,0.22)'
     }
@@ -173,7 +176,7 @@ function suburbLabelDom(s: SuburbSignal): HTMLElement {
   }
 
   const text = document.createElement('span')
-  text.textContent = s.name
+  text.textContent = s.name ?? ''
 
   if (s.state === 'quiet') {
     text.style.fontFamily = "'DM Mono', monospace"
