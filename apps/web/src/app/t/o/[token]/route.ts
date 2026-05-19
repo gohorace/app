@@ -47,14 +47,20 @@ const APPLE_MPP_UA_PATTERNS: RegExp[] = [
   /Mail Privacy/i,
 ]
 
+// Pre-delivery scanner User-Agents — these clients fetch images BEFORE the
+// recipient sees the email (anti-malware / link-rewriting / safe-link checks).
+// Treating their hits as "opens" would overcount engagement.
+//
+// Gmail's image proxy (GoogleImageProxy / ggpht.com) is NOT in this list:
+// it's the legitimate Gmail render path that fetches when a real user views
+// the message. Bucketing it as a bot mislabelled real Gmail opens as "Link
+// prefetched by a scanner" — caught on slice F end-to-end smoke 2026-05-19.
 const KNOWN_BOT_UA_FRAGMENTS: string[] = [
   'Microsoft Outlook Safe Link Endpoint Application',
   'Mimecast',
   'Mail-Scanner',
   'Sophos',
   'Symantec',
-  'GoogleImageProxy',
-  'ggpht.com',
 ]
 
 const PREFETCH_WINDOW_MS = 5_000
