@@ -39,9 +39,13 @@ CREATE TABLE dismissed_signals (
 CREATE INDEX dismissed_signals_workspace_idx
   ON dismissed_signals (workspace_id);
 
-CREATE INDEX dismissed_signals_active_idx
-  ON dismissed_signals (agent_id, scope)
-  WHERE expires_at IS NULL OR expires_at > now();
+-- Primary lookup is by (agent_id, scope) — the UNIQUE constraint above
+-- already creates that index. A partial index on "still-active rows"
+-- would be nice for expiring dismissals, but `now()` isn't IMMUTABLE
+-- and Postgres rejects it in an index predicate. Callers filter
+-- expires_at at query time instead; the UNIQUE-backed index handles
+-- the scoped lookup, and `WHERE expires_at IS NULL OR expires_at > now()`
+-- runs as a heap filter on the few rows returned.
 
 -- ============================================================
 -- RLS: workspace-scoped reads, agent-scoped writes.
