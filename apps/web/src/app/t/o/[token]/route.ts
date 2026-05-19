@@ -23,7 +23,9 @@ export const dynamic = 'force-dynamic'
 // ── Pixel response helper ───────────────────────────────────────────────────
 
 function pixelResponse(): NextResponse {
-  return new NextResponse(TRANSPARENT_GIF, {
+  // Wrap in Uint8Array so Node 22+'s Buffer<ArrayBufferLike> shape doesn't
+  // clash with NextResponse's BodyInit signature.
+  return new NextResponse(new Uint8Array(TRANSPARENT_GIF), {
     status: 200,
     headers: {
       'content-type': 'image/gif',
@@ -123,7 +125,11 @@ export async function GET(
   // Fire and forget — emit_email_event handles missing contact_id by no-op.
   // We don't await the result for status, but we DO await for ordering so
   // the response doesn't race a serverless function cold-shutdown.
-  await admin.rpc('emit_email_event', {
+  // RPC cast: slice A's emit_email_event isn't in the generated Database
+  // types yet (database.types.ts is stale post-slice-A); drop the cast once
+  // types are regenerated.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await (admin.rpc as any)('emit_email_event', {
     p_send_id: parsed.sendId,
     p_event: 'email_opened',
     p_props: props,

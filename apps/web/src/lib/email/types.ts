@@ -64,6 +64,42 @@ export interface EmailSendLink {
   label?: string
 }
 
+/**
+ * Wire shape for POST /api/email/send.
+ * Designed MCP-first: the same shape is sent by the UI composer and by a
+ * future `send_tracked_email` MCP tool.
+ */
+export interface EmailSendPayload {
+  contact_id: string
+  to_email?: string                                  // override; defaults to contact.email
+  subject: string                                    // 1..200
+  body_html: string                                  // TipTap output, sanitized server-side
+  body_text?: string                                 // server-derives from html if absent
+  tracked?: boolean                                  // default true
+  links?: Array<{ url: string; label?: string }>    // optional pre-annotation
+  source?: EmailSendSource                           // server defaults from auth context
+}
+
+export interface EmailSendResult {
+  email_send_id: string
+  gmail_message_id: string
+  gmail_thread_id: string
+}
+
+export type EmailSendErrorCode =
+  | 'no_integration'
+  | 'token_revoked'
+  | 'recipient_excluded'
+  | 'rate_limited'
+  | 'send_failed'
+  | 'invalid_input'
+
+export interface EmailSendErrorBody {
+  error: string
+  code: EmailSendErrorCode
+  detail?: unknown
+}
+
 // ── OAuth / Gmail ───────────────────────────────────────────────────────────
 
 /** Decoded payload of the HMAC state cookie set during /connect → /callback. */
