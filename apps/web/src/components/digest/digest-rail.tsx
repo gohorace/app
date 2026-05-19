@@ -1,4 +1,8 @@
-import { List, Archive, Plus } from 'lucide-react'
+'use client'
+
+import { Archive, List, Plus } from 'lucide-react'
+import { useCompanion } from '@/components/companion/companion-context'
+import { QuillIcon } from '@/components/ui/quill-icon'
 
 export interface DigestList {
   name: string
@@ -54,7 +58,63 @@ export function DigestRail({ data }: DigestRailProps) {
     >
       <YourListsCard lists={data.lists} />
       <ThisWeekSoFarCard week={data.weekSoFar} note={data.weekNote} />
+      {/* HOR-244 — v2 Ask Horace tease. Charcoal card at the bottom of
+        * the rail; click opens the companion drawer with Digest context. */}
+      <AskHoraceTease />
     </aside>
+  )
+}
+
+// ── Ask Horace tease ─────────────────────────────────────────────────────────
+
+function AskHoraceTease() {
+  const { openCompanion } = useCompanion()
+  return (
+    <button
+      type="button"
+      onClick={() => openCompanion({ contextLabel: 'Digest' })}
+      style={{
+        textAlign: 'left',
+        background: '#2E2823',
+        border: 'none',
+        borderRadius: 12,
+        padding: '16px 18px',
+        color: '#F5F0E8',
+        cursor: 'pointer',
+        fontFamily: 'var(--font-body)',
+        transition: 'background 180ms var(--ease-out)',
+      }}
+      aria-label="Ask Horace — opens the companion drawer"
+    >
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          fontSize: 10,
+          fontWeight: 600,
+          letterSpacing: '0.1em',
+          textTransform: 'uppercase',
+          color: 'rgba(245,240,232,0.55)',
+          marginBottom: 8,
+        }}
+      >
+        <QuillIcon size={12} color="#E8956D" strokeWidth={1.75} aria-hidden />
+        Ask Horace
+      </div>
+      <p
+        className="font-display"
+        style={{
+          margin: 0,
+          fontStyle: 'italic',
+          fontSize: 14,
+          lineHeight: 1.55,
+          color: 'rgba(245,240,232,0.92)',
+        }}
+      >
+        Need to know more? Tap the quill, anywhere.
+      </p>
+    </button>
   )
 }
 
