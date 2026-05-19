@@ -78,6 +78,16 @@ function composePatternLine(
   p: Omit<PropertySignal, 'story'>,
   timeWindow: TimeWindow,
 ): string {
+  // Short-circuit: pattern describes visitor activity, not property-row freshness.
+  // If there are no sessions in the window, the property is dormant regardless of
+  // when its row was last modified (import, manual edit, status change, etc).
+  //
+  // Belt-and-braces with the SQL fix in the sister migration that drops the
+  // `coalesce(pp.last_seen, p.last_activity_at)` fallback in get_property_signals.
+  // Either fix on its own is sufficient; both together keep the contract honest
+  // even if a future RPC change re-introduces a similar conflation.
+  if (p.sessionCount === 0) return 'No recent activity'
+
   if (!p.lastSeen) return 'No recent activity'
   const since = Date.now() - new Date(p.lastSeen).getTime()
   if (Number.isNaN(since)) return 'No recent activity'
