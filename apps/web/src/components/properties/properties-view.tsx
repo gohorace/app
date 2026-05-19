@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Activity,
@@ -9,7 +9,9 @@ import {
   Clock,
   Link2,
   List,
-  Map,
+  // HOR-220: aliased to avoid shadowing the global `Map` constructor we use
+  // in the suburbStatesByName memo below.
+  Map as MapIcon,
   MapPin,
   Plus,
   Search,
@@ -28,7 +30,15 @@ import {
 } from '@/lib/design/badges'
 import { AddPropertyModal } from './add-property-modal'
 import { EmptyNoCoreMarket } from './empty-no-core-market'
-import { PropertiesMap, type MapProperty } from './properties-map'
+import { PropertiesMap } from './properties-map'
+import { TimeScrubber } from './time-scrubber'
+import { SignalPanel } from './signal-panel'
+import { MAP_COPY } from '@/lib/copy/map-view'
+import type {
+  MapPayload,
+  SuburbState,
+  TimeWindow as MapTimeWindow,
+} from '@/lib/map/rpc-types'
 
 export interface PropertyGridRow {
   id: string
@@ -114,6 +124,12 @@ interface Props {
   defaultModalOpen?: boolean
   /** HOR-195: current agent's active core markets. Empty → full-screen empty state. */
   coreMarkets?: CoreMarketSummary[]
+  /**
+   * HOR-217: time window for the map view's signal payload + the list's
+   * engagement column. Mirrors `?timeWindow=` on the URL; the scrubber updates
+   * both the URL and the local fetch. Defaults to `7d` server-side.
+   */
+  initialTimeWindow?: MapTimeWindow
 }
 
 export function PropertiesView({
@@ -121,6 +137,7 @@ export function PropertiesView({
   initialQ = '',
   defaultModalOpen = false,
   coreMarkets = [],
+  initialTimeWindow = '7d',
 }: Props) {
   const router = useRouter()
   const [search, setSearch] = useState(initialQ)
@@ -128,12 +145,101 @@ export function PropertiesView({
   const [view, setView] = useState<ViewMode>('list')
   const [filters, setFilters] = useState<SecondaryFilters>(DEFAULT_FILTERS)
   const [addOpen, setAddOpen] = useState(defaultModalOpen)
+  // HOR-217: scrubber time window + map payload. The scrubber is only mounted
+  // when view==='map' (HOR-220 mirrors the chrome onto list view), so the
+  // fetch only fires when the agent is looking at the map. `mapLoading` drives
+  // the parchment-desaturation hint during refetch — no spinner, per brief.
+  const [timeWindow, setTimeWindow] = useState<MapTimeWindow>(initialTimeWindow)
+  const [mapPayload, setMapPayload] = useState<MapPayload | null>(null)
+  const [mapLoading, setMapLoading] = useState(false)
+  // Debounce + abort handling so a rapid run of scrubber clicks coalesces to
+  // a single in-flight fetch. The previous attempt is aborted; the latest wins.
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const fetchAbortRef = useRef<AbortController | null>(null)
   // HOR-137: optimistic soft-delete state (mirrors the Contacts grid).
   const [deletedIds, setDeletedIds] = useState<Set<string>>(() => new Set())
   const visibleProperties = useMemo(
     () => properties.filter((p) => !deletedIds.has(p.id)),
     [properties, deletedIds],
   )
+
+  // HOR-220: index suburb state by lower-cased name so the list-view row can
+  // surface the suburb's signal tier inline. Keys match `properties.suburb`
+  // case-insensitively (server keeps the canonical name; properties may have
+  // legacy capitalisation).
+  //
+  // Hotfix: skip suburbs with null `name` — legacy `properties.suburb = NULL`
+  // rows can yield a suburb signal with a null name through the RPC's
+  // coalesce fallback. Skipping is safe because the list-view row's pill
+  // can't be matched to a null suburb anyway.
+  const suburbStatesByName = useMemo(() => {
+    const m = new Map<string, SuburbState>()
+    for (const s of mapPayload?.suburbs ?? []) {
+      if (!s.name) continue
+      m.set(s.name.toLowerCase(), s.state)
+    }
+    return m
+  }, [mapPayload?.suburbs])
+
+  // ─── HOR-217 + HOR-220: Map payload fetch ──────────────────────────────────
+  //
+  // Fires on mount and on scrubber change. Debounced 250ms; aborts any
+  // in-flight prior request so a fast click-through doesn't pile responses
+  // on top of each other.
+  //
+  // HOR-220 lifted the `view === 'map'` gate — the List view now consumes
+  // the same payload (Horace summary, counter row, per-row suburb-signal
+  // pill). Single source of truth across both presentations.
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+
+    debounceRef.current = setTimeout(() => {
+      if (fetchAbortRef.current) fetchAbortRef.current.abort()
+      const controller = new AbortController()
+      fetchAbortRef.current = controller
+
+      setMapLoading(true)
+      fetch(`/api/properties/map-payload?timeWindow=${timeWindow}`, {
+        signal: controller.signal,
+        // No cache — Haiku summary is server-cached for 1h; the route itself
+        // is cheap to refetch on each scrubber click.
+        cache: 'no-store',
+      })
+        .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+        .then((payload: MapPayload) => {
+          if (controller.signal.aborted) return
+          setMapPayload(payload)
+        })
+        .catch((err) => {
+          if (controller.signal.aborted) return
+          console.error('[properties-view] map-payload fetch failed:', err)
+        })
+        .finally(() => {
+          if (controller.signal.aborted) return
+          setMapLoading(false)
+        })
+    }, 250)
+
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+    }
+  }, [timeWindow])
+
+  // ─── HOR-217: URL sync for the time window ────────────────────────────────
+  //
+  // Use `history.replaceState` rather than `router.replace` so the change
+  // doesn't trigger a Next.js navigation/re-render. Reload still picks up the
+  // value via the server page; navigating away preserves it.
+
+  const handleScrubberChange = (next: MapTimeWindow) => {
+    setTimeWindow(next)
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href)
+      url.searchParams.set('timeWindow', next)
+      window.history.replaceState(null, '', url.toString())
+    }
+  }
 
   // HOR-195: brief — "If agent has no core market set, Properties screen
   // shows a primary empty state (not a dismissible banner). Single CTA
@@ -253,7 +359,10 @@ export function PropertiesView({
                   lineHeight: 1.5,
                 }}
               >
-                Your patch — what&rsquo;s drawing attention, and where the opportunities sit.
+                {/* HOR-217: subtitle moved into the Horace-voice locale.
+                    Same string for both views — the brief treats Properties
+                    as a single surface with two presentations. */}
+                {MAP_COPY.headerSubtitle}
               </p>
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
@@ -281,6 +390,13 @@ export function PropertiesView({
               </button>
             </div>
           </div>
+
+          {/* HOR-217 + HOR-220: Horace strip — voice summary + signal counter row.
+              Mirrored across both views per the brief's "List view is the
+              accessible equivalent" requirement. The chrome stays identical
+              so a keyboard-only agent reads the same intelligence the map
+              renders visually. */}
+          <HoraceStrip payload={mapPayload} loading={mapLoading} />
 
           {/* Tabs + search */}
           <div
@@ -343,21 +459,30 @@ export function PropertiesView({
 
           {/* List / Map content — view toggle in the header decides */}
           {view === 'map' ? (
-            <PropertiesMap
-              properties={filtered.map((p): MapProperty => ({
-                id:         p.id,
-                address:    p.address,
-                suburb:     p.suburb,
-                latitude:   p.latitude,
-                longitude:  p.longitude,
-                engagement: p.engagement,
-              }))}
-              fallbackCenter={
-                coreMarkets[0]?.latitude != null && coreMarkets[0]?.longitude != null
-                  ? { lat: coreMarkets[0].latitude, lng: coreMarkets[0].longitude }
-                  : null
-              }
-            />
+            <>
+              {/* HOR-217: desaturation hint during a payload refetch. No
+                  spinner — per brief, agents shouldn't feel they're waiting. */}
+              <div
+                style={{
+                  filter: mapLoading ? 'saturate(0.6)' : 'none',
+                  transition: 'filter 220ms ease-out',
+                }}
+              >
+                {/* HOR-218: PropertiesMap now consumes the full server
+                    `MapPayload` — heat + suburbs + tiered pins all driven
+                    from one contract. List-view chip filters no longer
+                    apply to the map (the map is the server-authoritative
+                    view; filters are a list-only concern in V1). */}
+                <PropertiesMap
+                  payload={mapPayload}
+                  fallbackCenter={
+                    coreMarkets[0]?.latitude != null && coreMarkets[0]?.longitude != null
+                      ? { lat: coreMarkets[0].latitude, lng: coreMarkets[0].longitude }
+                      : null
+                  }
+                />
+              </div>
+            </>
           ) : (
             <div
               style={{
@@ -375,6 +500,7 @@ export function PropertiesView({
                   <PropertyRow
                     key={p.id}
                     property={p}
+                    suburbState={suburbStatesByName.get((p.suburb ?? '').toLowerCase()) ?? null}
                     isLast={idx === filtered.length - 1}
                     onSoftDelete={(id) => setDeletedIds((prev) => {
                       const next = new Set(prev)
@@ -387,6 +513,15 @@ export function PropertiesView({
               )}
             </div>
           )}
+
+          {/* HOR-220: scrubber lifted out of the map branch so the list view
+              gets the same time-window control. The URL `?timeWindow=` it
+              drives is honoured by both surfaces. */}
+          <TimeScrubber
+            value={timeWindow}
+            onChange={handleScrubberChange}
+            pending={mapLoading}
+          />
 
           <p
             style={{
@@ -411,7 +546,163 @@ export function PropertiesView({
           }}
         />
       )}
+
+      {/* HOR-219: slide-in signal panel. Driven by `#signal=<id>` / `#suburb=<id>`
+          hashes (set by HOR-218's pin + suburb-label click handlers). Mounted
+          here at the page root so the map can re-render without tearing the
+          panel down. */}
+      <SignalPanel payload={mapPayload} />
     </div>
+  )
+}
+
+// ── Horace strip (HOR-217) ───────────────────────────────────────────────────
+// Sits below the page header on the map view. Three things in one row:
+//   1. The Horace voice line — italic Playfair sentence prefixed by `• HORACE`.
+//   2. (right) The counter chip row — `7 warm · 12 active · 4 stirring`.
+//
+// Pre-payload state: a quiet placeholder line + dashed counters. We don't fall
+// back to fake counts; better to look mid-render than to lie.
+
+function HoraceStrip({
+  payload,
+  loading,
+}: {
+  payload: MapPayload | null
+  loading: boolean
+}) {
+  const hasPayload = payload !== null
+  const counters = payload?.counters ?? { warm: 0, active: 0, stirring: 0 }
+  // Empty state copy when the workspace has no signal at all in the window.
+  const totalSignal = counters.warm + counters.active + counters.stirring
+  const summary =
+    hasPayload
+      ? (payload!.summary || (totalSignal === 0 ? MAP_COPY.emptyState : ''))
+      : ''
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 24,
+        marginBottom: 18,
+        padding: '12px 14px',
+        background: '#FAF7F2',
+        border: '1px solid rgba(140,123,107,0.18)',
+        borderRadius: 8,
+        opacity: loading ? 0.78 : 1,
+        transition: 'opacity 180ms ease-out',
+      }}
+    >
+      {/* Horace voice */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, flex: 1, minWidth: 0 }}>
+        <span
+          aria-hidden
+          style={{
+            width: 8,
+            height: 8,
+            borderRadius: '50%',
+            background: '#C4622D',
+            marginTop: 6,
+            flexShrink: 0,
+          }}
+        />
+        <span
+          style={{
+            fontFamily: 'var(--font-mono)',
+            fontSize: 10,
+            letterSpacing: '0.12em',
+            color: '#8C7B6B',
+            marginTop: 4,
+            flexShrink: 0,
+          }}
+        >
+          {MAP_COPY.horaceTag}
+        </span>
+        <span
+          style={{
+            fontFamily: 'var(--font-display)',
+            fontStyle: 'italic',
+            fontSize: 14.5,
+            lineHeight: 1.45,
+            color: '#1A1612',
+            letterSpacing: '-0.005em',
+          }}
+        >
+          {summary || (hasPayload ? ' ' : '…')}
+        </span>
+      </div>
+
+      {/* Counter row — mixed units per design (warm/stirring are suburbs,
+          active is properties). Each chip is monospaced number + lowercase
+          label, no pluralisation logic per the Horace copy rule. */}
+      <div style={{ display: 'flex', gap: 18, flexShrink: 0 }}>
+        <CounterChip value={counters.warm}     label={MAP_COPY.counterLabels.warm}     />
+        <CounterChip value={counters.active}   label={MAP_COPY.counterLabels.active}   />
+        <CounterChip value={counters.stirring} label={MAP_COPY.counterLabels.stirring} />
+      </div>
+    </div>
+  )
+}
+
+function CounterChip({ value, label }: { value: number; label: string }) {
+  return (
+    <div style={{ display: 'inline-flex', alignItems: 'baseline', gap: 6 }}>
+      <span
+        style={{
+          fontFamily: 'var(--font-mono)',
+          fontSize: 18,
+          fontWeight: 600,
+          color: '#1A1612',
+          letterSpacing: '-0.01em',
+        }}
+      >
+        {value}
+      </span>
+      <span style={{ fontSize: 12, color: '#8C7B6B' }}>{label}</span>
+    </div>
+  )
+}
+
+// ── Suburb signal pill (HOR-220 — inline in the list-view row's suburb cell) ──
+// Same vocabulary as the map's suburb labels: warm = cream, hot = terracotta,
+// stirring = orange ring. Colour AND treatment differ — the ring on stirring
+// is the non-colour-only signal carrier per WCAG 1.4.1.
+
+function SuburbSignalPill({ state }: { state: SuburbState }) {
+  const style: React.CSSProperties = {
+    display: 'inline-flex',
+    alignItems: 'center',
+    padding: '1px 6px',
+    fontFamily: 'var(--font-mono)',
+    fontSize: 9,
+    letterSpacing: '0.08em',
+    textTransform: 'uppercase',
+    borderRadius: 9999,
+    flexShrink: 0,
+  }
+  if (state === 'hot') {
+    style.background = 'rgba(196,98,45,0.16)'
+    style.color = '#C4622D'
+    style.border = '1px solid rgba(196,98,45,0.32)'
+  } else if (state === 'warm') {
+    style.background = 'rgba(196,98,45,0.06)'
+    style.color = '#8C5A35'
+    style.border = '1px solid rgba(196,98,45,0.18)'
+  } else if (state === 'stirring') {
+    style.background = 'transparent'
+    style.color = '#C4622D'
+    // Ring treatment — non-colour-only signal carrier.
+    style.border = '1px solid #C4622D'
+    style.boxShadow = '0 0 0 2px rgba(196,98,45,0.18)'
+  } else {
+    return null
+  }
+  return (
+    <span style={style} aria-label={`suburb ${state}`}>
+      {state}
+    </span>
   )
 }
 
@@ -464,7 +755,7 @@ function ViewToggle({
         aria-pressed={view === 'map'}
         style={tabStyle(view === 'map')}
       >
-        <Map style={{ width: 13, height: 13 }} />
+        <MapIcon style={{ width: 13, height: 13 }} />
         Map
       </button>
     </div>
@@ -846,11 +1137,16 @@ function TableHead() {
 
 function PropertyRow({
   property,
+  suburbState,
   isLast,
   onClick,
   onSoftDelete,
 }: {
   property: PropertyGridRow
+  /** HOR-220: tier of the property's suburb on the map view. Renders as
+   *  a small pill next to the suburb name. Null when no signal data has
+   *  loaded yet or the property's suburb isn't in the payload. */
+  suburbState: SuburbState | null
   isLast: boolean
   onClick: () => void
   onSoftDelete: (id: string) => void
@@ -896,7 +1192,12 @@ function PropertyRow({
         >
           {property.address}
         </div>
-        <div style={{ fontSize: 12, color: '#8C7B6B' }}>{property.suburb ?? '—'}</div>
+        <div style={{ fontSize: 12, color: '#8C7B6B', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span>{property.suburb ?? '—'}</span>
+          {suburbState && suburbState !== 'quiet' && (
+            <SuburbSignalPill state={suburbState} />
+          )}
+        </div>
       </div>
 
       <div style={COL.state}>
