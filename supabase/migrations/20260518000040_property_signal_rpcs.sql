@@ -194,11 +194,17 @@ as $$
     -- Group on `properties.suburb` (text) because not every property has a
     -- gnaf_address_detail_pid yet (legacy CSV imports). We join to localities
     -- by name+state below to attach a centroid.
+    --
+    -- Note: explicit `cross join` (not comma join). Comma join has lower
+    -- precedence than `join`, which would make the next `join properties p`
+    -- attach only to `window_days w` — `e` would be invisible in the ON
+    -- clause. Postgres error 42P01.
     cur_per_suburb as (
       select
         p.suburb,
         sum(power(0.5, extract(epoch from (now() - e.occurred_at)) / 86400.0 / 7.0)) as raw
-      from events e, window_days w
+      from events e
+      cross join window_days w
       join properties p on p.id = coalesce(e.property_id, nullif(e.properties->>'property_id','')::uuid)
       where e.workspace_id = p_workspace_id
         and e.event_type   = 'property_view'
@@ -213,7 +219,8 @@ as $$
         p.suburb,
         sum(power(0.5, extract(epoch from ((now() - make_interval(days => w.d::int)) - e.occurred_at))
                        / 86400.0 / 7.0)) as raw
-      from events e, window_days w
+      from events e
+      cross join window_days w
       join properties p on p.id = coalesce(e.property_id, nullif(e.properties->>'property_id','')::uuid)
       where e.workspace_id = p_workspace_id
         and e.event_type   = 'property_view'
