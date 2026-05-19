@@ -25,11 +25,12 @@ import {
   type ContactRole,
 } from '@/lib/design/badges'
 import type { IdentityState } from '@/lib/design/badges'
-import { eventLabel, eventUrl, formatEventUrl, type MergedEvent } from '@/lib/contacts/events'
+import { eventKind, eventLabel, eventUrl, formatEventUrl, type MergedEvent } from '@/lib/contacts/events'
 import { AttachRoleDialog } from './attach-role-dialog'
 import { NotesPanel } from '@/components/dashboard/notes-panel'
 import { SendTrackedEmailButton } from '@/components/email/email-composer-trigger'
 import { AddToListSheet } from '@/components/lists/add-to-list-sheet'
+import { buildEmailSendIndex, type EmailSendSummary } from '@/lib/contacts/email-engagement'
 
 export interface ContactDetailViewProps {
   contact: {
@@ -68,9 +69,11 @@ export interface ContactDetailViewProps {
     sessions:   number
   }>
   events: MergedEvent[]
+  /** HOR-228: per-contact email_sends summary, indexed by id at render time. */
+  emailSends?: EmailSendSummary[]
 }
 
-type TimelineFilter = 'all' | 'visits' | 'roles'
+type TimelineFilter = 'all' | 'visits' | 'roles' | 'emails'
 
 export function ContactDetailView({
   contact,
@@ -80,6 +83,7 @@ export function ContactDetailView({
   roleAttached,
   engagingNow,
   events,
+  emailSends = [],
 }: ContactDetailViewProps) {
   const router = useRouter()
   const [timelineFilter, setTimelineFilter] = useState<TimelineFilter>('all')
@@ -108,20 +112,43 @@ export function ContactDetailView({
     return new Date(contact.lastSeenAt).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })
   }, [contact.lastSeenAt])
 
-  // Merge metadata.roles into the timeline as `role` events. Kind-bucket
-  // each row so the filter buttons can slice cleanly.
+  // Merge metadata.roles into the timeline as `role` events, and email_*
+  // events (slice F) as `email` rows. Kind-bucket each row so the filter
+  // chips can slice cleanly.
   type TimelineRow = {
     key: string
-    kind: 'visit' | 'role'
-    icon: 'eye' | 'home' | 'key-round'
+    kind: 'visit' | 'role' | 'email'
+    icon: 'eye' | 'home' | 'key-round' | 'mail'
     title: string
     detail: string | null
     when: string
     occurredAt: string
   }
+  // O(1) lookup: email_sends row by id, for subject enrichment.
+  const emailSendIndex = useMemo(() => buildEmailSendIndex(emailSends), [emailSends])
   const timeline: TimelineRow[] = useMemo(() => {
     const rows: TimelineRow[] = []
     for (const e of events) {
+      const kind = eventKind(e)
+      if (kind === 'email') {
+        const sendId = typeof e.properties.email_send_id === 'string'
+          ? (e.properties.email_send_id as string)
+          : null
+        const send = sendId ? emailSendIndex.get(sendId) ?? null : null
+        rows.push({
+          key:        `event-${e.id}`,
+          kind:       'email',
+          icon:       'mail',
+          title:      eventLabel(e, send?.subject ?? null),
+          // Email rows have a subject in the title — keep the second-line
+          // detail clean. If we ever want recipient hash / open count etc.
+          // it goes here.
+          detail:     null,
+          when:       relativeWhen(e.occurred_at),
+          occurredAt: e.occurred_at,
+        })
+        continue
+      }
       const url = eventUrl(e.properties)
       rows.push({
         key:        `event-${e.id}`,
@@ -145,11 +172,12 @@ export function ContactDetailView({
       })
     }
     return rows.sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))
-  }, [events, roleAttached])
+  }, [events, roleAttached, emailSendIndex])
 
   const filteredTimeline = useMemo(() => {
     if (timelineFilter === 'all') return timeline
     if (timelineFilter === 'visits') return timeline.filter((r) => r.kind === 'visit')
+    if (timelineFilter === 'emails') return timeline.filter((r) => r.kind === 'email')
     return timeline.filter((r) => r.kind === 'role')
   }, [timeline, timelineFilter])
 
@@ -452,6 +480,11 @@ export function ContactDetailView({
                   onClick={() => setTimelineFilter('visits')}
                 />
                 <TimelineFilterBtn
+                  label="Emails"
+                  active={timelineFilter === 'emails'}
+                  onClick={() => setTimelineFilter('emails')}
+                />
+                <TimelineFilterBtn
                   label="Roles + merges"
                   active={timelineFilter === 'roles'}
                   onClick={() => setTimelineFilter('roles')}
@@ -473,7 +506,11 @@ export function ContactDetailView({
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               {filteredTimeline.map((row, i) => {
                 const isLast = i === filteredTimeline.length - 1
-                const color = row.kind === 'role' ? '#3D5246' : '#C4622D'
+                // Per-kind accent: role=forest, email=warm-tan, visit=horace-orange.
+                const color =
+                  row.kind === 'role'  ? '#3D5246' :
+                  row.kind === 'email' ? '#8A6A00' :
+                                         '#C4622D'
                 return (
                   <div key={row.key} style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
                     <div
@@ -517,7 +554,9 @@ export function ContactDetailView({
                         }}
                       >
                         <span style={{ fontSize: 12, fontWeight: 600, color, textTransform: 'capitalize' }}>
-                          {row.kind === 'role' ? 'Role event' : 'Visit'}
+                          {row.kind === 'role'  ? 'Role event' :
+                           row.kind === 'email' ? 'Email'      :
+                                                   'Visit'}
                         </span>
                         <span style={{ fontSize: 13, color: '#2E2823' }}>{row.title}</span>
                         <span
