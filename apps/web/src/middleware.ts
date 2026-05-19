@@ -28,7 +28,14 @@ export async function middleware(request: NextRequest) {
   // (/t/o and /t/c). Recognise it as a system host so it bypasses the
   // Doorstep custom-domain branch below and falls through to the normal
   // Next.js route tree.
-  const trackingHost = appHost ? `r.${appHost}` : ''
+  //
+  // Strip a `www.` prefix from appHost before prepending `r.` — DNS / Vercel
+  // registers the tracking subdomain as `r.gohorace.com`, not
+  // `r.www.gohorace.com`. Without this, hits to r.gohorace.com fall into the
+  // Doorstep custom-domain branch (then 404 because there's no verified
+  // workspace domain matching). Caught on slice F smoke 2026-05-19.
+  const appHostBare = appHost.startsWith('www.') ? appHost.slice(4) : appHost
+  const trackingHost = appHostBare ? `r.${appHostBare}` : ''
 
   if (host && host !== appHost && host !== previewHost && host !== trackingHost && !host.endsWith('.vercel.app')) {
     const lookup = await getCustomDomain(host)
