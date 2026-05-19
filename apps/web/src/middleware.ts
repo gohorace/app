@@ -24,8 +24,13 @@ export async function middleware(request: NextRequest) {
     }
   })()
   const previewHost = (process.env.VERCEL_URL ?? '').toLowerCase()
+  // HOR-225: r.<appHost> serves the email-tracking pixel + click routes
+  // (/t/o and /t/c). Recognise it as a system host so it bypasses the
+  // Doorstep custom-domain branch below and falls through to the normal
+  // Next.js route tree.
+  const trackingHost = appHost ? `r.${appHost}` : ''
 
-  if (host && host !== appHost && host !== previewHost && !host.endsWith('.vercel.app')) {
+  if (host && host !== appHost && host !== previewHost && host !== trackingHost && !host.endsWith('.vercel.app')) {
     const lookup = await getCustomDomain(host)
     if (lookup && lookup.status === 'verified') {
       const pathname = request.nextUrl.pathname
@@ -118,6 +123,10 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/r/') ||
     pathname.startsWith('/u/') ||
     pathname.startsWith('/i/') ||
+    // HOR-225: tracked-email pixel + click handlers. Public because the
+    // recipient's mail client has no Horace session, and any auth gate
+    // would break image-proxy prefetches outright.
+    pathname.startsWith('/t/') ||
     pathname.startsWith('/api/inspections/capture') ||
     pathname.startsWith('/install/') ||
     pathname.startsWith('/oauth/') ||
