@@ -8,15 +8,18 @@ import { NotificationStream } from './notification-stream'
 import type { StreamMoment } from './moment-types'
 
 /**
- * Desktop slide-over notifications panel. Mounted once at the dashboard
- * layout level, so any surface (digest, contacts, properties, lists) can
- * open it via the bell in its page header.
+ * Notifications slide-over. Mounted once at the dashboard layout level,
+ * so any surface (digest, contacts, properties, lists, market) can open
+ * it via the bell in its page header.
  *
  * Open/close is driven by `location.hash === '#notifications'`. The
  * BellButton sets/clears the hash; this component listens for changes
  * and toggles. ESC closes, scrim click closes, the close button in the
- * stream header closes. Hidden on `< md` — mobile uses the full-screen
- * `/notifications` route instead.
+ * stream header closes.
+ *
+ * v2-M1 (HOR-242) — this is the only notifications surface. The dedicated
+ * `/notifications` page was removed; on mobile the panel takes the full
+ * viewport width and on desktop it's a 420px right-anchored aside.
  *
  * Data is fetched client-side via `GET /api/notifications` whenever the
  * panel opens. No SSR — the panel is decoupled from the underlying page.
@@ -148,7 +151,8 @@ export function NotificationsSlideOver() {
 
   return (
     <>
-      {/* Scrim — covers everything LEFT of the 420px panel. Hidden on mobile. */}
+      {/* Scrim — covers everything LEFT of the panel. Hidden on mobile,
+        * where the panel itself takes the full viewport width. */}
       <div
         onClick={close}
         className="hidden md:block"
@@ -166,17 +170,16 @@ export function NotificationsSlideOver() {
         aria-hidden
       />
 
-      {/* Panel — right-anchored, 420px wide. Hidden on mobile (use /notifications). */}
+      {/* Panel — full-width on mobile, 420px right-anchored on desktop. */}
       <aside
         role="dialog"
         aria-label="Notifications"
-        className="hidden md:flex"
+        className="flex w-full md:w-[420px]"
         style={{
           position: 'fixed',
           top: 0,
           right: 0,
           bottom: 0,
-          width: 420,
           background: '#F5F0E8',
           boxShadow: '-12px 0 32px rgba(26,22,18,0.18)',
           borderLeft: '1px solid rgba(140,123,107,0.18)',
