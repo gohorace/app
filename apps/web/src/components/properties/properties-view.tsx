@@ -9,7 +9,9 @@ import {
   Clock,
   Link2,
   List,
-  Map,
+  // HOR-220: aliased to avoid shadowing the global `Map` constructor we use
+  // in the suburbStatesByName memo below.
+  Map as MapIcon,
   MapPin,
   Plus,
   Search,
@@ -32,7 +34,11 @@ import { PropertiesMap } from './properties-map'
 import { TimeScrubber } from './time-scrubber'
 import { SignalPanel } from './signal-panel'
 import { MAP_COPY } from '@/lib/copy/map-view'
-import type { MapPayload, TimeWindow as MapTimeWindow } from '@/lib/map/rpc-types'
+import type {
+  MapPayload,
+  SuburbState,
+  TimeWindow as MapTimeWindow,
+} from '@/lib/map/rpc-types'
 
 export interface PropertyGridRow {
   id: string
@@ -157,14 +163,27 @@ export function PropertiesView({
     [properties, deletedIds],
   )
 
-  // ─── HOR-217: Map payload fetch ────────────────────────────────────────────
+  // HOR-220: index suburb state by lower-cased name so the list-view row can
+  // surface the suburb's signal tier inline. Keys match `properties.suburb`
+  // case-insensitively (server keeps the canonical name; properties may have
+  // legacy capitalisation).
+  const suburbStatesByName = useMemo(() => {
+    const m = new Map<string, SuburbState>()
+    for (const s of mapPayload?.suburbs ?? []) m.set(s.name.toLowerCase(), s.state)
+    return m
+  }, [mapPayload?.suburbs])
+
+  // ─── HOR-217 + HOR-220: Map payload fetch ──────────────────────────────────
   //
-  // Fires when (a) the agent first opens the map view, or (b) the scrubber
-  // time window changes. Debounced 250ms; aborts any in-flight prior request
-  // so a fast click-through doesn't pile responses on top of each other.
+  // Fires on mount and on scrubber change. Debounced 250ms; aborts any
+  // in-flight prior request so a fast click-through doesn't pile responses
+  // on top of each other.
+  //
+  // HOR-220 lifted the `view === 'map'` gate — the List view now consumes
+  // the same payload (Horace summary, counter row, per-row suburb-signal
+  // pill). Single source of truth across both presentations.
 
   useEffect(() => {
-    if (view !== 'map') return
     if (debounceRef.current) clearTimeout(debounceRef.current)
 
     debounceRef.current = setTimeout(() => {
@@ -197,7 +216,7 @@ export function PropertiesView({
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current)
     }
-  }, [view, timeWindow])
+  }, [timeWindow])
 
   // ─── HOR-217: URL sync for the time window ────────────────────────────────
   //
@@ -364,12 +383,12 @@ export function PropertiesView({
             </div>
           </div>
 
-          {/* HOR-217: Horace strip — Horace voice summary + signal counter row.
-              Visible only on the Map view in this PR; HOR-220 mirrors it onto
-              the List view for a11y / cross-view parity. */}
-          {view === 'map' && (
-            <HoraceStrip payload={mapPayload} loading={mapLoading} />
-          )}
+          {/* HOR-217 + HOR-220: Horace strip — voice summary + signal counter row.
+              Mirrored across both views per the brief's "List view is the
+              accessible equivalent" requirement. The chrome stays identical
+              so a keyboard-only agent reads the same intelligence the map
+              renders visually. */}
+          <HoraceStrip payload={mapPayload} loading={mapLoading} />
 
           {/* Tabs + search */}
           <div
@@ -455,11 +474,6 @@ export function PropertiesView({
                   }
                 />
               </div>
-              <TimeScrubber
-                value={timeWindow}
-                onChange={handleScrubberChange}
-                pending={mapLoading}
-              />
             </>
           ) : (
             <div
@@ -478,6 +492,7 @@ export function PropertiesView({
                   <PropertyRow
                     key={p.id}
                     property={p}
+                    suburbState={suburbStatesByName.get((p.suburb ?? '').toLowerCase()) ?? null}
                     isLast={idx === filtered.length - 1}
                     onSoftDelete={(id) => setDeletedIds((prev) => {
                       const next = new Set(prev)
@@ -490,6 +505,15 @@ export function PropertiesView({
               )}
             </div>
           )}
+
+          {/* HOR-220: scrubber lifted out of the map branch so the list view
+              gets the same time-window control. The URL `?timeWindow=` it
+              drives is honoured by both surfaces. */}
+          <TimeScrubber
+            value={timeWindow}
+            onChange={handleScrubberChange}
+            pending={mapLoading}
+          />
 
           <p
             style={{
@@ -633,6 +657,47 @@ function CounterChip({ value, label }: { value: number; label: string }) {
   )
 }
 
+// ── Suburb signal pill (HOR-220 — inline in the list-view row's suburb cell) ──
+// Same vocabulary as the map's suburb labels: warm = cream, hot = terracotta,
+// stirring = orange ring. Colour AND treatment differ — the ring on stirring
+// is the non-colour-only signal carrier per WCAG 1.4.1.
+
+function SuburbSignalPill({ state }: { state: SuburbState }) {
+  const style: React.CSSProperties = {
+    display: 'inline-flex',
+    alignItems: 'center',
+    padding: '1px 6px',
+    fontFamily: 'var(--font-mono)',
+    fontSize: 9,
+    letterSpacing: '0.08em',
+    textTransform: 'uppercase',
+    borderRadius: 9999,
+    flexShrink: 0,
+  }
+  if (state === 'hot') {
+    style.background = 'rgba(196,98,45,0.16)'
+    style.color = '#C4622D'
+    style.border = '1px solid rgba(196,98,45,0.32)'
+  } else if (state === 'warm') {
+    style.background = 'rgba(196,98,45,0.06)'
+    style.color = '#8C5A35'
+    style.border = '1px solid rgba(196,98,45,0.18)'
+  } else if (state === 'stirring') {
+    style.background = 'transparent'
+    style.color = '#C4622D'
+    // Ring treatment — non-colour-only signal carrier.
+    style.border = '1px solid #C4622D'
+    style.boxShadow = '0 0 0 2px rgba(196,98,45,0.18)'
+  } else {
+    return null
+  }
+  return (
+    <span style={style} aria-label={`suburb ${state}`}>
+      {state}
+    </span>
+  )
+}
+
 // ── View toggle (List | Map) — HOR-195 wires the Map button live ─────────────
 
 function ViewToggle({
@@ -682,7 +747,7 @@ function ViewToggle({
         aria-pressed={view === 'map'}
         style={tabStyle(view === 'map')}
       >
-        <Map style={{ width: 13, height: 13 }} />
+        <MapIcon style={{ width: 13, height: 13 }} />
         Map
       </button>
     </div>
@@ -1064,11 +1129,16 @@ function TableHead() {
 
 function PropertyRow({
   property,
+  suburbState,
   isLast,
   onClick,
   onSoftDelete,
 }: {
   property: PropertyGridRow
+  /** HOR-220: tier of the property's suburb on the map view. Renders as
+   *  a small pill next to the suburb name. Null when no signal data has
+   *  loaded yet or the property's suburb isn't in the payload. */
+  suburbState: SuburbState | null
   isLast: boolean
   onClick: () => void
   onSoftDelete: (id: string) => void
@@ -1114,7 +1184,12 @@ function PropertyRow({
         >
           {property.address}
         </div>
-        <div style={{ fontSize: 12, color: '#8C7B6B' }}>{property.suburb ?? '—'}</div>
+        <div style={{ fontSize: 12, color: '#8C7B6B', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span>{property.suburb ?? '—'}</span>
+          {suburbState && suburbState !== 'quiet' && (
+            <SuburbSignalPill state={suburbState} />
+          )}
+        </div>
       </div>
 
       <div style={COL.state}>

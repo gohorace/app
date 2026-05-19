@@ -87,12 +87,44 @@ function pinSvg(state: PropertyState): string {
 }
 
 function pinElement(p: PropertySignal): HTMLElement {
+  // HOR-220 a11y: the pin's visual SVG can be 6px (quiet tier), but the
+  // hit/focus target must be ≥ 24px (WCAG 2.5.5 target size minimum).
+  // Wrapper is a fixed 32×32 box with the SVG centred; cursor + focus ring
+  // live on the wrapper.
   const wrap = document.createElement('div')
   wrap.style.cursor = 'pointer'
-  wrap.style.transform = 'translate(0, 0)'
+  wrap.style.width = '32px'
+  wrap.style.height = '32px'
+  wrap.style.display = 'flex'
+  wrap.style.alignItems = 'center'
+  wrap.style.justifyContent = 'center'
+  wrap.style.borderRadius = '50%'
+  wrap.style.outline = 'none'
+  wrap.tabIndex = 0
+  wrap.setAttribute('role', 'button')
   wrap.innerHTML = pinSvg(p.state)
   wrap.title = p.address
   wrap.setAttribute('aria-label', `${p.address} — ${p.state} signal`)
+  // Focus + hover both surface a terracotta halo. Same treatment for both
+  // so the focus state reads without colour-only reliance (the halo grows
+  // the bounding box visibly).
+  const showRing = () => {
+    wrap.style.boxShadow = '0 0 0 3px rgba(196,98,45,0.32)'
+  }
+  const hideRing = () => {
+    wrap.style.boxShadow = 'none'
+  }
+  wrap.addEventListener('mouseenter', showRing)
+  wrap.addEventListener('mouseleave', hideRing)
+  wrap.addEventListener('focus', showRing)
+  wrap.addEventListener('blur',  hideRing)
+  // Keyboard activation parity with click — Enter / Space fire a click event.
+  wrap.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault()
+      wrap.click()
+    }
+  })
   return wrap
 }
 
@@ -111,7 +143,34 @@ function suburbLabelDom(s: SuburbSignal): HTMLElement {
   wrap.style.cursor = s.state === 'quiet' ? 'default' : 'pointer'
   wrap.style.userSelect = 'none'
   wrap.style.whiteSpace = 'nowrap'
+  // HOR-220 a11y: padding gives the label a ≥24px tap target; the visible
+  // text is smaller but the click + focus area meets WCAG 2.5.5.
+  wrap.style.padding = '6px 8px'
+  wrap.style.borderRadius = '4px'
+  wrap.style.outline = 'none'
   wrap.setAttribute('data-suburb-state', s.state)
+  if (s.state !== 'quiet') {
+    // Interactive suburbs are keyboard-reachable and screen-reader-labelled.
+    wrap.tabIndex = 0
+    wrap.setAttribute('role', 'button')
+    wrap.setAttribute('aria-label', `${s.name} — ${s.state} suburb signal`)
+    const showRing = () => {
+      wrap.style.boxShadow = '0 0 0 3px rgba(196,98,45,0.22)'
+    }
+    const hideRing = () => {
+      wrap.style.boxShadow = 'none'
+    }
+    wrap.addEventListener('mouseenter', showRing)
+    wrap.addEventListener('mouseleave', hideRing)
+    wrap.addEventListener('focus', showRing)
+    wrap.addEventListener('blur', hideRing)
+    wrap.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault()
+        wrap.click()
+      }
+    })
+  }
 
   const text = document.createElement('span')
   text.textContent = s.name
@@ -409,14 +468,19 @@ export function PropertiesMap({ payload, fallbackCenter = null }: Props) {
       typeof p.lat === 'number' && typeof p.lng === 'number',
     )
 
-    // Build markers — quiet pins last so active/hot z-order is on top.
-    const tierOrder: Record<PropertyState, number> = { quiet: 0, active: 1, hot: 2 }
-    const sorted = [...plottable].sort((a, b) => tierOrder[a.state] - tierOrder[b.state])
+    // HOR-220 tab order: hot → active → quiet within visible bounds (DOM
+    // insertion order controls Tab traversal in AdvancedMarkerElement panes).
+    // Paint order (hot on top) is preserved independently via marker.zIndex —
+    // see brief: "tab order goes hot → active → quiet within visible bounds".
+    const tabOrder:  Record<PropertyState, number> = { hot: 0, active: 1, quiet: 2 }
+    const paintZIdx: Record<PropertyState, number> = { quiet: 1, active: 2, hot: 3 }
+    const sorted = [...plottable].sort((a, b) => tabOrder[a.state] - tabOrder[b.state])
     const markers = sorted.map((p) => {
       const marker = new G.maps.marker.AdvancedMarkerElement({
         position: { lat: p.lat, lng: p.lng },
         content: pinElement(p),
-        title: p.address,
+        title:   p.address,
+        zIndex:  paintZIdx[p.state],
       })
       marker.addListener('click', () => {
         if (typeof window === 'undefined') return
@@ -606,10 +670,19 @@ export function PropertiesMap({ payload, fallbackCenter = null }: Props) {
     )
   }
 
+  // HOR-220: meaningful aria-label that recomputes on every payload change.
+  // Screen-reader users without map access still get "what's in here" at a
+  // glance. Empty payload → short empty-state label.
+  const mapAriaLabel = payload
+    ? composeMapAriaLabel(payload)
+    : 'Property signal map'
+
   return (
     <div style={{ position: 'relative' }}>
       <div
         ref={hostRef}
+        role="application"
+        aria-label={mapAriaLabel}
         style={{
           height: 540,
           width: '100%',
@@ -638,4 +711,27 @@ export function PropertiesMap({ payload, fallbackCenter = null }: Props) {
       )}
     </div>
   )
+}
+
+// ─── A11y helpers ───────────────────────────────────────────────────────────
+
+const WINDOW_LABEL_FOR_ARIA: Record<MapPayload['timeWindow'], string> = {
+  '24h': 'today',
+  '7d':  'this week',
+  '30d': 'this month',
+}
+
+function composeMapAriaLabel(p: MapPayload): string {
+  const window = WINDOW_LABEL_FOR_ARIA[p.timeWindow]
+  const { warm, active, stirring } = p.counters
+  const parts: string[] = ['Property signal map', window]
+  parts.push(`${active} active ${active === 1 ? 'listing' : 'listings'}`)
+  if (stirring > 0) {
+    parts.push(`${stirring} ${stirring === 1 ? 'suburb' : 'suburbs'} stirring`)
+  } else if (warm > 0) {
+    parts.push(`${warm} ${warm === 1 ? 'suburb' : 'suburbs'} warm`)
+  } else if (active === 0) {
+    parts.push('no signal in this window')
+  }
+  return parts.join(', ')
 }
