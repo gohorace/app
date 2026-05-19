@@ -64,8 +64,10 @@ BEGIN
   INSERT INTO workspace_members (workspace_id, user_id, role)
   VALUES (v_workspace_id, v_user_id, 'owner');
 
-  INSERT INTO sessions (workspace_id, anonymous_id)
-  VALUES (v_workspace_id, 'anon-hor223-test')
+  -- tracker_session_id added in 20260506000003_sessions_per_visit.sql (NOT NULL, unique
+  -- with workspace_id). A fresh uuid here keeps the test row unique from any prod data.
+  INSERT INTO sessions (workspace_id, anonymous_id, tracker_session_id)
+  VALUES (v_workspace_id, 'anon-hor223-test', gen_random_uuid())
   RETURNING id INTO v_session_id;
 
   -- Contact email chosen from a safe non-excluded domain.
