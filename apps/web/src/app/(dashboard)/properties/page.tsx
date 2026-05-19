@@ -15,6 +15,19 @@ interface SearchParams {
   q?:   string
   /** ?add=1 mounts the Add Property modal on load. */
   add?: string
+  /**
+   * HOR-216: time window for engagement bucketing on the List view, and
+   * the same value the map view passes to `/api/properties/map-payload`.
+   * Mirrors the brief's three positions; defaults to `7d` when absent or
+   * invalid.
+   */
+  timeWindow?: '24h' | '7d' | '30d'
+}
+
+const TIME_WINDOW_DAYS: Record<NonNullable<SearchParams['timeWindow']>, number> = {
+  '24h': 1,
+  '7d':  7,
+  '30d': 30,
 }
 
 export default async function PropertiesPage({
@@ -38,6 +51,14 @@ export default async function PropertiesPage({
 
   const q = searchParams.q?.trim() ?? ''
   const defaultModalOpen = searchParams.add === '1'
+  // HOR-216: validated time window (defaults to 7d). The map view will read
+  // the same query param to call `/api/properties/map-payload`; keeping the
+  // window in the URL means reload + view-toggle both preserve intent.
+  const timeWindow: NonNullable<SearchParams['timeWindow']> =
+    searchParams.timeWindow === '24h' || searchParams.timeWindow === '30d'
+      ? searchParams.timeWindow
+      : '7d'
+  const windowDays = TIME_WINDOW_DAYS[timeWindow]
 
   // ── 1. Agent's active core markets (HOR-195) ────────────────────────────
   // Drives the "no markets set" empty state branch in PropertiesView and
@@ -116,6 +137,7 @@ export default async function PropertiesPage({
         coreMarkets={coreMarkets}
         initialQ={q}
         defaultModalOpen={defaultModalOpen}
+        initialTimeWindow={timeWindow}
       />
     )
   }
@@ -159,17 +181,18 @@ export default async function PropertiesPage({
     }
   }
 
-  // ── 4. Engagement: distinct property_view events per property in last 7d ─
-  // Single aggregate query — count(*) grouped by property_id from events
-  // where occurred_at >= 7 days ago. We can't easily use group-by through
-  // the JS client; pull the rows and aggregate in JS.
-  const since7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+  // ── 4. Engagement: distinct property_view events per property in window ──
+  // HOR-216: time window is server-controlled via `?timeWindow=` (24h/7d/30d).
+  // Bucketing stays count-based for the list view; the map view uses the
+  // recency-weighted RPCs in `get_property_signals` (same window, different
+  // model — the list is a snapshot, the map is a story).
+  const sinceWindow = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000).toISOString()
   const { data: recentEvents } = await admin
     .from('events')
     .select('properties, occurred_at')
     .eq('workspace_id', agent.workspace_id)
     .eq('event_type', 'property_view')
-    .gte('occurred_at', since7d)
+    .gte('occurred_at', sinceWindow)
     .in('properties->>property_id', propertyIds)
 
   const eventCountByProperty = new Map<string, number>()
@@ -235,6 +258,7 @@ export default async function PropertiesPage({
       coreMarkets={coreMarkets}
       initialQ={q}
       defaultModalOpen={defaultModalOpen}
+      initialTimeWindow={timeWindow}
     />
   )
 }
