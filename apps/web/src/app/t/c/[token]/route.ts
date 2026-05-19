@@ -114,8 +114,11 @@ export async function GET(
 
   // Fire the event before redirecting so we don't lose it on cold-shutdown
   // edge cases. emit_email_event no-ops on missing send / missing contact_id.
+  // RPC cast: emit_email_event isn't in the generated Database types yet
+  // (slice A migration is applied to prod but database.types.ts is stale).
   const userAgent = req.headers.get('user-agent')
-  await admin.rpc('emit_email_event', {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await (admin.rpc as any)('emit_email_event', {
     p_send_id: parsed.sendId,
     p_event: 'email_clicked',
     p_props: {
