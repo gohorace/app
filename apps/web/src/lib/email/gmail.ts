@@ -30,7 +30,12 @@ const GOOGLE_USERINFO_URL = 'https://www.googleapis.com/oauth2/v3/userinfo'
 // ── Env ─────────────────────────────────────────────────────────────────────
 
 function requireEnv(key: 'GOOGLE_OAUTH_CLIENT_ID' | 'GOOGLE_OAUTH_CLIENT_SECRET' | 'GOOGLE_OAUTH_REDIRECT_URI'): string {
-  const value = process.env[key]
+  // .trim() defends against the very common paste-artifact bug where Vercel
+  // env vars pick up trailing whitespace from the source copy. URLSearchParams
+  // URL-encodes that whitespace as `+`, which Google then sees as part of the
+  // client_id and returns `invalid_client`. Caught on the slice F smoke test
+  // 2026-05-19; trimming here means no future env-var save can repeat the foot-gun.
+  const value = process.env[key]?.trim()
   if (!value) {
     throw new Error(`Missing required env var: ${key}`)
   }
