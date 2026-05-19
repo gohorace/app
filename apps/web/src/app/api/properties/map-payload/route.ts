@@ -8,8 +8,9 @@
  * refetch goes through here — no client-side recomputation, no view-state
  * coupling.
  *
- * The `summary` line is stubbed in this PR — HOR-217 wires `generateMapSummary`
- * into this route after the data shape lands.
+ * HOR-217 wires `generateMapSummary` (Claude Haiku via the `briefing.ts`
+ * pattern, cached for 1h in `map_summary_cache`) into this route. Empty
+ * ANTHROPIC_API_KEY → deterministic fallback pool; no flag, no surprises.
  *
  * MCP-readiness (CLAUDE.md hard rule #3): the JSON returned is the exact shape
  * an MCP tool would emit. No client-shaped fields. The route is a thin adapter
@@ -17,6 +18,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
@@ -31,6 +33,7 @@ import {
   type TimeWindow,
   isTimeWindow,
 } from '@/lib/map/rpc-types'
+import { generateMapSummary } from '@/lib/ai/map-summary'
 
 async function resolveAgent(userId: string) {
   const admin = createAdminClient()
@@ -131,14 +134,42 @@ export async function GET(req: NextRequest) {
     stirring: suburbs.filter((s) => s.state === 'stirring').length,
   }
 
+  // ─── Horace summary line (HOR-217) ─────────────────────────────────────────
+  // Cached in Postgres for 1h per (workspace, agent, timeWindow, payload_hash).
+  // Same scrubber click within the hour → zero LLM cost. Material change in
+  // the suburb signal shape → cache miss → fresh Haiku → write-through.
+  //
+  // `topSuburbs` and `stirringSuburbs` are derived here (not in the RPC) so
+  // the cache key can stabilise on the same shape: changing a suburb's
+  // _signalDelta_ but not its tier doesn't bust the cache.
+
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  const anthropic = apiKey ? new Anthropic({ apiKey }) : null
+
+  const topSuburbs = suburbs
+    .filter((s) => s.state === 'warm' || s.state === 'hot')
+    // RPC already ordered by intensity desc — first 3 are the canonical "top".
+    .slice(0, 3)
+    .map((s) => ({ name: s.name, state: s.state as 'warm' | 'hot' }))
+
+  const stirringSuburbs = suburbs
+    .filter((s) => s.state === 'stirring')
+    .slice(0, 3)
+    .map((s) => s.name)
+
+  const summary = await generateMapSummary(
+    anthropic,
+    agent.workspace_id,
+    agent.id,
+    { counters, topSuburbs, stirringSuburbs, timeWindow },
+  )
+
   const payload: MapPayload = {
     timeWindow,
     heat,
     suburbs,
     properties,
-    // HOR-217 wires generateMapSummary() here. Empty string until then so the
-    // client renders nothing rather than a placeholder it has to special-case.
-    summary: '',
+    summary,
     counters,
   }
 
