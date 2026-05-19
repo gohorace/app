@@ -4,7 +4,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { ContactDetailView } from '@/components/contacts/contact-detail-view'
 import { deriveIdentity, makeInitials } from '@/lib/contacts/identity'
 import { getRoles } from '@/lib/contacts/roles'
-import { mergeScrollDepth, type RawEvent } from '@/lib/contacts/events'
+import { mergeScrollDepth, collapseEmailOpens, type RawEvent } from '@/lib/contacts/events'
+import { getContactEmailSends } from '@/lib/contacts/email-engagement'
 
 export const dynamic = 'force-dynamic'
 
@@ -24,6 +25,7 @@ export default async function ContactDetailPage({ params }: { params: { id: stri
   const [
     { data: contact },
     { data: rawEvents },
+    emailSends,
   ] = await Promise.all([
     admin
       .from('contacts')
@@ -33,6 +35,10 @@ export default async function ContactDetailPage({ params }: { params: { id: stri
       .is('deleted_at', null)
       .maybeSingle(),
     admin.rpc('get_contact_events', { p_contact_id: params.id }),
+    // HOR-228: parallel fetch of email_sends for this contact. Used by
+    // contact-detail-view to enrich email_* timeline rows with the subject
+    // line. Empty list (or fetch error) is handled gracefully.
+    getContactEmailSends(admin, agent.id, params.id),
   ])
 
   if (!contact) notFound()
@@ -76,14 +82,20 @@ export default async function ContactDetailPage({ params }: { params: { id: stri
   })
 
   // ── Events ──────────────────────────────────────────────────────────────
-  const events = mergeScrollDepth(
-    (rawEvents ?? []).map((e) => ({
-      id:          e.event_id,
-      event_type:  e.event_type,
-      properties:  (e.properties ?? {}) as Record<string, unknown>,
-      score_delta: e.score_delta,
-      occurred_at: e.occurred_at,
-    } as RawEvent)),
+  // Two passes:
+  //   1. mergeScrollDepth — folds scroll_depth rows into their page_view host
+  //   2. collapseEmailOpens — folds repeated email_opened events (image-proxy
+  //      refetches) per email_send_id into a single row tagged with repeated_count
+  const events = collapseEmailOpens(
+    mergeScrollDepth(
+      (rawEvents ?? []).map((e) => ({
+        id:          e.event_id,
+        event_type:  e.event_type,
+        properties:  (e.properties ?? {}) as Record<string, unknown>,
+        score_delta: e.score_delta,
+        occurred_at: e.occurred_at,
+      } as RawEvent)),
+    ),
   )
 
   // ── Engaging-now: derive from recent property_view events ───────────────
@@ -172,6 +184,7 @@ export default async function ContactDetailPage({ params }: { params: { id: stri
       roleAttached={roleAttached}
       engagingNow={engagingNow}
       events={events}
+      emailSends={emailSends}
     />
   )
 }
