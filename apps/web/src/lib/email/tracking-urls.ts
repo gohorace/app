@@ -36,8 +36,15 @@ export function getTrackingHost(): string {
   }
 
   // Production (or anything else): derive r.<appHost> from NEXT_PUBLIC_APP_URL.
+  // Strip a `www.` prefix first — NEXT_PUBLIC_APP_URL in prod is
+  // `https://www.gohorace.com`, but DNS / Vercel registers the tracking
+  // subdomain as `r.gohorace.com` (not `r.www.gohorace.com`). Without this
+  // strip, the pixel + click URLs in tracked emails get a hostname that
+  // doesn't resolve, and recipient image proxies fail silently — caught on
+  // the slice F end-to-end smoke 2026-05-19.
   try {
-    const appHost = new URL(process.env.NEXT_PUBLIC_APP_URL ?? '').host
+    let appHost = new URL(process.env.NEXT_PUBLIC_APP_URL ?? '').host
+    if (appHost.startsWith('www.')) appHost = appHost.slice(4)
     return appHost ? `r.${appHost}` : ''
   } catch {
     return ''
