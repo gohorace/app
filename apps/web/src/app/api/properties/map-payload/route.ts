@@ -34,6 +34,11 @@ import {
   isTimeWindow,
 } from '@/lib/map/rpc-types'
 import { generateMapSummary } from '@/lib/ai/map-summary'
+import {
+  bucketPropertiesBySuburb,
+  composePropertyStory,
+  composeSuburbStory,
+} from '@/lib/map/stories'
 
 async function resolveAgent(userId: string) {
   const admin = createAdminClient()
@@ -92,8 +97,13 @@ export async function GET(req: NextRequest) {
   const heatRows    = (heatRes.data    as GetMapHeatCellsRow[]    | null) ?? []
 
   // ─── snake_case → camelCase, the route's only translation responsibility ──
+  //
+  // Build raw shapes without `story` first — the panel narrative needs to
+  // see all properties+suburbs to derive cross-references (a suburb's top
+  // property, contacts active across the suburb). Stories are composed in
+  // a second pass below.
 
-  const properties: PropertySignal[] = propRows.map((r) => ({
+  const propertiesRaw: Array<Omit<PropertySignal, 'story'>> = propRows.map((r) => ({
     id:        r.id,
     address:   r.address,
     suburb:    r.suburb,
@@ -108,7 +118,7 @@ export async function GET(req: NextRequest) {
       : undefined,
   }))
 
-  const suburbs: SuburbSignal[] = suburbRows.map((r) => ({
+  const suburbsRaw: Array<Omit<SuburbSignal, 'story'>> = suburbRows.map((r) => ({
     id:            r.id,
     name:          r.name,
     stateAbbrev:   r.state_abbrev,
@@ -118,6 +128,20 @@ export async function GET(req: NextRequest) {
     intensity:     Number(r.intensity),
     signalDelta:   r.signal_delta_pct != null ? Number(r.signal_delta_pct) : null,
     propertyCount: r.property_count,
+  }))
+
+  // ─── HOR-219: compose deterministic per-entity stories ───────────────────
+
+  const propsBySuburbId = bucketPropertiesBySuburb(propertiesRaw, suburbsRaw)
+
+  const properties: PropertySignal[] = propertiesRaw.map((p) => ({
+    ...p,
+    story: composePropertyStory(p, timeWindow),
+  }))
+
+  const suburbs: SuburbSignal[] = suburbsRaw.map((s) => ({
+    ...s,
+    story: composeSuburbStory(s, propsBySuburbId.get(s.id) ?? [], timeWindow),
   }))
 
   const heat: HeatCell[] = heatRows.map((r) => ({

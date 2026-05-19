@@ -30,6 +30,7 @@ import { AddPropertyModal } from './add-property-modal'
 import { EmptyNoCoreMarket } from './empty-no-core-market'
 import { PropertiesMap } from './properties-map'
 import { TimeScrubber } from './time-scrubber'
+import { SignalPanel } from './signal-panel'
 import { MAP_COPY } from '@/lib/copy/map-view'
 import type { MapPayload, TimeWindow as MapTimeWindow } from '@/lib/map/rpc-types'
 
@@ -513,6 +514,12 @@ export function PropertiesView({
           }}
         />
       )}
+
+      {/* HOR-219: slide-in signal panel. Driven by `#signal=<id>` / `#suburb=<id>`
+          hashes (set by HOR-218's pin + suburb-label click handlers). Mounted
+          here at the page root so the map can re-render without tearing the
+          panel down. */}
+      <SignalPanel payload={mapPayload} />
     </div>
   )
 }

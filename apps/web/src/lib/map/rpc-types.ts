@@ -24,6 +24,21 @@ export function isTimeWindow(v: unknown): v is TimeWindow {
 
 export type PropertyState = 'quiet' | 'active' | 'hot'
 
+/**
+ * HOR-219: prebuilt narrative for the signal panel. Deterministic templates
+ * (not Haiku per-pin — that'd be expensive and click-latency too high).
+ * The overall map `summary` stays Haiku; per-pin stories stay deterministic
+ * but composed server-side so the contract stays MCP-callable.
+ */
+export interface PropertyStory {
+  /** Horace-voice one-liner. Never templated client-side. */
+  lead:    string
+  /** "12 sessions this week" / "One session today" etc. */
+  sessions: string
+  /** Recency / cadence prose. "Active right now", "Earlier this month", etc. */
+  pattern: string
+}
+
 export interface PropertySignal {
   id:        string
   address:   string
@@ -38,11 +53,29 @@ export interface PropertySignal {
     name:  string
     since: string                // ISO timestamp
   }
+  story:     PropertyStory
 }
 
 // ─── Suburb tier ────────────────────────────────────────────────────────────
 
 export type SuburbState = 'quiet' | 'warm' | 'hot' | 'stirring'
+
+/**
+ * HOR-219: per-suburb story for the side panel. Derived in the route
+ * from property + contact data already in the payload — no extra RPC.
+ */
+export interface SuburbStory {
+  /** Horace-voice headline. */
+  headline: string
+  /** A sentence or two of context. */
+  body:     string
+  /** Stats row across the top of the panel. Mix of counts + canonical names. */
+  stats:    Array<{ label: string; value: string }>
+  /** Known contacts active in this suburb in the window. Deduped across properties. */
+  contacts: Array<{ id: string; name: string; lastActiveAt: string }>
+  /** Active properties (state != quiet) in this suburb, address-sorted. */
+  topProperties: Array<{ id: string; address: string; state: PropertyState }>
+}
 
 export interface SuburbSignal {
   id:           string           // gnaf locality_pid when matched; lowercase name fallback
@@ -54,6 +87,7 @@ export interface SuburbSignal {
   intensity:    number           // 0..1
   signalDelta:  number | null    // percent change vs previous window; null when no prior signal
   propertyCount: number
+  story:        SuburbStory
 }
 
 // ─── Heat cell ──────────────────────────────────────────────────────────────
