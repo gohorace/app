@@ -24,7 +24,7 @@
  *  13. Any other failure: leave queued, error_message stored, slice G retries.
  */
 
-import DOMPurify from 'isomorphic-dompurify'
+import sanitizeHtml from 'sanitize-html'
 import { convert as htmlToText } from 'html-to-text'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
@@ -419,11 +419,28 @@ function normalizePayload(p: EmailSendPayload): NormalizedPayload {
     )
   }
   // Server-side sanitize. TipTap output is generally safe but paste can
-  // smuggle scripts; DOMPurify with default profile strips them.
-  const cleanHtml = DOMPurify.sanitize(rawHtml, {
-    USE_PROFILES: { html: true },
-    FORBID_TAGS: ['style', 'script'],
-    FORBID_ATTR: ['onerror', 'onclick', 'onload', 'onmouseover'],
+  // smuggle scripts. We use sanitize-html (pure-JS, no jsdom) — the
+  // isomorphic-dompurify alternative pulls in jsdom which trips up
+  // Next.js's `Collecting page data` step (missing default-stylesheet.css).
+  //
+  // Allowlist mirrors what TipTap StarterKit + Link extension can emit:
+  // basic block + inline marks, lists, links. No tables/images/iframes/etc.
+  const cleanHtml = sanitizeHtml(rawHtml, {
+    allowedTags: [
+      'p', 'br', 'span', 'div',
+      'b', 'strong', 'i', 'em', 'u',
+      'a',
+      'ul', 'ol', 'li',
+      'blockquote', 'code',
+    ],
+    allowedAttributes: {
+      a: ['href', 'target', 'rel'],
+    },
+    allowedSchemes: ['http', 'https', 'mailto', 'tel'],
+    allowedSchemesByTag: { a: ['http', 'https', 'mailto', 'tel'] },
+    disallowedTagsMode: 'discard',
+    // Strip on* event handlers + any style attribute (any non-allowed attr
+    // is dropped because allowedAttributes is an explicit whitelist).
   })
 
   const bodyText = (p.body_text ?? '').trim() || derivePlainText(cleanHtml)
