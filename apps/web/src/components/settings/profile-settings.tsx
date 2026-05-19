@@ -3,7 +3,7 @@
 import { useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ChevronRight, Bell, Code, BarChart2, Key, LogOut, Building2, Link2, Inbox, MapPin, Users, Camera, Loader2, Upload, LifeBuoy, Globe, CreditCard, Plug } from 'lucide-react'
+import { ChevronRight, Bell, Code, BarChart2, Key, LogOut, Building2, Link2, Inbox, MapPin, Users, Camera, Loader2, Upload, LifeBuoy, Globe, CreditCard, Plug, ShieldOff } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { InstallPrompt } from './install-prompt'
 
@@ -28,8 +28,9 @@ const NAV_ITEMS = [
   { href: '/settings/tracked-links',  label: 'Tracked links',      icon: Link2,     desc: 'Per-contact links + default destination' },
   { href: '/settings/snippet',        label: 'Install snippet',    icon: Code,      desc: 'Website tracking code' },
   { href: '/settings/scoring',        label: 'Scoring rules',      icon: BarChart2, desc: 'How intent points are awarded' },
-  { href: '/settings/integrations',   label: 'Integrations',       icon: Plug,      desc: 'Connect Gmail and other services' },
-  { href: '/settings/api-tokens',     label: 'API tokens',         icon: Key,       desc: 'Tokens for MCP clients (e.g. Claude)' },
+  { href: '/settings/integrations',     label: 'Integrations',     icon: Plug,      desc: 'Connect Gmail and other services' },
+  { href: '/settings/email-exclusions',  label: 'Email exclusions', icon: ShieldOff, desc: 'Recipients you never want Horace to email' },
+  { href: '/settings/api-tokens',       label: 'API tokens',       icon: Key,       desc: 'Tokens for MCP clients (e.g. Claude)' },
   { href: '/import',                  label: 'Import contacts',    icon: Upload,    desc: 'Bring contacts in from a CSV' },
   { href: '/help',                    label: 'Help & guides',      icon: LifeBuoy,  desc: 'Walkthroughs and answers' },
 ]
