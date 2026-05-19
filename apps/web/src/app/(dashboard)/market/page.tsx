@@ -1,99 +1,104 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { fetchAttentionCount } from '@/lib/notifications/attention-count'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { BellButton } from '@/components/dashboard/bell-button'
+import { fetchAttentionCount } from '@/lib/notifications/attention-count'
+import { MarketView, isTimeWindow } from '@/components/market/market-view'
+import type { TimeWindow } from '@/lib/map/rpc-types'
 
-// v2-M1 stub (HOR-242). The real Market screen lands in v2-M4 (HOR-245) —
-// it migrates the shipped HOR-215 map surface from /properties to here
-// and re-styles pins/overlay/slider for v2 fidelity. Until then this
-// renders the topbar so the sidebar link resolves cleanly.
+/**
+ * /market — the v2 dedicated Market route (HOR-245).
+ *
+ * Replaces the v2-M1 stub. Lifts the shipped HOR-215 map surface out of
+ * `/properties` and restyles pins/overlay/slider for v2 fidelity. The
+ * underlying `MapPayload` shape, RPCs, and `PropertiesMap` heat/cluster
+ * infrastructure carry over unchanged — only the pin geometry, the
+ * overlay shape, and the slider rail visual are different.
+ *
+ * Server work: resolve agent + workspace, compute the map's fallback
+ * centroid from the agent's first core market (so a no-property
+ * workspace still sees their patch of Australia), and fetch the bell
+ * attention count. The map payload itself is fetched client-side on
+ * mount to keep this page snappy + cookie-aware.
+ */
+
 export const dynamic = 'force-dynamic'
 
-export default async function MarketPage() {
+interface SearchParams {
+  timeWindow?: string
+}
+
+export default async function MarketPage({
+  searchParams,
+}: {
+  searchParams: SearchParams
+}) {
   const supabase = await createClient()
   const {
     data: { user },
   } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const { data: agent } = await supabase
+  const admin = createAdminClient()
+  const { data: agent } = await admin
     .from('agents')
-    .select('id')
+    .select('id, workspace_id')
     .eq('user_id', user.id)
     .maybeSingle()
-  if (!agent) redirect('/signup')
+  if (!agent?.workspace_id) redirect('/signup')
 
-  const admin = createAdminClient()
   const attentionCount = await fetchAttentionCount(admin, agent.id)
+  const fallbackCenter = await resolveFallbackCenter(admin, agent.id)
+
+  const initialTimeWindow: TimeWindow = isTimeWindow(searchParams.timeWindow)
+    ? searchParams.timeWindow
+    : '7d'
 
   return (
-    <div className="flex flex-col h-full overflow-y-auto" style={{ background: '#F5F0E8' }}>
-      <div style={{ padding: '28px 32px 0', maxWidth: 1240 }}>
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'flex-start',
-            justifyContent: 'space-between',
-            gap: 16,
-            marginBottom: 22,
-          }}
-        >
-          <div style={{ minWidth: 0 }}>
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                fontSize: 11,
-                fontWeight: 500,
-                letterSpacing: '0.08em',
-                textTransform: 'uppercase',
-                color: '#8C7B6B',
-                marginBottom: 8,
-              }}
-            >
-              <span
-                style={{ width: 6, height: 6, borderRadius: '50%', background: '#C4622D' }}
-              />
-              Insights · Market map
-            </div>
-            <h1
-              className="font-display"
-              style={{
-                margin: 0,
-                fontSize: 36,
-                fontWeight: 600,
-                letterSpacing: '-0.02em',
-                lineHeight: 1.15,
-                color: '#1A1612',
-              }}
-            >
-              Market
-            </h1>
-          </div>
-          <div style={{ flexShrink: 0, marginTop: 4 }}>
-            <BellButton attentionCount={attentionCount} />
-          </div>
-        </div>
-
-        <section
-          style={{
-            background: '#FAF7F2',
-            border: '1px solid rgba(140,123,107,0.22)',
-            borderRadius: 12,
-            padding: '28px 32px',
-            color: '#5E5246',
-            fontFamily: 'var(--font-display)',
-            fontStyle: 'italic',
-            fontSize: 18,
-            lineHeight: 1.55,
-          }}
-        >
-          Horace is preparing the map view. Watch this space — the heat-weighted
-          pins, property overlay, and time slider land in v2-M4.
-        </section>
-      </div>
-    </div>
+    <MarketView
+      initialPayload={null}
+      initialTimeWindow={initialTimeWindow}
+      fallbackCenter={fallbackCenter}
+      attentionCount={attentionCount}
+    />
   )
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/**
+ * Resolve the agent's first core market's centroid for the map fallback.
+ * Same pattern `/properties/page.tsx` uses for the embedded map view.
+ * Returns null when the agent has no core market set; PropertiesMap
+ * falls back to its own default (HORACE_HQ_FALLBACK) in that case.
+ */
+async function resolveFallbackCenter(
+  admin: ReturnType<typeof createAdminClient>,
+  agentId: string,
+): Promise<{ lat: number; lng: number } | null> {
+  const { data: rawMarkets } = await admin
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .from('core_markets' as any)
+    .select('locality_pid')
+    .eq('agent_id', agentId)
+    .is('archived_at', null)
+    .order('created_at', { ascending: true })
+    .limit(1)
+
+  type MarketRow = { locality_pid: string }
+  const first = (rawMarkets as MarketRow[] | null)?.[0]
+  if (!first) return null
+
+  const { data: localities } = await admin
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .schema('gnaf' as any)
+    .from('localities' as any)
+    .select('latitude, longitude')
+    .eq('locality_pid', first.locality_pid)
+    .maybeSingle()
+
+  type LocalityRow = { latitude: number | null; longitude: number | null }
+  const l = localities as LocalityRow | null
+  if (!l || l.latitude == null || l.longitude == null) return null
+
+  return { lat: l.latitude, lng: l.longitude }
 }
