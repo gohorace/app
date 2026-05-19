@@ -1,22 +1,30 @@
 'use client'
 
 /**
- * HOR-217 — Today / This week / This month scrubber for the Properties Map View.
+ * HOR-217 + HOR-220 — Today / This week / This month scrubber.
  *
  * Three connected dots on a rail. Click a dot or its label → onChange. The
  * parent (PropertiesView) controls the URL `?timeWindow=` param + the
- * `/api/properties/map-payload` refetch; this component is pure visuals +
- * click.
+ * `/api/properties/map-payload` refetch; this component is pure visuals,
+ * click, and the WAI-ARIA radio-group keyboard model.
  *
- * Full keyboard model (arrow keys, role="radiogroup") lands in HOR-220. For
- * now buttons are real <button>s so Tab/Enter already works.
+ * HOR-220 keyboard model (matches WAI-ARIA Authoring Practices for radio
+ * groups):
+ *   - Roving tabindex: only the active dot is in the tab order. The other
+ *     two have tabindex=-1.
+ *   - `ArrowRight` / `ArrowDown` → next position; wraps from `30d` to `24h`.
+ *   - `ArrowLeft`  / `ArrowUp`   → previous position; wraps the other way.
+ *   - `Home` → `24h`. `End` → `30d`. `Space` / `Enter` → no-op on active,
+ *     activates the focused one (default browser button behaviour).
+ *   - Focus ring is the same terracotta outline the active dot wears — colour
+ *     never the sole carrier of state.
  *
  * Visuals follow the prototype (`/tmp/horace_design_mapview/app/MapView.jsx`
  * lines 359–402): cream rail with terracotta progress fill, active dot
  * filled terracotta with a parchment inner ring, captions beneath.
  */
 
-import { useId } from 'react'
+import { useEffect, useId, useRef } from 'react'
 import type { TimeWindow } from '@/lib/map/rpc-types'
 import { MAP_COPY } from '@/lib/copy/map-view'
 
@@ -32,6 +40,56 @@ interface Props {
 export function TimeScrubber({ value, onChange, pending = false }: Props) {
   const idx = POSITIONS.indexOf(value)
   const labelId = useId()
+  // Refs to each radio dot so we can move keyboard focus between them after
+  // arrow-key activation (roving tabindex pattern).
+  const dotRefs = useRef<Array<HTMLButtonElement | null>>([null, null, null])
+
+  // Reset focus to the new active dot when `value` changes via click on label
+  // (so keyboard model continues from the right place).
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+    const activeEl = dotRefs.current[idx]
+    // Only steal focus if focus is already inside the group; we don't want to
+    // pull focus on every render.
+    if (activeEl && activeEl.contains(document.activeElement) === false) return
+    activeEl?.focus()
+  }, [idx])
+
+  function move(delta: -1 | 1) {
+    const next = (idx + delta + POSITIONS.length) % POSITIONS.length
+    onChange(POSITIONS[next])
+    // The useEffect above moves DOM focus once `value` re-renders.
+  }
+
+  function jumpTo(target: 0 | 2) {
+    if (target === idx) return
+    onChange(POSITIONS[target])
+  }
+
+  function onKey(e: React.KeyboardEvent<HTMLButtonElement>) {
+    switch (e.key) {
+      case 'ArrowRight':
+      case 'ArrowDown':
+        e.preventDefault()
+        move(1)
+        break
+      case 'ArrowLeft':
+      case 'ArrowUp':
+        e.preventDefault()
+        move(-1)
+        break
+      case 'Home':
+        e.preventDefault()
+        jumpTo(0)
+        break
+      case 'End':
+        e.preventDefault()
+        jumpTo(2)
+        break
+      // Space + Enter on a radio just keep activation on the same item —
+      // native <button> default already handles them; no preventDefault.
+    }
+  }
 
   return (
     <div
@@ -83,14 +141,21 @@ export function TimeScrubber({ value, onChange, pending = false }: Props) {
         {POSITIONS.map((pos, i) => {
           const active = i === idx
           const left = `${(i / 2) * 100}%`
+          const valueText = `${MAP_COPY.scrubber[pos].label} — ${MAP_COPY.scrubber[pos].caption}`
           return (
             <button
               key={pos}
+              ref={(el) => { dotRefs.current[i] = el }}
               type="button"
               role="radio"
               aria-checked={active}
               aria-label={MAP_COPY.scrubber[pos].label}
+              aria-valuetext={valueText}
+              // Roving tabindex — only the active dot is in the tab order so
+              // a single Tab lands on the group then arrow keys take over.
+              tabIndex={active ? 0 : -1}
               onClick={() => { if (!active) onChange(pos) }}
+              onKeyDown={onKey}
               style={{
                 position: 'absolute',
                 left,
@@ -106,6 +171,18 @@ export function TimeScrubber({ value, onChange, pending = false }: Props) {
                 cursor: active ? 'default' : 'pointer',
                 padding: 0,
                 transition: 'background 180ms ease-out, border-color 180ms ease-out',
+                // HOR-220: visible focus state. Terracotta halo around any
+                // focused dot — same colour family as the active state so
+                // the focus signal reads naturally without relying on colour
+                // contrast alone (the ring offset reinforces it).
+                outline: 'none',
+                boxShadow: 'none',
+              }}
+              onFocus={(e) => {
+                e.currentTarget.style.boxShadow = '0 0 0 3px rgba(196,98,45,0.32)'
+              }}
+              onBlur={(e) => {
+                e.currentTarget.style.boxShadow = 'none'
               }}
             >
               {active && (
