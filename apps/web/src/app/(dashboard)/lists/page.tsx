@@ -43,25 +43,50 @@ export default async function ListsPage() {
   const workspaceId = agent.workspace_id
   const agentId = agent.id
 
-  // ── Built-in counts ─────────────────────────────────────────────────────
+  // ── Built-in counts + recently-active member (HOR-248) ───────────────────
   // One query, post-filter in JS. Workspace contact volumes are modest in
-  // V1 (a few thousand at most), so the trip is cheap; we can switch to
-  // grouped RPCs if it ever bites.
+  // V1 (a few thousand at most), so the trip is cheap. We now also pull
+  // names + last_seen so the cards can surface a "recently added" member
+  // and a "+N this week" badge. NOTE: built-ins are score-threshold lists
+  // with no membership rows, so there's no true "added" timestamp — we use
+  // last_seen_at as the recency proxy (phrased "active", not "added").
+  const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000
   const { data: scoreRows } = await admin
     .from('contacts')
-    .select('score')
+    .select('id, first_name, last_name, score, last_seen_at')
     .eq('agent_id', agentId)
     .is('deleted_at', null)
 
-  const builtinCounts = new Map<string, number>()
-  for (const def of BUILTIN_LISTS) builtinCounts.set(def.slug, 0)
+  type BuiltinStat = {
+    count: number
+    newThisWeek: number
+    recent: { id: string; name: string; lastSeenAt: string } | null
+  }
+  const builtinStats = new Map<string, BuiltinStat>()
+  for (const def of BUILTIN_LISTS) {
+    builtinStats.set(def.slug, { count: 0, newThisWeek: 0, recent: null })
+  }
+  const now = Date.now()
   for (const r of scoreRows ?? []) {
     for (const def of BUILTIN_LISTS) {
       if (r.score < def.minScore) continue
       if (def.maxScoreExclusive !== null && r.score >= def.maxScoreExclusive) continue
-      builtinCounts.set(def.slug, (builtinCounts.get(def.slug) ?? 0) + 1)
+      const stat = builtinStats.get(def.slug)!
+      stat.count += 1
+      const seen = r.last_seen_at ? new Date(r.last_seen_at).getTime() : 0
+      if (seen && now - seen <= SEVEN_DAYS_MS) stat.newThisWeek += 1
+      if (r.last_seen_at && (!stat.recent || r.last_seen_at > stat.recent.lastSeenAt)) {
+        const name = [r.first_name, r.last_name].filter(Boolean).join(' ') || 'A contact'
+        stat.recent = { id: r.id, name, lastSeenAt: r.last_seen_at }
+      }
     }
   }
+
+  // Voice line: lead with the built-in that has the freshest recent member.
+  const voiceLead = [...BUILTIN_LISTS]
+    .map((def) => ({ def, stat: builtinStats.get(def.slug)! }))
+    .filter((x) => x.stat.recent && x.stat.newThisWeek > 0)
+    .sort((a, b) => (b.stat.recent!.lastSeenAt > a.stat.recent!.lastSeenAt ? 1 : -1))[0] ?? null
 
   // ── Saved lists ─────────────────────────────────────────────────────────
   const { data: listsData } = await admin
@@ -120,6 +145,35 @@ export default async function ListsPage() {
           </p>
         </div>
 
+        {/* HOR-248: Horace voice line — leads with the built-in that has the
+            freshest member this week. Phrased "active" (last_seen proxy)
+            rather than "added" — built-ins have no membership timestamp. */}
+        {voiceLead && (
+          <div
+            style={{
+              marginBottom: 26,
+              padding: '14px 18px',
+              background: 'rgba(196,98,45,0.06)',
+              border: '1px solid rgba(196,98,45,0.18)',
+              borderRadius: 10,
+            }}
+          >
+            <p
+              className="font-display"
+              style={{ margin: 0, fontSize: 15, fontStyle: 'italic', lineHeight: 1.55, color: '#1A1612' }}
+            >
+              <span style={{ fontWeight: 600, fontStyle: 'normal', color: '#A85220' }}>
+                {voiceLead.def.name}
+              </span>{' '}
+              has{' '}
+              <span style={{ fontWeight: 600, fontStyle: 'normal' }}>
+                {voiceLead.stat.newThisWeek} new
+              </span>{' '}
+              this week — {voiceLead.stat.recent!.name} active {formatRelative(voiceLead.stat.recent!.lastSeenAt)}.
+            </p>
+          </div>
+        )}
+
         {/* Built-ins panel */}
         <PanelHeader title="Built-in" subtitle="Live views — Horace recomputes counts on every page load." />
         <div
@@ -130,81 +184,118 @@ export default async function ListsPage() {
             marginBottom: 32,
           }}
         >
-          {BUILTIN_LISTS.map((def) => (
-            <Link
-              key={def.slug}
-              href={`/contacts?builtin=${def.slug}`}
-              style={{
-                display: 'block',
-                padding: '18px 20px',
-                background: '#FAF7F2',
-                border: '1px solid rgba(140,123,107,0.2)',
-                borderRadius: 12,
-                textDecoration: 'none',
-                color: 'inherit',
-                transition: 'box-shadow 180ms cubic-bezier(0.16,1,0.3,1)',
-              }}
-            >
-              <div
+          {BUILTIN_LISTS.map((def) => {
+            const stat = builtinStats.get(def.slug)!
+            return (
+              <Link
+                key={def.slug}
+                href={`/lists/${def.slug}`}
+                className="signal-card"
                 style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  marginBottom: 8,
+                  display: 'block',
+                  padding: '18px 20px',
+                  background: '#FAF7F2',
+                  border: '1px solid rgba(140,123,107,0.2)',
+                  borderRadius: 12,
+                  textDecoration: 'none',
+                  color: 'inherit',
+                  transition: 'box-shadow 180ms cubic-bezier(0.16,1,0.3,1)',
                 }}
               >
-                <span
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    width: 26,
-                    height: 26,
-                    borderRadius: 7,
-                    background: 'rgba(196,98,45,0.1)',
-                    color: '#C4622D',
-                  }}
-                >
-                  <Sparkles style={{ width: 13, height: 13 }} aria-hidden />
-                </span>
-                <span
-                  className="font-display"
-                  style={{
-                    fontSize: 17,
-                    fontWeight: 500,
-                    letterSpacing: '-0.01em',
-                    color: '#1A1612',
-                  }}
-                >
-                  {def.name}
-                </span>
-                <span
-                  style={{
-                    marginLeft: 'auto',
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: 11,
-                    color: '#5E5246',
-                    background: 'rgba(140,123,107,0.12)',
-                    padding: '2px 8px',
-                    borderRadius: 9999,
-                  }}
-                >
-                  {builtinCounts.get(def.slug) ?? 0}
-                </span>
-              </div>
-              <p
-                style={{
-                  margin: 0,
-                  fontSize: 12.5,
-                  color: '#5E5246',
-                  fontStyle: 'italic',
-                  lineHeight: 1.5,
-                }}
-              >
-                {def.blurb}
-              </p>
-            </Link>
-          ))}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <span
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: 26,
+                      height: 26,
+                      borderRadius: 7,
+                      background: 'rgba(196,98,45,0.1)',
+                      color: '#C4622D',
+                    }}
+                  >
+                    <Sparkles style={{ width: 13, height: 13 }} aria-hidden />
+                  </span>
+                  <span
+                    className="font-display"
+                    style={{ fontSize: 17, fontWeight: 500, letterSpacing: '-0.01em', color: '#1A1612' }}
+                  >
+                    {def.name}
+                  </span>
+                  {stat.newThisWeek > 0 && (
+                    <span
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 600,
+                        color: '#A85220',
+                        background: 'rgba(196,98,45,0.12)',
+                        padding: '2px 7px',
+                        borderRadius: 9999,
+                      }}
+                    >
+                      +{stat.newThisWeek} this week
+                    </span>
+                  )}
+                  <span
+                    style={{
+                      marginLeft: 'auto',
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: 11,
+                      color: '#5E5246',
+                      background: 'rgba(140,123,107,0.12)',
+                      padding: '2px 8px',
+                      borderRadius: 9999,
+                    }}
+                  >
+                    {stat.count}
+                  </span>
+                </div>
+                <p style={{ margin: 0, fontSize: 12.5, color: '#5E5246', fontStyle: 'italic', lineHeight: 1.5 }}>
+                  {def.blurb}
+                </p>
+                {/* Recently active member — small avatar + name + when. */}
+                {stat.recent && (
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      marginTop: 12,
+                      paddingTop: 12,
+                      borderTop: '1px solid rgba(140,123,107,0.14)',
+                    }}
+                  >
+                    <span
+                      aria-hidden
+                      style={{
+                        width: 22,
+                        height: 22,
+                        borderRadius: '50%',
+                        background: 'rgba(196,98,45,0.18)',
+                        color: '#C4622D',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontFamily: 'var(--font-display)',
+                        fontSize: 9.5,
+                        fontWeight: 600,
+                        flexShrink: 0,
+                      }}
+                    >
+                      {initialsOf(stat.recent.name)}
+                    </span>
+                    <span style={{ fontSize: 12, color: '#1A1612', fontWeight: 500 }}>
+                      {stat.recent.name}
+                    </span>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, color: '#8C7B6B' }}>
+                      · {formatRelative(stat.recent.lastSeenAt)}
+                    </span>
+                  </div>
+                )}
+              </Link>
+            )
+          })}
         </div>
 
         {/* Your lists panel */}
@@ -329,6 +420,11 @@ function EmptyState() {
       </Link>
     </div>
   )
+}
+
+function initialsOf(name: string): string {
+  const parts = name.split(/\s+/).filter(Boolean)
+  return ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase() || '?'
 }
 
 function formatRelative(iso: string): string {
