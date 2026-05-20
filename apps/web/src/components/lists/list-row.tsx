@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Bookmark, ListPlus, Pencil, Trash2 } from 'lucide-react'
+import { Filter, List, Pencil, Trash2 } from 'lucide-react'
 import { RowOverflowMenu } from '@/components/dashboard/row-overflow-menu'
 
 // HOR-167  Client row for /lists overview.
@@ -108,7 +108,9 @@ export function ListRow({ list, isLast }: ListRowProps) {
   // stops propagation so typing doesn't bubble into router.push.
   function handleRowActivate() {
     if (renaming) return
-    router.push(`/contacts?list_id=${list.id}`)
+    // HOR-248: lists now open their dedicated detail route (was
+    // /contacts?list_id=). The detail page renders the scoped grid.
+    router.push(`/lists/${list.id}`)
   }
 
   return (
@@ -130,7 +132,10 @@ export function ListRow({ list, isLast }: ListRowProps) {
           cursor: renaming ? 'default' : 'pointer',
         }}
       >
-        {/* Kind icon (parchment chip — same vocabulary as the page's built-in panel) */}
+        {/* HOR-248 kind icon: saved-views read as a (terracotta) Filter —
+            they're a live query; manual lists read as a (stone) List —
+            a hand-picked bucket. The icon difference replaces the v1
+            ◇/★ prefixes. */}
         <span
           style={{
             display: 'inline-flex',
@@ -139,15 +144,15 @@ export function ListRow({ list, isLast }: ListRowProps) {
             width: 28,
             height: 28,
             borderRadius: 7,
-            background: isSaved ? 'rgba(61,82,70,0.1)' : 'rgba(196,98,45,0.08)',
-            color: isSaved ? '#3D5246' : '#C4622D',
+            background: isSaved ? 'rgba(196,98,45,0.1)' : 'rgba(140,123,107,0.12)',
+            color: isSaved ? '#C4622D' : '#8C7B6B',
             flexShrink: 0,
           }}
         >
           {isSaved ? (
-            <Bookmark style={{ width: 13, height: 13 }} aria-hidden />
+            <Filter style={{ width: 13, height: 13 }} aria-hidden />
           ) : (
-            <ListPlus style={{ width: 13, height: 13 }} aria-hidden />
+            <List style={{ width: 13, height: 13 }} aria-hidden />
           )}
         </span>
 
@@ -219,7 +224,7 @@ export function ListRow({ list, isLast }: ListRowProps) {
                 fontWeight: 600,
                 letterSpacing: '0.08em',
                 textTransform: 'uppercase',
-                color: isSaved ? '#3D5246' : '#C4622D',
+                color: isSaved ? '#A85220' : '#8C7B6B',
               }}
             >
               {isSaved ? 'Saved view' : 'List'}
