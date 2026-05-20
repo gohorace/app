@@ -11,17 +11,25 @@
  *   2. **Suburb labels** as custom `OverlayView` DOM nodes positioned at the
  *      GNAF locality centroid. Weight + colour driven by suburb `state`.
  *      Stirring suburbs get an animated terracotta dot suffix.
- *   3. **Property pins** in three tiers (quiet / active / hot) driven by
- *      `PropertySignal.state` rather than re-derived from EngagementValue.
- *      Custom SVG content on `AdvancedMarkerElement` — quiet is a faint dot,
- *      active picks up a thin ring, hot adds a double ring + soft halo.
+ *   3. **Property pins** in three v2 heat tiers (HOR-245):
+ *        - intensity > 0.6 → 14px terracotta dot + per-pin halo
+ *          (halo radius = 3 + intensity*6, opacity = 0.08 + intensity*0.08)
+ *        - intensity 0.5–0.6 → 11px mustard dot
+ *        - intensity < 0.5 → 8px stone dot
+ *      (The pre-v2 quiet / active / hot geometry was discarded in favour
+ *      of the heat-driven sizing — `state` is still in the payload for
+ *      legacy callers but the pin renderer reads `intensity` directly.)
  *   4. **Clustering** above 200 pins via `@googlemaps/markerclusterer` with a
  *      custom hot-pin-styled cluster bubble (not a numbered circle, per brief).
  *
  * Click → hash:
- *   - Pin click sets `location.hash = '#signal=<id>'`
- *   - Suburb-label click sets `location.hash = '#suburb=<id>'`
- *   The slide-in `SignalPanel` (HOR-219) reads the hash and mounts itself.
+ *   - Pin click sets `location.hash = '#signal=<id>'`. v2-M4's
+ *     `PropertyOverlay` (`components/market/property-overlay.tsx`) reads
+ *     the hash and mounts itself; HOR-219's signal-panel.tsx was removed
+ *     in HOR-245 along with the suburb panel.
+ *   - Suburb-label click pans + zooms the map to the suburb centroid
+ *     (HOR-245 dropped the suburb panel; suburb interactions are a
+ *     navigation aid only).
  *
  * Loader pattern matches the previous version + `address-autocomplete.tsx` —
  * same loader, same env var (`NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`).
@@ -55,34 +63,50 @@ const COLOR = {
   stone:       '#8C7B6B',
 }
 
-// ─── SVG markup per pin tier ────────────────────────────────────────────────
-// Built to match the prototype's `CityPinsLayer` (MapView.jsx:185-233). Each
-// state has a distinct size + ring treatment so colour isn't the sole signal
-// carrier (accessibility — reinforced in HOR-220).
+// ─── Palette additions for v2 pin tiers (HOR-245) ──────────────────────────
+const PIN_V2 = {
+  terracotta: '#C4622D',
+  mustard:    '#B5922A',
+  stone:      '#8C7B6B',
+} as const
 
-function pinSvg(state: PropertyState): string {
-  if (state === 'hot') {
-    // 12px dot + double ring + soft halo. Total bounding box 40×40.
+// ─── SVG markup per pin tier (v2 — HOR-245) ─────────────────────────────────
+// Tier breakdown:
+//   intensity > 0.6  → 14px terracotta dot + per-pin halo
+//                      (halo radius = 3 + intensity*6, opacity = 0.08 + intensity*0.08)
+//   intensity 0.5–0.6 → 11px mustard dot
+//   intensity < 0.5  → 8px stone dot
+//
+// The halo is rendered as a backing circle inside the same SVG so the
+// AdvancedMarkerElement gets a single positioned node per pin; the pin
+// dot sits centred on top. Total SVG bounding box is sized to fit the
+// largest halo at intensity = 1.0 (radius 9, diameter 18) plus the 14px
+// dot — we use 32x32 to keep it square + give a little breathing room.
+
+function pinSvg(intensity: number): string {
+  const i = Number.isFinite(intensity) ? Math.max(0, Math.min(1, intensity)) : 0
+
+  if (i > 0.6) {
+    // 14px terracotta dot + halo. Halo per the v2 spec.
+    const haloR = 3 + i * 6           // 6.6..9
+    const haloOpacity = 0.08 + i * 0.08  // 0.128..0.16
     return `
-      <svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
-        <circle cx="20" cy="20" r="20" fill="${COLOR.terracotta}" opacity="0.12"/>
-        <circle cx="20" cy="20" r="12" fill="none" stroke="${COLOR.ink}" stroke-width="1.4" opacity="0.9"/>
-        <circle cx="20" cy="20" r="6.5" fill="${COLOR.ink}"/>
-        <circle cx="17.85" cy="17.85" r="2.1" fill="rgba(250,247,242,0.45)"/>
+      <svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="16" cy="16" r="${haloR.toFixed(2)}" fill="${PIN_V2.terracotta}" opacity="${haloOpacity.toFixed(3)}"/>
+        <circle cx="16" cy="16" r="7" fill="${PIN_V2.terracotta}" stroke="rgba(250,247,242,0.85)" stroke-width="1.5"/>
       </svg>`
   }
-  if (state === 'active') {
-    // 10px dot + thin ring. 24×24 bounding box.
+  if (i >= 0.5) {
+    // 11px mustard dot.
     return `
-      <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-        <circle cx="12" cy="12" r="8" fill="none" stroke="${COLOR.ink}" stroke-width="0.9" opacity="0.5"/>
-        <circle cx="12" cy="12" r="5" fill="${COLOR.ink}"/>
+      <svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="8" cy="8" r="5.5" fill="${PIN_V2.mustard}" stroke="rgba(250,247,242,0.85)" stroke-width="1.5"/>
       </svg>`
   }
-  // quiet: small faint dot. 14×14 bounding box.
+  // 8px stone dot.
   return `
-    <svg width="14" height="14" viewBox="0 0 14 14" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="7" cy="7" r="3" fill="${COLOR.ink}" opacity="0.55"/>
+    <svg width="12" height="12" viewBox="0 0 12 12" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="6" cy="6" r="4" fill="${PIN_V2.stone}" stroke="rgba(250,247,242,0.85)" stroke-width="1.25"/>
     </svg>`
 }
 
@@ -102,8 +126,11 @@ function pinElement(p: PropertySignal): HTMLElement {
   wrap.style.outline = 'none'
   wrap.tabIndex = 0
   wrap.setAttribute('role', 'button')
-  wrap.innerHTML = pinSvg(p.state)
+  wrap.innerHTML = pinSvg(p.intensity)
   wrap.title = p.address
+  // v2-M4: aria still announces the categorical state for screen readers
+  // (the visual signal is intensity-driven, but the state buckets give
+  // assistive tech a stable label vocabulary).
   wrap.setAttribute('aria-label', `${p.address} — ${p.state} signal`)
   // Focus + hover both surface a terracotta halo. Same treatment for both
   // so the focus state reads without colour-only reliance (the halo grows
@@ -345,9 +372,16 @@ function clusterRenderer(
 interface Props {
   payload:         MapPayload | null
   fallbackCenter?: { lat: number; lng: number } | null
+  /**
+   * Fill the parent container's height instead of the default fixed 540px.
+   * `/market` (HOR-245) renders the map full-bleed inside a flex column, so
+   * it passes `fill`. The legacy embedded card height stays the default for
+   * any other caller.
+   */
+  fill?:           boolean
 }
 
-export function PropertiesMap({ payload, fallbackCenter = null }: Props) {
+export function PropertiesMap({ payload, fallbackCenter = null, fill = false }: Props) {
   const hostRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<google.maps.Map | null>(null)
   const markersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([])
@@ -590,14 +624,20 @@ export function PropertiesMap({ payload, fallbackCenter = null }: Props) {
         dom.style.opacity = String(initialOpacity)
         dom.style.transition = 'opacity 220ms ease-out'
 
-        // Click → hash so the side panel (HOR-219) can pick up.
+        // Click → pan + zoom to the suburb centroid. HOR-245 dropped the
+        // suburb side panel (v2 only has a property overlay); suburb-label
+        // interactions are now a navigation aid only. Quiet suburbs aren't
+        // interactive — they read as cartography.
         if (this.suburb.state !== 'quiet') {
           dom.addEventListener('click', (e) => {
             e.stopPropagation()
-            if (typeof window === 'undefined') return
-            const url = new URL(window.location.href)
-            url.hash = `suburb=${encodeURIComponent(this.suburb.id)}`
-            window.location.replace(url.toString())
+            if (this.suburb.lat == null || this.suburb.lng == null) return
+            const target = new G.maps.LatLng(this.suburb.lat, this.suburb.lng)
+            map.panTo(target)
+            // Zoom in one street-level step; cap at 16 so we don't blow
+            // past the heat layer's resolution.
+            const next = Math.min(16, (map.getZoom() ?? 13) + 2)
+            map.setZoom(next)
           })
         }
 
@@ -681,17 +721,19 @@ export function PropertiesMap({ payload, fallbackCenter = null }: Props) {
     : 'Property signal map'
 
   return (
-    <div style={{ position: 'relative' }}>
+    <div style={{ position: 'relative', height: fill ? '100%' : undefined }}>
       <div
         ref={hostRef}
         role="application"
         aria-label={mapAriaLabel}
         style={{
-          height: 540,
+          height: fill ? '100%' : 540,
           width: '100%',
           background: COLOR.parchment,
-          border: '1px solid rgba(140,123,107,0.22)',
-          borderRadius: 10,
+          // Full-bleed in /market reads to the panel edges; the bordered,
+          // rounded card treatment is only for the legacy embedded use.
+          border: fill ? 'none' : '1px solid rgba(140,123,107,0.22)',
+          borderRadius: fill ? 0 : 10,
           overflow: 'hidden',
         }}
       />

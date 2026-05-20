@@ -28,11 +28,9 @@ import {
   type PropertyStatus,
   type AvatarStackPerson,
 } from '@/lib/design/badges'
+import Link from 'next/link'
 import { AddPropertyModal } from './add-property-modal'
 import { EmptyNoCoreMarket } from './empty-no-core-market'
-import { PropertiesMap } from './properties-map'
-import { TimeScrubber } from './time-scrubber'
-import { SignalPanel } from './signal-panel'
 import { MAP_COPY } from '@/lib/copy/map-view'
 import type {
   MapPayload,
@@ -74,7 +72,6 @@ export interface CoreMarketSummary {
 }
 
 type Tab = 'all' | 'listed' | 'appraising' | 'watching' | 'sold'
-type ViewMode = 'list' | 'map'
 
 type TimeWindow = 'Active anytime' | 'Today' | 'This week' | 'This month' | 'Ever'
 const TIME_WINDOWS: TimeWindow[] = ['Active anytime', 'Today', 'This week', 'This month', 'Ever']
@@ -142,7 +139,6 @@ export function PropertiesView({
   const router = useRouter()
   const [search, setSearch] = useState(initialQ)
   const [tab, setTab] = useState<Tab>('all')
-  const [view, setView] = useState<ViewMode>('list')
   const [filters, setFilters] = useState<SecondaryFilters>(DEFAULT_FILTERS)
   const [addOpen, setAddOpen] = useState(defaultModalOpen)
   // HOR-217: scrubber time window + map payload. The scrubber is only mounted
@@ -366,7 +362,30 @@ export function PropertiesView({
               </p>
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
-              <ViewToggle view={view} onChange={setView} />
+              {/* HOR-245 — v2 drops the in-page Map toggle in favour of the
+                * dedicated /market route. This is a navigation link, not a
+                * view-mode switch. */}
+              <Link
+                href="/market"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '8px 14px',
+                  borderRadius: 7,
+                  background: '#FAF7F2',
+                  color: '#5E5246',
+                  fontSize: 13,
+                  fontWeight: 500,
+                  border: '1px solid rgba(140,123,107,0.3)',
+                  cursor: 'pointer',
+                  textDecoration: 'none',
+                  fontFamily: 'var(--font-body)',
+                }}
+              >
+                <MapIcon style={{ width: 14, height: 14 }} aria-hidden />
+                See on map
+              </Link>
               <button
                 type="button"
                 onClick={() => setAddOpen(true)}
@@ -457,71 +476,39 @@ export function PropertiesView({
             totalCount={visibleProperties.length}
           />
 
-          {/* List / Map content — view toggle in the header decides */}
-          {view === 'map' ? (
-            <>
-              {/* HOR-217: desaturation hint during a payload refetch. No
-                  spinner — per brief, agents shouldn't feel they're waiting. */}
-              <div
-                style={{
-                  filter: mapLoading ? 'saturate(0.6)' : 'none',
-                  transition: 'filter 220ms ease-out',
-                }}
-              >
-                {/* HOR-218: PropertiesMap now consumes the full server
-                    `MapPayload` — heat + suburbs + tiered pins all driven
-                    from one contract. List-view chip filters no longer
-                    apply to the map (the map is the server-authoritative
-                    view; filters are a list-only concern in V1). */}
-                <PropertiesMap
-                  payload={mapPayload}
-                  fallbackCenter={
-                    coreMarkets[0]?.latitude != null && coreMarkets[0]?.longitude != null
-                      ? { lat: coreMarkets[0].latitude, lng: coreMarkets[0].longitude }
-                      : null
-                  }
+          {/* HOR-245: v2 drops the in-page Map view — `/market` is now the
+            * dedicated route. The list view is the only content here.
+            * mapPayload still flows in (HoraceStrip + per-row suburb pill);
+            * the time scrubber moves to /market (v2-M6 will add a
+            * suggestion strip in its place if needed). */}
+          <div
+            style={{
+              background: '#FAF7F2',
+              border: '1px solid rgba(140,123,107,0.2)',
+              borderRadius: 10,
+              overflow: 'hidden',
+            }}
+          >
+            <TableHead />
+            {filtered.length === 0 ? (
+              <EmptyState onAdd={() => setAddOpen(true)} hasAny={visibleProperties.length > 0} search={search} />
+            ) : (
+              filtered.map((p, idx) => (
+                <PropertyRow
+                  key={p.id}
+                  property={p}
+                  suburbState={suburbStatesByName.get((p.suburb ?? '').toLowerCase()) ?? null}
+                  isLast={idx === filtered.length - 1}
+                  onSoftDelete={(id) => setDeletedIds((prev) => {
+                    const next = new Set(prev)
+                    next.add(id)
+                    return next
+                  })}
+                  onClick={() => router.push(`/properties/${p.id}`)}
                 />
-              </div>
-            </>
-          ) : (
-            <div
-              style={{
-                background: '#FAF7F2',
-                border: '1px solid rgba(140,123,107,0.2)',
-                borderRadius: 10,
-                overflow: 'hidden',
-              }}
-            >
-              <TableHead />
-              {filtered.length === 0 ? (
-                <EmptyState onAdd={() => setAddOpen(true)} hasAny={visibleProperties.length > 0} search={search} />
-              ) : (
-                filtered.map((p, idx) => (
-                  <PropertyRow
-                    key={p.id}
-                    property={p}
-                    suburbState={suburbStatesByName.get((p.suburb ?? '').toLowerCase()) ?? null}
-                    isLast={idx === filtered.length - 1}
-                    onSoftDelete={(id) => setDeletedIds((prev) => {
-                      const next = new Set(prev)
-                      next.add(id)
-                      return next
-                    })}
-                    onClick={() => router.push(`/properties/${p.id}`)}
-                  />
-                ))
-              )}
-            </div>
-          )}
-
-          {/* HOR-220: scrubber lifted out of the map branch so the list view
-              gets the same time-window control. The URL `?timeWindow=` it
-              drives is honoured by both surfaces. */}
-          <TimeScrubber
-            value={timeWindow}
-            onChange={handleScrubberChange}
-            pending={mapLoading}
-          />
+              ))
+            )}
+          </div>
 
           <p
             style={{
@@ -546,12 +533,6 @@ export function PropertiesView({
           }}
         />
       )}
-
-      {/* HOR-219: slide-in signal panel. Driven by `#signal=<id>` / `#suburb=<id>`
-          hashes (set by HOR-218's pin + suburb-label click handlers). Mounted
-          here at the page root so the map can re-render without tearing the
-          panel down. */}
-      <SignalPanel payload={mapPayload} />
     </div>
   )
 }
@@ -703,62 +684,6 @@ function SuburbSignalPill({ state }: { state: SuburbState }) {
     <span style={style} aria-label={`suburb ${state}`}>
       {state}
     </span>
-  )
-}
-
-// ── View toggle (List | Map) — HOR-195 wires the Map button live ─────────────
-
-function ViewToggle({
-  view,
-  onChange,
-}: {
-  view: ViewMode
-  onChange: (v: ViewMode) => void
-}) {
-  const tabStyle = (active: boolean): React.CSSProperties => ({
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: 5,
-    padding: '6px 11px',
-    borderRadius: 5,
-    background: active ? '#1A1612' : 'transparent',
-    color:      active ? '#FAF7F2' : '#8C7B6B',
-    fontSize: 12,
-    fontWeight: 500,
-    border: 'none',
-    cursor: 'pointer',
-    fontFamily: 'var(--font-body)',
-    transition: 'all 120ms ease-out',
-  })
-  return (
-    <div
-      style={{
-        display: 'inline-flex',
-        background: '#FAF7F2',
-        border: '1px solid rgba(140,123,107,0.22)',
-        borderRadius: 7,
-        padding: 2,
-      }}
-    >
-      <button
-        type="button"
-        onClick={() => onChange('list')}
-        aria-pressed={view === 'list'}
-        style={tabStyle(view === 'list')}
-      >
-        <List style={{ width: 13, height: 13 }} />
-        List
-      </button>
-      <button
-        type="button"
-        onClick={() => onChange('map')}
-        aria-pressed={view === 'map'}
-        style={tabStyle(view === 'map')}
-      >
-        <MapIcon style={{ width: 13, height: 13 }} />
-        Map
-      </button>
-    </div>
   )
 }
 
