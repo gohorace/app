@@ -254,7 +254,7 @@ export function MarketView({
         }}
       >
         <div style={{ flex: 1, position: 'relative' }}>
-          <PropertiesMap payload={payload} fallbackCenter={fallbackCenter} />
+          <PropertiesMap payload={payload} fallbackCenter={fallbackCenter} fill />
         </div>
 
         {selectedProperty && (

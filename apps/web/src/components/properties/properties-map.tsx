@@ -372,9 +372,16 @@ function clusterRenderer(
 interface Props {
   payload:         MapPayload | null
   fallbackCenter?: { lat: number; lng: number } | null
+  /**
+   * Fill the parent container's height instead of the default fixed 540px.
+   * `/market` (HOR-245) renders the map full-bleed inside a flex column, so
+   * it passes `fill`. The legacy embedded card height stays the default for
+   * any other caller.
+   */
+  fill?:           boolean
 }
 
-export function PropertiesMap({ payload, fallbackCenter = null }: Props) {
+export function PropertiesMap({ payload, fallbackCenter = null, fill = false }: Props) {
   const hostRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<google.maps.Map | null>(null)
   const markersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([])
@@ -714,17 +721,19 @@ export function PropertiesMap({ payload, fallbackCenter = null }: Props) {
     : 'Property signal map'
 
   return (
-    <div style={{ position: 'relative' }}>
+    <div style={{ position: 'relative', height: fill ? '100%' : undefined }}>
       <div
         ref={hostRef}
         role="application"
         aria-label={mapAriaLabel}
         style={{
-          height: 540,
+          height: fill ? '100%' : 540,
           width: '100%',
           background: COLOR.parchment,
-          border: '1px solid rgba(140,123,107,0.22)',
-          borderRadius: 10,
+          // Full-bleed in /market reads to the panel edges; the bordered,
+          // rounded card treatment is only for the legacy embedded use.
+          border: fill ? 'none' : '1px solid rgba(140,123,107,0.22)',
+          borderRadius: fill ? 0 : 10,
           overflow: 'hidden',
         }}
       />
