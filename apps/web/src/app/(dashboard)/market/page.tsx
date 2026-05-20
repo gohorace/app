@@ -2,8 +2,14 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { fetchAttentionCount } from '@/lib/notifications/attention-count'
-import { MarketView, isTimeWindow } from '@/components/market/market-view'
-import type { TimeWindow } from '@/lib/map/rpc-types'
+import { MarketView } from '@/components/market/market-view'
+// isTimeWindow is imported straight from the lib — NOT re-exported through
+// market-view.tsx. That file is `'use client'`, and a server component
+// importing any value from a client module receives a client-reference
+// proxy, not the real function (crashes with "c is not a function" at
+// render). Pure helpers a server page needs must come from a server-safe
+// (or shared) module.
+import { isTimeWindow, type TimeWindow } from '@/lib/map/rpc-types'
 
 /**
  * /market — the v2 dedicated Market route (HOR-245).

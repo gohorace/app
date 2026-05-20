@@ -6,7 +6,6 @@ import { BellButton } from '@/components/dashboard/bell-button'
 import { PropertiesMap } from '@/components/properties/properties-map'
 import { useSidebarPref } from '@/lib/ui/use-sidebar-pref'
 import type { MapPayload, PropertySignal, TimeWindow } from '@/lib/map/rpc-types'
-import { isTimeWindow } from '@/lib/map/rpc-types'
 import { TimeSlider } from './time-slider'
 import { PropertyOverlay } from './property-overlay'
 
@@ -326,6 +325,3 @@ function Counter({
   )
 }
 
-// Re-export the helper for use by the server page when parsing
-// ?timeWindow from search params.
-export { isTimeWindow }
