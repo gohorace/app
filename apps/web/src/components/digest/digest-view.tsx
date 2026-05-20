@@ -2,6 +2,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { Archive, SlidersHorizontal } from 'lucide-react'
 import { SignalCard, type DigestSignal } from './signal-card'
+import { SignalCardHero } from './signal-card-hero'
 import { DigestRail, type DigestRailData } from './digest-rail'
 import { ActivityPrompts } from './activity-prompts'
 import { BellButton } from '@/components/dashboard/bell-button'
@@ -348,7 +349,9 @@ function PopulatedState({ model }: { model: DigestViewModel }) {
         </span>
       </div>
 
-      {/* Ranked roster */}
+      {/* Ranked roster — first signal renders as the v2 hero card with
+        * the "LEAD THIS MORNING" eyebrow; the rest in the standard
+        * three-column row. HOR-244. */}
       <div
         style={{
           display: 'flex',
@@ -356,9 +359,13 @@ function PopulatedState({ model }: { model: DigestViewModel }) {
           gap: 14,
         }}
       >
-        {model.signals.map((s) => (
-          <SignalCard key={s.contactId} signal={s} />
-        ))}
+        {model.signals.map((s, i) =>
+          i === 0 ? (
+            <SignalCardHero key={s.contactId} signal={s} />
+          ) : (
+            <SignalCard key={s.contactId} signal={s} />
+          ),
+        )}
       </div>
 
       {/* Closing rule + signoff */}
