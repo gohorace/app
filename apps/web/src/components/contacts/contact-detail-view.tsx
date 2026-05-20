@@ -31,6 +31,8 @@ import { NotesPanel } from '@/components/dashboard/notes-panel'
 import { SendTrackedEmailButton } from '@/components/email/email-composer-trigger'
 import { AddToListSheet } from '@/components/lists/add-to-list-sheet'
 import { buildEmailSendIndex, type EmailSendSummary } from '@/lib/contacts/email-engagement'
+import { useCompanion } from '@/components/companion/companion-context'
+import { QuillIcon } from '@/components/ui/quill-icon'
 
 export interface ContactDetailViewProps {
   contact: {
@@ -47,6 +49,10 @@ export interface ContactDetailViewProps {
     /** Free-text notes on the contact. Persisted on contacts.notes (legacy
      *  column already in the schema — no migration needed). */
     notes:        string | null
+    /** HOR-246: optional Horace-voiced nudge ("why now"). When present, the
+     *  "Horace says" card renders under the action row. Server populates it
+     *  from the same insight pipeline the digest uses; absent → no card. */
+    nudge?:       string | null
   }
   identity: IdentityState
   initials: string
@@ -86,6 +92,7 @@ export function ContactDetailView({
   emailSends = [],
 }: ContactDetailViewProps) {
   const router = useRouter()
+  const { openCompanion } = useCompanion()
   const [timelineFilter, setTimelineFilter] = useState<TimelineFilter>('all')
   const [attachOpen, setAttachOpen] = useState(false)
   const [removingRoleId, setRemovingRoleId] = useState<string | null>(null)
@@ -119,6 +126,9 @@ export function ContactDetailView({
     key: string
     kind: 'visit' | 'role' | 'email'
     icon: 'eye' | 'home' | 'key-round' | 'mail'
+    // HOR-246: granular email kind drives the v2 square-dot colour
+    // (sent → mustard, opened → deeper mustard, clicked → terracotta).
+    emailKind?: 'sent' | 'opened' | 'clicked' | 'bounced' | 'other'
     title: string
     detail: string | null
     when: string
@@ -135,10 +145,17 @@ export function ContactDetailView({
           ? (e.properties.email_send_id as string)
           : null
         const send = sendId ? emailSendIndex.get(sendId) ?? null : null
+        const emailKind: NonNullable<TimelineRow['emailKind']> =
+          e.event_type === 'email_sent'    ? 'sent'    :
+          e.event_type === 'email_opened'  ? 'opened'  :
+          e.event_type === 'email_clicked' ? 'clicked' :
+          e.event_type === 'email_bounced' ? 'bounced' :
+                                             'other'
         rows.push({
           key:        `event-${e.id}`,
           kind:       'email',
           icon:       'mail',
+          emailKind,
           title:      eventLabel(e, send?.subject ?? null),
           // Email rows have a subject in the title — keep the second-line
           // detail clean. If we ever want recipient hash / open count etc.
@@ -315,23 +332,62 @@ export function ContactDetailView({
               action, not a Horace one), which is fine; only the label
               moves off the "Call X" framing.
             */}
+            {/* HOR-246: v2 action row — Contact (terracotta) / Add to list /
+                Draft with Horace are the primary three. Attach role + the
+                real tracked-email send are kept alongside (their v2
+                replacement — companion drafting wired to a real send — is
+                still stubbed from M2, so dropping them now would regress
+                actual sending). Flagged in the PR for a follow-up trim. */}
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {contact.phone ? (
                 <a href={`tel:${contact.phone}`} style={primaryBtnStyle}>
                   <Phone style={{ width: 13, height: 13 }} />
-                  View phone number
+                  Contact
+                </a>
+              ) : contact.email ? (
+                <a href={`mailto:${contact.email}`} style={primaryBtnStyle}>
+                  <Phone style={{ width: 13, height: 13 }} />
+                  Contact
                 </a>
               ) : (
                 <button
                   type="button"
                   disabled
                   style={{ ...primaryBtnStyle, opacity: 0.5, cursor: 'not-allowed' }}
-                  title="No phone number on file"
+                  title="No phone or email on file"
                 >
                   <Phone style={{ width: 13, height: 13 }} />
-                  View phone number
+                  Contact
                 </button>
               )}
+              <button
+                type="button"
+                onClick={() => setAddToListOpen(true)}
+                style={secondaryBtnStyle}
+              >
+                Add to list
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  openCompanion({
+                    prompt: `Draft a follow-up to ${
+                      [contact.firstName, contact.lastName].filter(Boolean).join(' ') ||
+                      contact.email ||
+                      'this contact'
+                    }`,
+                    contextLabel: `Contact: ${
+                      [contact.firstName, contact.lastName].filter(Boolean).join(' ') ||
+                      contact.email ||
+                      'this contact'
+                    }`,
+                  })
+                }
+                style={secondaryBtnStyle}
+              >
+                <QuillIcon style={{ width: 13, height: 13 }} />
+                Draft with Horace
+              </button>
               {!isAnon && (
                 <button
                   type="button"
@@ -342,19 +398,6 @@ export function ContactDetailView({
                   Attach role
                 </button>
               )}
-              <button
-                type="button"
-                onClick={() => setAddToListOpen(true)}
-                style={secondaryBtnStyle}
-              >
-                Add to list
-              </button>
-              {/*
-                HOR-226: tracked email send. Hidden when the contact has
-                no email on file — SendTrackedEmailButton disables itself
-                with a tooltip in that case, but we don't even render the
-                shadow row to keep the action bar tight.
-              */}
               {contact.email && (
                 <SendTrackedEmailButton
                   contactId={contact.id}
@@ -378,6 +421,41 @@ export function ContactDetailView({
                 }
               />
             </div>
+
+            {/* HOR-246: "Horace says" nudge card — italic Playfair on a soft
+                terracotta tint. Renders only when the server supplies a
+                non-empty nudge. */}
+            {contact.nudge && contact.nudge.trim().length > 0 && (
+              <div
+                style={{
+                  marginTop: 14,
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: 10,
+                  padding: '12px 14px',
+                  background: 'rgba(196,98,45,0.06)',
+                  border: '1px solid rgba(196,98,45,0.18)',
+                  borderRadius: 10,
+                }}
+              >
+                <QuillIcon
+                  style={{ width: 13, height: 13, flexShrink: 0, marginTop: 3 }}
+                  color="#C4622D"
+                />
+                <p
+                  className="font-display"
+                  style={{
+                    margin: 0,
+                    fontStyle: 'italic',
+                    fontSize: 14,
+                    lineHeight: 1.55,
+                    color: '#2E2823',
+                  }}
+                >
+                  {contact.nudge}
+                </p>
+              </div>
+            )}
           </div>
         </div>
 
@@ -506,11 +584,27 @@ export function ContactDetailView({
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               {filteredTimeline.map((row, i) => {
                 const isLast = i === filteredTimeline.length - 1
-                // Per-kind accent: role=forest, email=warm-tan, visit=horace-orange.
+                // HOR-246 per-kind accent. Email rows split by funnel stage:
+                //   sent    → mustard
+                //   opened  → deeper mustard
+                //   clicked → terracotta
+                //   bounced → muted clay
+                // Non-email: role=forest, visit=horace-orange.
                 const color =
-                  row.kind === 'role'  ? '#3D5246' :
-                  row.kind === 'email' ? '#8A6A00' :
-                                         '#C4622D'
+                  row.kind === 'role'
+                    ? '#3D5246'
+                    : row.kind === 'email'
+                      ? EMAIL_DOT_COLOR[row.emailKind ?? 'other']
+                      : '#C4622D'
+                // Email events read as squares; everything else stays round.
+                const isEmail = row.kind === 'email'
+                const kindLabel =
+                  row.kind === 'role'
+                    ? 'Role event'
+                    : isEmail
+                      ? EMAIL_KIND_LABEL[row.emailKind ?? 'other']
+                      : 'Visit'
+                const titleParts = isEmail ? splitEmailTitle(row.title, kindLabel) : null
                 return (
                   <div key={row.key} style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
                     <div
@@ -527,7 +621,9 @@ export function ContactDetailView({
                         style={{
                           width: 10,
                           height: 10,
-                          borderRadius: '50%',
+                          // Square (with a hair of rounding) for email funnel
+                          // events; round for visits + role events.
+                          borderRadius: isEmail ? 2 : '50%',
                           background: color,
                         }}
                       />
@@ -553,12 +649,21 @@ export function ContactDetailView({
                           marginBottom: 3,
                         }}
                       >
-                        <span style={{ fontSize: 12, fontWeight: 600, color, textTransform: 'capitalize' }}>
-                          {row.kind === 'role'  ? 'Role event' :
-                           row.kind === 'email' ? 'Email'      :
-                                                   'Visit'}
+                        <span style={{ fontSize: 12, fontWeight: 600, color }}>
+                          {kindLabel}
                         </span>
-                        <span style={{ fontSize: 13, color: '#2E2823' }}>{row.title}</span>
+                        {titleParts ? (
+                          <span style={{ fontSize: 13, color: '#2E2823' }}>
+                            {titleParts.prefix}
+                            {titleParts.subject && (
+                              <span style={{ fontStyle: 'italic', color: '#5E5246' }}>
+                                {' '}&ldquo;{titleParts.subject}&rdquo;
+                              </span>
+                            )}
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: 13, color: '#2E2823' }}>{row.title}</span>
+                        )}
                         <span
                           style={{
                             fontFamily: 'var(--font-mono)',
@@ -607,6 +712,46 @@ export function ContactDetailView({
       )}
     </div>
   )
+}
+
+// ── HOR-246: email funnel-stage timeline treatment ──────────────────────────
+
+const EMAIL_DOT_COLOR: Record<NonNullable<EmailKind>, string> = {
+  sent:    '#B5922A', // mustard
+  opened:  '#8A6A00', // deeper mustard
+  clicked: '#C4622D', // terracotta
+  bounced: '#9C6B5A', // muted clay
+  other:   '#8A6A00',
+}
+
+const EMAIL_KIND_LABEL: Record<NonNullable<EmailKind>, string> = {
+  sent:    'Sent',
+  opened:  'Opened',
+  clicked: 'Clicked',
+  bounced: 'Bounced',
+  other:   'Email',
+}
+
+type EmailKind = 'sent' | 'opened' | 'clicked' | 'bounced' | 'other'
+
+/**
+ * Split an `eventLabel` email string into a prefix + quoted subject so the
+ * subject can render in italic next to the kind label. The leading stage
+ * word (already shown as the coloured kind label) is stripped so we don't
+ * render "Opened Opened"; any residual nuance — "(×3)", the Apple-MPP /
+ * scanner notes — is preserved as the prefix.
+ */
+function splitEmailTitle(title: string, kindLabel: string): { prefix: string; subject: string | null } {
+  const idx = title.indexOf(' — "')
+  let prefix = title
+  let subject: string | null = null
+  if (idx !== -1) {
+    prefix = title.slice(0, idx)
+    const rest = title.slice(idx + 4)
+    subject = rest.endsWith('"') ? rest.slice(0, -1) : rest
+  }
+  const stripped = prefix.replace(new RegExp(`^${kindLabel}\\b\\s*`, 'i'), '').trim()
+  return { prefix: stripped, subject }
 }
 
 // ── Sub-components ───────────────────────────────────────────────────────────
