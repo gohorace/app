@@ -5,6 +5,8 @@ import { Sidebar } from '@/components/dashboard/sidebar'
 import { MobileNav } from '@/components/dashboard/mobile-nav'
 import { PairingOverlay } from '@/components/dashboard/pairing-overlay'
 import { NotificationsSlideOver } from '@/components/notifications/slide-over'
+import { CompanionProvider } from '@/components/companion/companion-context'
+import { CompanionMount } from '@/components/companion/companion-mount'
 import { fetchAttentionCount } from '@/lib/notifications/attention-count'
 import { requireActiveSubscription } from '@/lib/billing/gate'
 
@@ -58,42 +60,48 @@ export default async function DashboardLayout({ children }: { children: React.Re
   )
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
-      {/* Desktop sidebar — hidden on mobile. Collapse pref lives client-side
-        * in `useSidebarPref` (localStorage). attentionCount is still fetched
-        * for the bell-button in page topbars and the notifications stream. */}
-      <div className="hidden md:flex">
-        <Sidebar
-          orgName={workspaceName}
-          agentFirstName={agent.first_name}
-          agentLastName={agent.last_name}
-          avatarUrl={agent.avatar_url}
-          trialDaysLeft={trialDaysLeft}
-        />
+    <CompanionProvider>
+      <div className="flex h-screen overflow-hidden bg-background">
+        {/* Desktop sidebar — hidden on mobile. Collapse pref lives client-side
+          * in `useSidebarPref` (localStorage). attentionCount is still fetched
+          * for the bell-button in page topbars and the notifications stream. */}
+        <div className="hidden md:flex">
+          <Sidebar
+            orgName={workspaceName}
+            agentFirstName={agent.first_name}
+            agentLastName={agent.last_name}
+            avatarUrl={agent.avatar_url}
+            trialDaysLeft={trialDaysLeft}
+          />
+        </div>
+
+        {/* Main content — overflow hidden here; each page manages its own scroll */}
+        <main className="flex-1 overflow-hidden flex flex-col h-full">
+          {children}
+        </main>
+
+        {/* Mobile bottom tab bar — hidden on desktop */}
+        <div className="md:hidden">
+          <MobileNav />
+        </div>
+
+        {/* HOR-165 — iOS PWA standalone fallback. Renders the push
+          * permission prompt only if a pairing is in flight AND the
+          * page is running in standalone display mode. Inert in all
+          * other contexts. */}
+        <PairingOverlay />
+
+        {/* Notifications slide-over — full-width on mobile, 420px
+          * right-anchored on desktop. Hash-driven (`#notifications`).
+          * The bell button in each page's topbar toggles the hash. */}
+        <NotificationsSlideOver />
+
+        {/* Horace companion — global drawer + Quill trigger. Pages call
+          * `useCompanion().openCompanion({...})` from any Ask Horace CTA.
+          * v2-M2 (HOR-243). */}
+        <CompanionMount />
       </div>
-
-      {/* Main content — overflow hidden here; each page manages its own scroll */}
-      <main className="flex-1 overflow-hidden flex flex-col h-full">
-        {children}
-      </main>
-
-      {/* Mobile bottom tab bar — hidden on desktop */}
-      <div className="md:hidden">
-        <MobileNav />
-      </div>
-
-      {/* HOR-165 — iOS PWA standalone fallback. Renders the push
-        * permission prompt only if a pairing is in flight AND the
-        * page is running in standalone display mode. Inert in all
-        * other contexts. */}
-      <PairingOverlay />
-
-      {/* Notifications stream slide-over (desktop only). Listens for
-        * `location.hash === '#notifications'` and renders a 420px panel
-        * from the right edge over the underlying surface. The bell
-        * button in each page's topbar toggles the hash. */}
-      <NotificationsSlideOver />
-    </div>
+    </CompanionProvider>
   )
 }
 
