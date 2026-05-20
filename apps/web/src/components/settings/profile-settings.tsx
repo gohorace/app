@@ -18,21 +18,63 @@ interface ProfileSettingsProps {
   seatType?: 'agent' | 'support'
 }
 
-const NAV_ITEMS = [
-  { href: '/settings/team',           label: 'Team',               icon: Users,     desc: 'Invite teammates, manage roles' },
-  { href: '/settings/billing',        label: 'Plan & billing',     icon: CreditCard, desc: 'Your plan, card on file, invoices' },
-  { href: '/settings/custom-domain',  label: 'Custom domain',      icon: Globe,     desc: 'Where Doorstep runs — your branded URL' },
-  { href: '/settings/core-markets',   label: 'Core markets',       icon: MapPin,    desc: 'Suburbs in your patch — up to three' },
-  { href: '/settings/notifications',  label: 'Alerts & briefing',  icon: Bell,      desc: 'Push notifications, daily email' },
-  { href: '/settings/portal',         label: 'Portal address',     icon: Inbox,     desc: 'Your inbound email for REA / Domain enquiries' },
-  { href: '/settings/tracked-links',  label: 'Tracked links',      icon: Link2,     desc: 'Per-contact links + default destination' },
-  { href: '/settings/snippet',        label: 'Install snippet',    icon: Code,      desc: 'Website tracking code' },
-  { href: '/settings/scoring',        label: 'Scoring rules',      icon: BarChart2, desc: 'How intent points are awarded' },
-  { href: '/settings/integrations',     label: 'Integrations',     icon: Plug,      desc: 'Connect Gmail and other services' },
-  { href: '/settings/email-exclusions',  label: 'Email exclusions', icon: ShieldOff, desc: 'Recipients you never want Horace to email' },
-  { href: '/settings/api-tokens',       label: 'API tokens',       icon: Key,       desc: 'Tokens for MCP clients (e.g. Claude)' },
-  { href: '/import',                  label: 'Import contacts',    icon: Upload,    desc: 'Bring contacts in from a CSV' },
-  { href: '/help',                    label: 'Help & guides',      icon: LifeBuoy,  desc: 'Walkthroughs and answers' },
+// HOR-250: v2 regroups the flat settings nav into five labelled sections.
+// User feedback during design moved Core markets + Portal address out of
+// Doorstep and into Signals & alerts — honoured here.
+interface NavItem {
+  href: string
+  label: string
+  icon: typeof Users
+  desc: string
+}
+interface NavSection {
+  label: string
+  /** Optional sub-label under the section header (Doorstep gets one). */
+  blurb?: string
+  items: NavItem[]
+}
+
+const NAV_SECTIONS: NavSection[] = [
+  {
+    label: 'Workspace',
+    items: [
+      { href: '/settings/team',    label: 'Team',           icon: Users,      desc: 'Invite teammates, manage roles' },
+      { href: '/settings/billing', label: 'Plan & billing', icon: CreditCard, desc: 'Your plan, card on file, invoices' },
+    ],
+  },
+  {
+    label: 'Doorstep',
+    blurb: 'Doorstep is the public sign-in surface — the page visitors land on after scanning your inspection QR.',
+    items: [
+      { href: '/settings/custom-domain', label: 'Custom domain', icon: Globe, desc: 'Where Doorstep runs — your branded URL' },
+    ],
+  },
+  {
+    label: 'Signals & alerts',
+    items: [
+      { href: '/settings/notifications', label: 'Alerts & briefing', icon: Bell,      desc: 'Push notifications, daily email' },
+      { href: '/settings/core-markets',  label: 'Core markets',      icon: MapPin,    desc: 'Suburbs in your patch — up to three' },
+      { href: '/settings/portal',        label: 'Portal address',    icon: Inbox,     desc: 'Your inbound email for REA / Domain enquiries' },
+      { href: '/settings/scoring',       label: 'Scoring rules',     icon: BarChart2, desc: 'How intent points are awarded' },
+      { href: '/settings/tracked-links', label: 'Tracked links',     icon: Link2,     desc: 'Per-contact links + default destination' },
+      { href: '/settings/snippet',       label: 'Install snippet',   icon: Code,      desc: 'Website tracking code' },
+    ],
+  },
+  {
+    label: 'Data & integrations',
+    items: [
+      { href: '/settings/integrations',     label: 'Integrations',     icon: Plug,     desc: 'Connect Gmail and other services' },
+      { href: '/settings/email-exclusions', label: 'Email exclusions', icon: ShieldOff, desc: 'Recipients you never want Horace to email' },
+      { href: '/settings/api-tokens',       label: 'API tokens',       icon: Key,      desc: 'Tokens for MCP clients (e.g. Claude)' },
+      { href: '/import',                    label: 'Import contacts',  icon: Upload,   desc: 'Bring contacts in from a CSV' },
+    ],
+  },
+  {
+    label: 'Help',
+    items: [
+      { href: '/help', label: 'Help & guides', icon: LifeBuoy, desc: 'Walkthroughs and answers' },
+    ],
+  },
 ]
 
 // Support seats don't manage the workspace — Team and Billing are
@@ -43,10 +85,13 @@ const NAV_ITEMS_HIDDEN_FOR_SUPPORT = new Set<string>([
 ])
 
 export function ProfileSettings({ agentId, firstName, lastName, email, avatarUrl, workspaceName, seatType = 'agent' }: ProfileSettingsProps) {
-  const navItems =
-    seatType === 'support'
-      ? NAV_ITEMS.filter((item) => !NAV_ITEMS_HIDDEN_FOR_SUPPORT.has(item.href))
-      : NAV_ITEMS
+  const navSections: NavSection[] = NAV_SECTIONS.map((section) => ({
+    ...section,
+    items:
+      seatType === 'support'
+        ? section.items.filter((item) => !NAV_ITEMS_HIDDEN_FOR_SUPPORT.has(item.href))
+        : section.items,
+  })).filter((section) => section.items.length > 0)
   const router = useRouter()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
@@ -206,51 +251,123 @@ export function ProfileSettings({ agentId, firstName, lastName, email, avatarUrl
         </div>
       </div>
 
-      {/* Settings nav */}
-      <div style={{
-        background: '#FAF7F2',
-        border: '1px solid rgba(140,123,107,0.2)',
-        borderRadius: '12px',
-        overflow: 'hidden',
-      }}>
-        {navItems.map(({ href, label, icon: Icon, desc }, i) => (
-          <Link
-            key={href}
-            href={href}
+      {/* Settings nav — grouped into v2 sections (HOR-250) */}
+      {navSections.map((section) => (
+        <div key={section.label} style={{ marginBottom: '18px' }}>
+          <h2
             style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '12px',
-              padding: '14px 18px',
-              textDecoration: 'none',
-              borderTop: i === 0 ? 'none' : '1px solid rgba(140,123,107,0.12)',
-              transition: 'background 150ms',
+              margin: '0 0 8px',
+              fontSize: '13px',
+              fontWeight: 600,
+              color: '#1A1612',
+              letterSpacing: '-0.01em',
             }}
-            className="settings-nav-row"
           >
-            <div style={{
-              width: '32px',
-              height: '32px',
-              borderRadius: '8px',
-              background: 'rgba(196,98,45,0.1)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-            }}>
-              <Icon style={{ width: '15px', height: '15px', color: '#C4622D' }} />
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <p style={{ fontSize: '13px', fontWeight: 600, color: '#1A1612', margin: 0 }}>
-                {label}
-              </p>
-              <p style={{ fontSize: '11px', color: '#8C7B6B', margin: 0, marginTop: '1px' }}>
-                {desc}
-              </p>
-            </div>
-            <ChevronRight style={{ width: '16px', height: '16px', color: '#8C7B6B', flexShrink: 0 }} />
-          </Link>
-        ))}
+            {section.label}
+          </h2>
+          {section.blurb && (
+            <p style={{ margin: '0 0 10px', fontSize: '12px', color: '#8C7B6B', lineHeight: 1.5, maxWidth: 560 }}>
+              {section.blurb}
+            </p>
+          )}
+          <div style={{
+            background: '#FAF7F2',
+            border: '1px solid rgba(140,123,107,0.2)',
+            borderRadius: '12px',
+            overflow: 'hidden',
+          }}>
+            {section.items.map(({ href, label, icon: Icon, desc }, i) => (
+              <Link
+                key={href}
+                href={href}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                  padding: '14px 18px',
+                  textDecoration: 'none',
+                  borderTop: i === 0 ? 'none' : '1px solid rgba(140,123,107,0.12)',
+                  transition: 'background 150ms',
+                }}
+                className="settings-nav-row"
+              >
+                <div style={{
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: '8px',
+                  background: 'rgba(196,98,45,0.1)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}>
+                  <Icon style={{ width: '15px', height: '15px', color: '#C4622D' }} />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontSize: '13px', fontWeight: 600, color: '#1A1612', margin: 0 }}>
+                    {label}
+                  </p>
+                  <p style={{ fontSize: '11px', color: '#8C7B6B', margin: 0, marginTop: '1px' }}>
+                    {desc}
+                  </p>
+                </div>
+                <ChevronRight style={{ width: '16px', height: '16px', color: '#8C7B6B', flexShrink: 0 }} />
+              </Link>
+            ))}
+          </div>
+        </div>
+      ))}
+
+      {/* HOR-250: data-sovereignty strip — trust commitment, verbatim. */}
+      <div
+        style={{
+          marginBottom: '18px',
+          padding: '20px 22px',
+          background: '#2E2823',
+          color: '#F5F0E8',
+          borderRadius: '12px',
+        }}
+      >
+        <div
+          style={{
+            fontSize: '10px',
+            fontWeight: 600,
+            letterSpacing: '0.1em',
+            textTransform: 'uppercase',
+            color: 'rgba(245,240,232,0.55)',
+            marginBottom: '10px',
+          }}
+        >
+          Your data
+        </div>
+        <p
+          className="font-display"
+          style={{
+            margin: 0,
+            fontStyle: 'italic',
+            fontSize: '18px',
+            lineHeight: 1.55,
+            color: 'rgba(245,240,232,0.95)',
+            letterSpacing: '-0.005em',
+            maxWidth: 660,
+          }}
+        >
+          Your relationships, your history. The signal is shared with Horace — your view of it is sovereign.
+        </p>
+        <div
+          style={{
+            marginTop: '14px',
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: '16px',
+            fontSize: '12px',
+            color: 'rgba(245,240,232,0.75)',
+          }}
+        >
+          <span>· Export everything as CSV, anytime.</span>
+          <span>· Australian-hosted infrastructure.</span>
+          <span>· Your book leaves with you if you ever go.</span>
+        </div>
       </div>
 
       {/* Add to home screen */}
