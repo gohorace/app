@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Activity,
+  Archive,
   BookmarkPlus,
   ChevronDown,
   Clock,
@@ -15,9 +16,9 @@ import {
   MapPin,
   Plus,
   Search,
+  Star,
   Tag,
 } from 'lucide-react'
-import { RowOverflowMenu, ExternalLink, Trash2 } from '@/components/dashboard/row-overflow-menu'
 import {
   AvatarStack,
   EngagementIndicator,
@@ -31,6 +32,8 @@ import {
 import Link from 'next/link'
 import { AddPropertyModal } from './add-property-modal'
 import { EmptyNoCoreMarket } from './empty-no-core-market'
+import { HoraceSuggestionStrip, type PropertySuggestion } from './horace-suggestion-strip'
+import { SelectionBar, type SelectionAction } from '@/components/dashboard/selection-bar'
 import { MAP_COPY } from '@/lib/copy/map-view'
 import type {
   MapPayload,
@@ -154,6 +157,10 @@ export function PropertiesView({
   const fetchAbortRef = useRef<AbortController | null>(null)
   // HOR-137: optimistic soft-delete state (mirrors the Contacts grid).
   const [deletedIds, setDeletedIds] = useState<Set<string>>(() => new Set())
+  // HOR-247: bulk-select state + optimistic status flips for Watch.
+  const [selected, setSelected] = useState<Set<string>>(() => new Set())
+  const [archiving, setArchiving] = useState(false)
+  const [watchedIds, setWatchedIds] = useState<Set<string>>(() => new Set())
   const visibleProperties = useMemo(
     () => properties.filter((p) => !deletedIds.has(p.id)),
     [properties, deletedIds],
@@ -316,6 +323,101 @@ export function PropertiesView({
     return rows
   }, [visibleProperties, tab, filters, search])
 
+  // ── HOR-247: Horace suggestion — the hottest property worth watching ──────
+  // Derived from the map payload (intensity-sorted); skip anything already
+  // listed/sold or currently in 'watching'. Null when nothing's hot enough.
+  const suggestion = useMemo<PropertySuggestion | null>(() => {
+    const hot = (mapPayload?.properties ?? [])
+      .filter((p) => p.intensity > 0.6)
+      .sort((a, b) => b.intensity - a.intensity)
+    for (const p of hot) {
+      const row = visibleProperties.find((r) => r.id === p.id)
+      if (!row) continue
+      if (row.status === 'watching' || row.status === 'sold') continue
+      if (watchedIds.has(p.id)) continue
+      const visits = p.sessionCount
+      return {
+        propertyId: p.id,
+        address: p.address,
+        line: `${p.address} is heating up — ${visits} ${visits === 1 ? 'visit' : 'visits'} this week.`,
+      }
+    }
+    return null
+  }, [mapPayload?.properties, visibleProperties, watchedIds])
+
+  // ── HOR-247: selection helpers + bulk actions ────────────────────────────
+  const allVisibleSelected = filtered.length > 0 && filtered.every((p) => selected.has(p.id))
+
+  function toggleAllVisible() {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (allVisibleSelected) for (const p of filtered) next.delete(p.id)
+      else for (const p of filtered) next.add(p.id)
+      return next
+    })
+  }
+  function toggleOne(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  async function setWatching(ids: string[]) {
+    // Optimistic — flip the strip/row immediately, PATCH in the background.
+    setWatchedIds((prev) => {
+      const next = new Set(prev)
+      for (const id of ids) next.add(id)
+      return next
+    })
+    await Promise.allSettled(
+      ids.map((id) =>
+        fetch(`/api/properties/${id}`, {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ status: 'watching' }),
+        }),
+      ),
+    )
+  }
+
+  async function handleBulkWatch() {
+    const ids = Array.from(selected)
+    await setWatching(ids)
+    setSelected(new Set())
+  }
+
+  async function handleBulkArchive() {
+    if (archiving) return
+    const n = selected.size
+    if (!window.confirm(`Archive ${n} ${n === 1 ? 'property' : 'properties'}? Soft delete — restorable later.`)) return
+    setArchiving(true)
+    const ids = Array.from(selected)
+    const results = await Promise.allSettled(
+      ids.map((id) => fetch(`/api/properties/${id}`, { method: 'DELETE' })),
+    )
+    const archived = ids.filter(
+      (_, i) => results[i].status === 'fulfilled' && (results[i] as PromiseFulfilledResult<Response>).value.ok,
+    )
+    setDeletedIds((prev) => {
+      const next = new Set(prev)
+      for (const id of archived) next.add(id)
+      return next
+    })
+    setSelected(new Set())
+    setArchiving(false)
+  }
+
+  // Properties bar: Watch + Archive are the wired actions. Add-to-list /
+  // open-homes from the prototype need property-scoped backends that don't
+  // exist yet — deferred (flagged in the PR).
+  const selectionActions: SelectionAction[] = [
+    { label: 'Watch', icon: Star, onClick: handleBulkWatch },
+    { label: 'Archive', icon: Archive, onClick: handleBulkArchive, disabled: archiving },
+  ]
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
       {noMarkets ? (
@@ -417,6 +519,11 @@ export function PropertiesView({
               renders visually. */}
           <HoraceStrip payload={mapPayload} loading={mapLoading} />
 
+          {/* HOR-247: Horace suggestion strip — surfaces the hottest
+              property worth watching. Sits between the counter strip and
+              the tabs. Watch flips status; Dismiss persists per-agent. */}
+          <HoraceSuggestionStrip suggestion={suggestion} onWatch={(id) => void setWatching([id])} />
+
           {/* Tabs + search */}
           <div
             style={{
@@ -476,11 +583,18 @@ export function PropertiesView({
             totalCount={visibleProperties.length}
           />
 
-          {/* HOR-245: v2 drops the in-page Map view — `/market` is now the
-            * dedicated route. The list view is the only content here.
-            * mapPayload still flows in (HoraceStrip + per-row suburb pill);
-            * the time scrubber moves to /market (v2-M6 will add a
-            * suggestion strip in its place if needed). */}
+          {/* HOR-247: selection-driven action bar (reuses the v2-M5
+              SelectionBar). Inline above the table when ≥1 row ticked. */}
+          {selected.size > 0 && (
+            <SelectionBar
+              count={selected.size}
+              actions={selectionActions}
+              onClear={() => setSelected(new Set())}
+            />
+          )}
+
+          {/* HOR-245: v2 dropped the in-page Map view — `/market` is the
+            * dedicated route now. List view is the only content here. */}
           <div
             style={{
               background: '#FAF7F2',
@@ -489,7 +603,11 @@ export function PropertiesView({
               overflow: 'hidden',
             }}
           >
-            <TableHead />
+            <TableHead
+              allChecked={allVisibleSelected}
+              indeterminate={!allVisibleSelected && filtered.some((p) => selected.has(p.id))}
+              onToggleAll={toggleAllVisible}
+            />
             {filtered.length === 0 ? (
               <EmptyState onAdd={() => setAddOpen(true)} hasAny={visibleProperties.length > 0} search={search} />
             ) : (
@@ -499,11 +617,9 @@ export function PropertiesView({
                   property={p}
                   suburbState={suburbStatesByName.get((p.suburb ?? '').toLowerCase()) ?? null}
                   isLast={idx === filtered.length - 1}
-                  onSoftDelete={(id) => setDeletedIds((prev) => {
-                    const next = new Set(prev)
-                    next.add(id)
-                    return next
-                  })}
+                  isSelected={selected.has(p.id)}
+                  isWatched={watchedIds.has(p.id)}
+                  onToggleSelect={() => toggleOne(p.id)}
                   onClick={() => router.push(`/properties/${p.id}`)}
                 />
               ))
@@ -1020,25 +1136,85 @@ function SecondaryFilterBar({
 
 // ── Table head + row ─────────────────────────────────────────────────────────
 
+// HOR-247: v2 row trims to check / Property (thumb + address + suburb ·
+// beds · baths) / State / Intensity / Known contacts / Last seen. The wide
+// Specs column + overflow kebab are gone — bulk actions live in the
+// SelectionBar; beds/baths fold into the suburb line.
 const COL = {
-  thumb:      { width: 52, flexGrow: 0, flexShrink: 0 },
-  property:   { flex: 2.4, minWidth: 180 },
-  state:      { flex: 1.1, minWidth: 110 },
-  specs:      { flex: 1,   minWidth: 110 },
-  engagement: { flex: 1.1, minWidth: 120 },
-  contacts:   { flex: 1.5, minWidth: 130 },
-  lastSeen:   { flex: 0.9, minWidth: 80 },
-  overflow:   { width: 36, flexGrow: 0, flexShrink: 0 },
+  check:      { width: 32,  flexGrow: 0, flexShrink: 0, display: 'flex', justifyContent: 'center' },
+  property:   { flex: 2,    minWidth: 200 },
+  state:      { width: 110, flexGrow: 0, flexShrink: 0 },
+  intensity:  { width: 120, flexGrow: 0, flexShrink: 0 },
+  contacts:   { width: 130, flexGrow: 0, flexShrink: 0 },
+  lastSeen:   { width: 80,  flexGrow: 0, flexShrink: 0 },
 } as const
 
-function TableHead() {
+// Small parchment checkbox — mirrors the contacts grid's RowCheckbox so the
+// bulk-select visual is consistent across the two surfaces.
+function PropCheckbox({
+  checked,
+  indeterminate = false,
+  onClick,
+  ariaLabel,
+}: {
+  checked: boolean
+  indeterminate?: boolean
+  onClick: () => void
+  ariaLabel: string
+}) {
+  return (
+    <button
+      type="button"
+      role="checkbox"
+      aria-checked={indeterminate ? 'mixed' : checked}
+      aria-label={ariaLabel}
+      onClick={(e) => {
+        e.stopPropagation()
+        onClick()
+      }}
+      onMouseDown={(e) => e.stopPropagation()}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: 18,
+        height: 18,
+        padding: 0,
+        borderRadius: 4,
+        border: checked || indeterminate ? '1px solid #3D5246' : '1px solid rgba(140,123,107,0.4)',
+        background: checked || indeterminate ? '#3D5246' : '#FFFFFF',
+        color: '#FAF7F2',
+        cursor: 'pointer',
+        flexShrink: 0,
+      }}
+    >
+      {indeterminate ? (
+        <span style={{ display: 'block', width: 8, height: 2, background: '#FAF7F2', borderRadius: 1 }} />
+      ) : checked ? (
+        <svg viewBox="0 0 16 16" width={11} height={11} aria-hidden>
+          <path d="M3 8.5 6.5 12 13 4.5" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      ) : null}
+    </button>
+  )
+}
+
+function TableHead({
+  allChecked,
+  indeterminate,
+  onToggleAll,
+}: {
+  allChecked: boolean
+  indeterminate: boolean
+  onToggleAll: () => void
+}) {
   return (
     <div
       style={{
         display: 'flex',
         alignItems: 'center',
-        gap: 14,
-        padding: '11px 18px',
+        gap: 12,
+        padding: '11px 16px',
         borderBottom: '1px solid rgba(140,123,107,0.18)',
         background: 'rgba(245,240,232,0.5)',
         fontSize: 10,
@@ -1048,14 +1224,19 @@ function TableHead() {
         color: '#8C7B6B',
       }}
     >
-      <span style={COL.thumb} />
+      <span style={COL.check}>
+        <PropCheckbox
+          checked={allChecked}
+          indeterminate={indeterminate}
+          onClick={onToggleAll}
+          ariaLabel="Select all visible rows"
+        />
+      </span>
       <span style={COL.property}>Property</span>
       <span style={COL.state}>State</span>
-      <span style={COL.specs}>Specs</span>
-      <span style={COL.engagement}>Engagement</span>
+      <span style={COL.intensity}>Intensity</span>
       <span style={COL.contacts}>Known contacts</span>
       <span style={COL.lastSeen}>Last seen</span>
-      <span style={COL.overflow} />
     </div>
   )
 }
@@ -1064,8 +1245,10 @@ function PropertyRow({
   property,
   suburbState,
   isLast,
+  isSelected,
+  isWatched,
   onClick,
-  onSoftDelete,
+  onToggleSelect,
 }: {
   property: PropertyGridRow
   /** HOR-220: tier of the property's suburb on the map view. Renders as
@@ -1073,10 +1256,21 @@ function PropertyRow({
    *  loaded yet or the property's suburb isn't in the payload. */
   suburbState: SuburbState | null
   isLast: boolean
+  isSelected: boolean
+  /** Optimistic 'watching' flip from the SelectionBar / suggestion strip. */
+  isWatched: boolean
   onClick: () => void
-  onSoftDelete: (id: string) => void
+  onToggleSelect: () => void
 }) {
   const tone = toneFor(property.id)
+  const status: PropertyStatus | null = isWatched ? 'watching' : property.status
+  // Fold beds/baths into the suburb line. land drops from the row (it's on
+  // the detail page); a "—" bed/bath still reads cleanly.
+  const specBits = [
+    property.beds != null ? `${property.beds} bd` : null,
+    property.baths != null ? `${property.baths} ba` : null,
+  ].filter(Boolean)
+
   return (
     <div
       role="link"
@@ -1092,66 +1286,66 @@ function PropertyRow({
       style={{
         display: 'flex',
         alignItems: 'center',
-        gap: 14,
-        padding: '14px 18px',
-        borderBottom: isLast ? 'none' : '1px solid rgba(140,123,107,0.1)',
+        gap: 12,
+        padding: '12px 16px',
+        borderBottom: isLast ? 'none' : '1px solid rgba(140,123,107,0.12)',
         cursor: 'pointer',
         transition: 'background 120ms',
+        background: isSelected ? 'rgba(196,98,45,0.06)' : undefined,
       }}
     >
-      <div style={COL.thumb}>
-        <PropertyThumb tone={tone} address={property.address} size={44} />
-      </div>
+      <span style={COL.check}>
+        <PropCheckbox
+          checked={isSelected}
+          onClick={onToggleSelect}
+          ariaLabel={`Select ${property.address}`}
+        />
+      </span>
 
-      <div style={{ ...COL.property, minWidth: 0 }}>
-        <div
-          style={{
-            fontSize: 14,
-            fontWeight: 600,
-            color: '#1A1612',
-            marginBottom: 2,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {property.address}
-        </div>
-        <div style={{ fontSize: 12, color: '#8C7B6B', display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span>{property.suburb ?? '—'}</span>
-          {suburbState && suburbState !== 'quiet' && (
-            <SuburbSignalPill state={suburbState} />
-          )}
+      <div style={{ ...COL.property, minWidth: 0, display: 'flex', alignItems: 'center', gap: 11 }}>
+        <PropertyThumb tone={tone} address={property.address} size={36} />
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div
+            style={{
+              fontSize: 13,
+              fontWeight: 500,
+              color: '#1A1612',
+              marginBottom: 1,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {property.address}
+          </div>
+          <div
+            style={{
+              fontSize: 11,
+              color: '#8C7B6B',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}
+          >
+            <span>{property.suburb ?? '—'}</span>
+            {specBits.length > 0 && (
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5 }}>
+                {specBits.join(' · ')}
+              </span>
+            )}
+            {suburbState && suburbState !== 'quiet' && <SuburbSignalPill state={suburbState} />}
+          </div>
         </div>
       </div>
 
       <div style={COL.state}>
-        <StateBadge status={property.status} />
+        <StateBadge status={status} />
       </div>
 
-      <div
-        style={{
-          ...COL.specs,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          fontFamily: 'var(--font-mono)',
-          fontSize: 11,
-          color: '#5E5246',
-        }}
-      >
-        <span>
-          <strong style={{ color: '#1A1612', fontWeight: 600 }}>{property.beds ?? '—'}</strong> bd
-        </span>
-        <span style={{ color: 'rgba(140,123,107,0.4)' }}>·</span>
-        <span>
-          <strong style={{ color: '#1A1612', fontWeight: 600 }}>{property.baths ?? '—'}</strong> ba
-        </span>
-        <span style={{ color: 'rgba(140,123,107,0.4)' }}>·</span>
-        <span>{property.land ?? '—'}</span>
-      </div>
-
-      <div style={{ ...COL.engagement, display: 'flex', alignItems: 'center' }}>
+      <div style={{ ...COL.intensity, display: 'flex', alignItems: 'center' }}>
         <EngagementIndicator value={property.engagement} showLabel />
       </div>
 
@@ -1159,13 +1353,11 @@ function PropertyRow({
         {property.totalLinkedCount > 0 ? (
           <>
             <AvatarStack people={property.linkedContacts} />
-            <span style={{ fontSize: 12, color: '#5E5246' }}>
-              {property.totalLinkedCount} known
-            </span>
+            <span style={{ fontSize: 12, color: '#5E5246' }}>{property.totalLinkedCount}</span>
           </>
         ) : (
-          <span style={{ fontSize: 12, color: '#8C7B6B', fontStyle: 'italic' }}>
-            anonymous only
+          <span style={{ fontSize: 11.5, color: '#A8998A', fontStyle: 'italic', fontFamily: 'var(--font-display)' }}>
+            anon only
           </span>
         )}
       </div>
@@ -1175,40 +1367,10 @@ function PropertyRow({
           ...COL.lastSeen,
           fontFamily: 'var(--font-mono)',
           fontSize: 11,
-          color: '#5E5246',
+          color: '#6E5F50',
         }}
       >
         {relativeWhen(property.lastActivityAt)}
-      </div>
-
-      {/* Overflow (HOR-137 — Open in new tab / Soft delete) */}
-      <div style={{ ...COL.overflow, display: 'flex', justifyContent: 'flex-end' }}>
-        <RowOverflowMenu
-          triggerLabel={property.address}
-          actions={[
-            {
-              id: 'open-new-tab',
-              label: 'Open in new tab',
-              Icon: ExternalLink,
-              onSelect: () => {
-                window.open(`/properties/${property.id}`, '_blank', 'noopener')
-              },
-            },
-            {
-              id: 'soft-delete',
-              label: 'Delete property',
-              Icon: Trash2,
-              destructive: true,
-              onSelect: async () => {
-                if (!window.confirm(
-                  `Delete ${property.address}? Soft delete — restorable later.`,
-                )) return
-                const res = await fetch(`/api/properties/${property.id}`, { method: 'DELETE' })
-                if (res.ok) onSoftDelete(property.id)
-              },
-            },
-          ]}
-        />
       </div>
     </div>
   )
