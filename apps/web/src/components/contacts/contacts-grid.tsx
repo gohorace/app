@@ -13,24 +13,24 @@ import {
   MapPin,
   Tag,
   ChevronDown,
+  Archive,
+  Link2,
+  MessageSquare,
+  MoreHorizontal,
 } from 'lucide-react'
-import { RowOverflowMenu, ExternalLink, Trash2 } from '@/components/dashboard/row-overflow-menu'
 import { createClient } from '@/lib/supabase/client'
 import {
-  IdentityGradient,
-  RoleBadge,
-  EngagementIndicator,
   PersonAvatar,
-  PropertyThumbStack,
-  toneFor,
   type EngagementValue,
 } from '@/lib/design/badges'
 import { deriveIdentity, makeInitials } from '@/lib/contacts/identity'
 import { roleCounts, type ContactRoleEntry } from '@/lib/contacts/roles'
-import { intentForScore } from '@/lib/design/intent'
+import { intentForScore, type IntentLevel } from '@/lib/design/intent'
 import { AddContactDialog } from './add-contact-dialog'
-import { TrackedLinkCell } from './tracked-link-cell'
+import { ContactStateDots } from './contact-state-dots'
+import { SelectionBar, type SelectionAction } from '@/components/dashboard/selection-bar'
 import { AddToListSheet } from '@/components/lists/add-to-list-sheet'
+import { useCompanion } from '@/components/companion/companion-context'
 import { useLists } from '@/lib/lists/use-lists'
 import { BUILTIN_LISTS, type BuiltinListSlug } from '@/lib/lists/builtin'
 
@@ -168,8 +168,9 @@ function lastSeenLabel(iso: string | null): string {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export function ContactsGrid({ contacts, initialQ = '', agentId, defaultLinkUrl, appUrl, selectedList = null }: Props) {
+export function ContactsGrid({ contacts, initialQ = '', agentId, appUrl, selectedList = null }: Props) {
   const router = useRouter()
+  const { openCompanion } = useCompanion()
 
   // HOR-143: when arriving via a saved_filter list, seed the secondary
   // filters from list.filter_state. Manual lists keep the defaults — the
@@ -486,6 +487,70 @@ export function ContactsGrid({ contacts, initialQ = '', agentId, defaultLinkUrl,
     })
   }
 
+  // ── HOR-246: SelectionBar actions (replaces the v1 fixed-bottom pill) ──────
+  const [archiving, setArchiving] = useState(false)
+
+  const selectedRows = useMemo(
+    () => safeContacts.filter((c) => selected.has(c.id)),
+    [safeContacts, selected],
+  )
+
+  function handleMessage() {
+    const names = selectedRows
+      .map((c) => [c.first_name, c.last_name].filter(Boolean).join(' ') || c.email)
+      .filter(Boolean)
+    const label =
+      names.length === 1 ? names[0]! : `${selected.size} contacts`
+    openCompanion({
+      prompt: `Draft a message to ${label}`,
+      contextLabel: names.length === 1 ? `Contact: ${names[0]}` : 'Contacts',
+    })
+  }
+
+  async function handleCopyLinks() {
+    const urls = selectedRows
+      .filter((c) => c.tracked_link_token)
+      .map((c) => `${appUrl}/c/${c.tracked_link_token}`)
+    if (urls.length === 0) {
+      // No tracked links on the selection — nothing to copy. Silent no-op
+      // beats an error toast; the agent can still see the link column gone.
+      return
+    }
+    try {
+      await navigator.clipboard.writeText(urls.join('\n'))
+    } catch (err) {
+      console.warn('[contacts] copy links failed:', err)
+    }
+  }
+
+  async function handleArchive() {
+    if (archiving) return
+    const n = selected.size
+    if (!window.confirm(`Archive ${n} ${n === 1 ? 'contact' : 'contacts'}? You can restore them within 30 days.`)) {
+      return
+    }
+    setArchiving(true)
+    const ids = Array.from(selected)
+    const results = await Promise.allSettled(
+      ids.map((id) => fetch(`/api/contacts/${id}`, { method: 'DELETE' })),
+    )
+    const archived = ids.filter((_, i) => results[i].status === 'fulfilled' && (results[i] as PromiseFulfilledResult<Response>).value.ok)
+    setDeletedIds((prev) => {
+      const next = new Set(prev)
+      for (const id of archived) next.add(id)
+      return next
+    })
+    setSelected(new Set())
+    setArchiving(false)
+  }
+
+  const selectionActions: SelectionAction[] = [
+    { label: 'Message', icon: MessageSquare, onClick: handleMessage },
+    { label: 'Add to list', icon: BookmarkPlus, onClick: () => setBulkSheetOpen(true) },
+    { label: 'Copy links', icon: Link2, onClick: handleCopyLinks },
+    { label: 'Archive', icon: Archive, onClick: handleArchive, disabled: archiving },
+  ]
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
       <div
@@ -678,6 +743,16 @@ export function ContactsGrid({ contacts, initialQ = '', agentId, defaultLinkUrl,
             onSaveAsList={() => setSaveOpen(true)}
           />
 
+          {/* HOR-246: selection-driven action bar — inline above the table,
+              replaces the v1 fixed-bottom pill. */}
+          {selected.size > 0 && (
+            <SelectionBar
+              count={selected.size}
+              actions={selectionActions}
+              onClear={() => setSelected(new Set())}
+            />
+          )}
+
           {/* Table */}
           <div
             style={{
@@ -702,14 +777,7 @@ export function ContactsGrid({ contacts, initialQ = '', agentId, defaultLinkUrl,
                   identity={identityById.get(c.id) ?? 'anonymous'}
                   isOnline={onlineIds.has(c.id)}
                   isLast={idx === filtered.length - 1}
-                  appUrl={appUrl}
-                  defaultLinkUrl={defaultLinkUrl}
                   onClick={() => router.push(`/contacts/${c.id}`)}
-                  onSoftDelete={(id) => setDeletedIds((prev) => {
-                    const next = new Set(prev)
-                    next.add(id)
-                    return next
-                  })}
                   isSelected={selected.has(c.id)}
                   onToggleSelect={() => toggleOne(c.id)}
                 />
@@ -741,70 +809,6 @@ export function ContactsGrid({ contacts, initialQ = '', agentId, defaultLinkUrl,
             router.refresh()
           }}
         />
-      )}
-
-      {/* HOR-143: bulk action bar — anchored to the bottom of the
-          viewport while at least one row is ticked. Stays above the
-          mobile tab bar (z-index 10) but below modals (z-index 60+). */}
-      {selected.size > 0 && (
-        <div
-          style={{
-            position: 'fixed',
-            left: '50%',
-            bottom: 24,
-            transform: 'translateX(-50%)',
-            zIndex: 30,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 12,
-            padding: '10px 14px 10px 18px',
-            background: '#1A1612',
-            color: '#FAF7F2',
-            borderRadius: 999,
-            boxShadow: '0 12px 32px rgba(26,22,18,0.28)',
-            fontFamily: 'var(--font-body)',
-          }}
-        >
-          <span style={{ fontSize: 13, fontWeight: 500 }}>
-            {selected.size} selected
-          </span>
-          <button
-            type="button"
-            onClick={() => setBulkSheetOpen(true)}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-              padding: '6px 12px',
-              fontSize: 12,
-              fontWeight: 500,
-              background: 'rgba(250,247,242,0.14)',
-              color: '#FAF7F2',
-              border: '1px solid rgba(250,247,242,0.18)',
-              borderRadius: 999,
-              cursor: 'pointer',
-              fontFamily: 'var(--font-body)',
-            }}
-          >
-            <BookmarkPlus style={{ width: 12, height: 12 }} />
-            Add to list
-          </button>
-          <button
-            type="button"
-            onClick={() => setSelected(new Set())}
-            style={{
-              fontSize: 12,
-              color: '#FAF7F2',
-              background: 'transparent',
-              border: 'none',
-              cursor: 'pointer',
-              opacity: 0.75,
-              fontFamily: 'var(--font-body)',
-            }}
-          >
-            Clear
-          </button>
-        </div>
       )}
 
       <AddToListSheet
@@ -1274,18 +1278,17 @@ function SecondaryFilterBar({
 
 // ── Table head ───────────────────────────────────────────────────────────────
 
+// HOR-246: v2 row trims to name + state dots + linked-count badge / email,
+// then Role / Suburb / Intensity / Last seen. The v1 roles-badges,
+// engagement-indicator, property-thumbs, tracked-link cell, and overflow
+// kebab are gone — bulk actions live in the SelectionBar.
 const COL_STYLES = {
-  // HOR-143: leading checkbox column for bulk-select.
-  check:     { width: 28,   flexGrow: 0, flexShrink: 0, display: 'flex', justifyContent: 'center' },
-  avatar:    { width: 52,   flexGrow: 0, flexShrink: 0 },
-  contact:   { flex: 2.2,   minWidth: 200 },
-  roles:     { flex: 1.4,   minWidth: 130 },
-  suburb:    { flex: 0.9,   minWidth: 90  },
-  engagement:{ flex: 1.0,   minWidth: 110 },
-  properties:{ flex: 1.2,   minWidth: 120 },
-  lastSeen:  { flex: 0.7,   minWidth: 70  },
-  link:      { flex: 1.0,   minWidth: 140 },
-  overflow:  { width: 36,   flexGrow: 0, flexShrink: 0 },
+  check:     { width: 28,  flexGrow: 0, flexShrink: 0, display: 'flex', justifyContent: 'center' },
+  contact:   { flex: 2,    minWidth: 220 },
+  role:      { width: 100, flexGrow: 0, flexShrink: 0 },
+  suburb:    { width: 120, flexGrow: 0, flexShrink: 0 },
+  intensity: { width: 110, flexGrow: 0, flexShrink: 0 },
+  lastSeen:  { width: 80,  flexGrow: 0, flexShrink: 0 },
 } as const
 
 function TableHead({
@@ -1302,8 +1305,8 @@ function TableHead({
       style={{
         display: 'flex',
         alignItems: 'center',
-        gap: 14,
-        padding: '11px 18px',
+        gap: 12,
+        padding: '11px 16px',
         borderBottom: '1px solid rgba(140,123,107,0.18)',
         background: 'rgba(245,240,232,0.5)',
         fontSize: 10,
@@ -1321,15 +1324,11 @@ function TableHead({
           ariaLabel="Select all visible rows"
         />
       </span>
-      <span style={COL_STYLES.avatar} />
       <span style={COL_STYLES.contact}>Contact</span>
-      <span style={COL_STYLES.roles}>Roles</span>
+      <span style={COL_STYLES.role}>Role</span>
       <span style={COL_STYLES.suburb}>Suburb</span>
-      <span style={COL_STYLES.engagement}>Engagement</span>
-      <span style={COL_STYLES.properties}>Linked properties</span>
+      <span style={COL_STYLES.intensity}>Intensity</span>
       <span style={COL_STYLES.lastSeen}>Last seen</span>
-      <span style={COL_STYLES.link}>Link</span>
-      <span style={COL_STYLES.overflow} />
     </div>
   )
 }
@@ -1405,15 +1404,31 @@ function RowCheckbox({
 
 // ── Row ───────────────────────────────────────────────────────────────────────
 
+// HOR-246: intensity → 3-bar indicator + label, matching the prototype's
+// inline bars. Mirrors the digest intent palette. `intentForScore` returns
+// null for the quietest contacts — that maps to the 0-bar "Quiet" state.
+const INTENT_BARS: Record<IntentLevel | 'none', { level: number; color: string; label: string }> = {
+  high: { level: 3, color: '#A85220', label: 'High' },
+  mid:  { level: 2, color: '#7A6112', label: 'Mid' },
+  low:  { level: 1, color: '#3D5246', label: 'Patient' },
+  none: { level: 0, color: '#8C7B6B', label: 'Quiet' },
+}
+
+function roleLabel(contact: ContactGridRow): string {
+  const counts = roleCounts(contact.roles)
+  if (counts.seller > 0 && counts.buyer > 0) return 'Seller/Buyer'
+  if (counts.seller > 0) return 'Seller'
+  if (counts.buyer > 0) return 'Buyer'
+  if (contact.score >= 5) return 'Engaged'
+  return '—'
+}
+
 function ContactRow({
   contact,
   identity,
   isOnline,
   isLast,
-  appUrl,
-  defaultLinkUrl,
   onClick,
-  onSoftDelete,
   isSelected,
   onToggleSelect,
 }: {
@@ -1421,28 +1436,21 @@ function ContactRow({
   identity: ReturnType<typeof deriveIdentity>
   isOnline: boolean
   isLast: boolean
-  appUrl: string
-  defaultLinkUrl: string | null
   onClick: () => void
-  onSoftDelete: (id: string) => void
   isSelected: boolean
   onToggleSelect: () => void
 }) {
   const isAnon = identity === 'anonymous'
-  const counts = roleCounts(contact.roles)
   const initials = makeInitials(contact)
   const name =
     [contact.first_name, contact.last_name].filter(Boolean).join(' ') ||
     contact.email ||
     `Visitor · ${contact.id.slice(0, 4)}`
-  const subline = isAnon
+  const email = isAnon
     ? `Tracked · ${contact.source}`
     : contact.email ?? contact.phone ?? contact.suburb ?? '—'
-
-  const linkedThumbs = contact.linked_properties.map((p) => ({
-    address: p.address,
-    tone: toneFor(p.id),
-  }))
+  const bars = INTENT_BARS[intentForScore(contact.score) ?? 'none']
+  const linkedCount = contact.linked_properties.length
 
   return (
     <div
@@ -1459,15 +1467,15 @@ function ContactRow({
       style={{
         display: 'flex',
         alignItems: 'center',
-        gap: 14,
-        padding: '14px 18px',
-        borderBottom: isLast ? 'none' : '1px solid rgba(140,123,107,0.1)',
+        gap: 12,
+        padding: '12px 16px',
+        borderBottom: isLast ? 'none' : '1px solid rgba(140,123,107,0.12)',
         cursor: 'pointer',
         transition: 'background 120ms',
-        background: isSelected ? 'rgba(61,82,70,0.04)' : undefined,
+        background: isSelected ? 'rgba(196,98,45,0.06)' : undefined,
       }}
     >
-      {/* HOR-143: select checkbox */}
+      {/* Select checkbox */}
       <span style={COL_STYLES.check}>
         <RowCheckbox
           checked={isSelected}
@@ -1475,104 +1483,120 @@ function ContactRow({
           ariaLabel={`Select ${contact.first_name ?? contact.email ?? contact.id}`}
         />
       </span>
-      {/* Avatar */}
-      <div style={{ ...COL_STYLES.avatar, position: 'relative' }}>
-        <PersonAvatar
-          initials={initials}
-          identity={identity}
-          size={44}
-          anonymous={isAnon}
-        />
-        {isOnline && !isAnon && (
-          <span
-            title="Online now"
-            style={{
-              position: 'absolute',
-              bottom: 0,
-              right: 4,
-              width: 10,
-              height: 10,
-              borderRadius: '50%',
-              background: '#3DA361',
-              border: '2px solid #FAF7F2',
-              animation: 'online-pulse 2s ease-in-out infinite',
-            }}
-          />
-        )}
-      </div>
 
-      {/* Contact (name + identity gradient + subline) */}
-      <div style={{ ...COL_STYLES.contact, minWidth: 0 }}>
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            flexWrap: 'wrap',
-            marginBottom: 3,
-          }}
-        >
-          <span
+      {/* Contact — 32px avatar + name + state dots + linked-count badge / email */}
+      <div style={{ ...COL_STYLES.contact, minWidth: 0, display: 'flex', alignItems: 'center', gap: 11 }}>
+        <div style={{ position: 'relative', flexShrink: 0 }}>
+          <PersonAvatar initials={initials} identity={identity} size={32} anonymous={isAnon} />
+          {isOnline && !isAnon && (
+            <span
+              title="Online now"
+              style={{
+                position: 'absolute',
+                bottom: -1,
+                right: -1,
+                width: 9,
+                height: 9,
+                borderRadius: '50%',
+                background: '#3DA361',
+                border: '2px solid #FAF7F2',
+                animation: 'online-pulse 2s ease-in-out infinite',
+              }}
+            />
+          )}
+        </div>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+            <span
+              style={{
+                fontSize: 13,
+                fontWeight: 500,
+                color: isAnon ? '#5E5246' : '#1A1612',
+                fontStyle: isAnon ? 'italic' : 'normal',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                flex: '0 1 auto',
+                minWidth: 0,
+              }}
+            >
+              {name}
+            </span>
+            <ContactStateDots identity={identity} />
+            {linkedCount > 0 && (
+              <span
+                title={`${linkedCount} linked ${linkedCount === 1 ? 'property' : 'properties'}`}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: 15,
+                  height: 15,
+                  borderRadius: 4,
+                  background: 'rgba(181,146,42,0.18)',
+                  color: '#7A6112',
+                  fontSize: 9,
+                  fontWeight: 700,
+                  fontFamily: 'var(--font-mono)',
+                  flexShrink: 0,
+                }}
+              >
+                {linkedCount}
+              </span>
+            )}
+          </div>
+          <div
             style={{
-              fontSize: 14,
-              fontWeight: 600,
-              color: isAnon ? '#5E5246' : '#1A1612',
-              fontStyle: isAnon ? 'italic' : 'normal',
+              fontSize: 11,
+              color: '#8C7B6B',
+              marginTop: 1,
+              whiteSpace: 'nowrap',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-              minWidth: 0,
             }}
           >
-            {name}
-          </span>
-          <IdentityGradient state={identity} />
-        </div>
-        <div
-          style={{
-            fontSize: 12,
-            color: '#8C7B6B',
-            whiteSpace: 'nowrap',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-          }}
-        >
-          {subline}
+            {email}
+          </div>
         </div>
       </div>
 
-      {/* Roles */}
-      <div style={{ ...COL_STYLES.roles, display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
-        {counts.seller > 0 && <RoleBadge role="seller" count={counts.seller} />}
-        {counts.buyer  > 0 && <RoleBadge role="buyer"  count={counts.buyer}  />}
-        {counts.seller === 0 && counts.buyer === 0 && contact.score >= 5 && (
-          <RoleBadge role="engaged" />
-        )}
-        {counts.seller === 0 && counts.buyer === 0 && contact.score < 5 && !isAnon && (
-          <span style={{ fontSize: 11, color: '#8C7B6B', fontStyle: 'italic' }}>—</span>
-        )}
+      {/* Role */}
+      <div style={{ ...COL_STYLES.role, fontSize: 12, color: '#5E5246' }}>
+        {roleLabel(contact)}
       </div>
 
       {/* Suburb */}
-      <div style={{ ...COL_STYLES.suburb, fontSize: 12, color: '#5E5246' }}>
+      <div style={{ ...COL_STYLES.suburb, fontSize: 12.5, color: '#1A1612' }}>
         {contact.suburb ?? <span style={{ color: '#8C7B6B' }}>—</span>}
       </div>
 
-      {/* Engagement */}
-      <div style={{ ...COL_STYLES.engagement, display: 'flex', alignItems: 'center' }}>
-        <EngagementIndicator value={engagementForScore(contact.score)} showLabel />
-      </div>
-
-      {/* Linked properties */}
-      <div style={{ ...COL_STYLES.properties, display: 'flex', alignItems: 'center', gap: 10 }}>
-        {linkedThumbs.length > 0 ? (
-          <>
-            <PropertyThumbStack properties={linkedThumbs} />
-            <span style={{ fontSize: 12, color: '#5E5246' }}>{linkedThumbs.length}</span>
-          </>
-        ) : (
-          <span style={{ fontSize: 12, color: '#8C7B6B', fontStyle: 'italic' }}>none yet</span>
-        )}
+      {/* Intensity — 3 bars + label */}
+      <div style={{ ...COL_STYLES.intensity }}>
+        <span
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            fontSize: 11.5,
+            fontWeight: 500,
+            color: bars.color,
+          }}
+        >
+          <span style={{ display: 'inline-flex', gap: 1, alignItems: 'flex-end' }}>
+            {[0, 1, 2].map((i) => (
+              <span
+                key={i}
+                style={{
+                  width: 3,
+                  height: 9 + i * 2,
+                  borderRadius: 1,
+                  background: i < bars.level ? bars.color : 'rgba(140,123,107,0.2)',
+                }}
+              />
+            ))}
+          </span>
+          {bars.label}
+        </span>
       </div>
 
       {/* Last seen */}
@@ -1581,50 +1605,10 @@ function ContactRow({
           ...COL_STYLES.lastSeen,
           fontFamily: 'var(--font-mono)',
           fontSize: 11,
-          color: '#5E5246',
+          color: '#6E5F50',
         }}
       >
         {lastSeenLabel(contact.last_seen_at)}
-      </div>
-
-      {/* Tracked link (HOR-136) */}
-      <div style={{ ...COL_STYLES.link, position: 'relative' }}>
-        <TrackedLinkCell
-          contactId={contact.id}
-          token={contact.tracked_link_token}
-          destinationUrl={contact.tracked_link_destination_url}
-          lastClickedAt={contact.tracked_link_last_clicked_at}
-          appUrl={appUrl}
-          defaultLinkUrl={defaultLinkUrl}
-        />
-      </div>
-
-      {/* Overflow (HOR-137 — Open in new tab / Soft delete) */}
-      <div style={{ ...COL_STYLES.overflow, display: 'flex', justifyContent: 'flex-end' }}>
-        <RowOverflowMenu
-          triggerLabel={name}
-          actions={[
-            {
-              id: 'open-new-tab',
-              label: 'Open in new tab',
-              Icon: ExternalLink,
-              onSelect: () => {
-                window.open(`/contacts/${contact.id}`, '_blank', 'noopener')
-              },
-            },
-            {
-              id: 'soft-delete',
-              label: 'Delete contact',
-              Icon: Trash2,
-              destructive: true,
-              onSelect: async () => {
-                if (!window.confirm(`Delete ${name}? You can restore them within 30 days.`)) return
-                const res = await fetch(`/api/contacts/${contact.id}`, { method: 'DELETE' })
-                if (res.ok) onSoftDelete(contact.id)
-              },
-            },
-          ]}
-        />
       </div>
     </div>
   )
