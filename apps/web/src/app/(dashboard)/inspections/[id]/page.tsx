@@ -29,6 +29,9 @@ import { qrDataUrl } from '@/lib/inspections/qr'
 import { inspectionOrigin, inspectionPublicUrl } from '@/lib/inspections/origin'
 import { getVerifiedDomainForWorkspace } from '@/lib/domains/lookup'
 import { ShareLinkBlock } from '@/components/inspections/share-link-block'
+import { signInDetail } from '@/lib/inspections/aggregates'
+import { SummaryStatsRow } from '@/components/inspections/summary-stats-row'
+import { SignInTable } from '@/components/inspections/sign-in-table'
 
 export const dynamic = 'force-dynamic'
 
@@ -110,6 +113,89 @@ export default async function InspectionDetailPage({ params }: PageProps) {
 
   const property = propertyRow as PropertyRow | null
   const address = formatAddress(property)
+
+  // HOR-249: past inspections show analytics, not the QR. "Past" = ended/
+  // cancelled OR the scheduled time has passed.
+  const isPast =
+    inspection.status === 'ended' ||
+    inspection.status === 'cancelled' ||
+    new Date(inspection.scheduled_at).getTime() < Date.now()
+
+  if (isPast) {
+    const { aggregate, rows } = await signInDetail(admin, inspection.id)
+    const label = property?.suburb || address.line1
+    const day = new Intl.DateTimeFormat('en-AU', { weekday: 'long' }).format(
+      new Date(inspection.scheduled_at),
+    )
+    const voiceLine =
+      aggregate.signIns > 0
+        ? `${label} picked up ${aggregate.signIns} ${aggregate.signIns === 1 ? 'sign-in' : 'sign-ins'} on ${day}` +
+          (aggregate.convertedToActive > 0
+            ? ` — ${aggregate.convertedToActive} ${aggregate.convertedToActive === 1 ? 'is' : 'are'} still active.`
+            : ` — none have stirred since.`)
+        : `Quiet inspection — no one signed in on ${day}.`
+
+    return (
+      <div style={{ padding: '24px 20px', maxWidth: 720, margin: '0 auto' }}>
+        <div style={{ marginBottom: 6, fontSize: 12, color: '#8C7B6B' }}>
+          <Link href="/inspections" style={{ color: '#8C7B6B', textDecoration: 'none' }}>
+            ← Inspections
+          </Link>
+        </div>
+
+        <h1 className="font-display" style={{ fontSize: 24, fontWeight: 500, color: '#3D332B', marginBottom: 4 }}>
+          {address.line1}
+        </h1>
+        {address.line2 && <div style={{ fontSize: 13, color: '#8C7B6B', marginBottom: 4 }}>{address.line2}</div>}
+        <div style={{ fontSize: 13, color: '#5E5246', marginBottom: 20 }}>
+          {formatScheduledAt(inspection.scheduled_at)} · <span style={{ textTransform: 'capitalize' }}>{inspection.status}</span>
+        </div>
+
+        {/* Horace summary strip */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 14,
+            padding: '14px 18px',
+            marginBottom: 22,
+            background: '#2E2823',
+            borderRadius: 10,
+            color: 'rgba(245,240,232,0.92)',
+          }}
+        >
+          <span aria-hidden style={{ width: 7, height: 7, borderRadius: '50%', background: '#C4622D', flexShrink: 0 }} />
+          <p className="font-display" style={{ margin: 0, fontSize: 14.5, fontStyle: 'italic', lineHeight: 1.5 }}>
+            {voiceLine}
+          </p>
+        </div>
+
+        {/* 4-stat grid */}
+        <SummaryStatsRow
+          stats={[
+            { label: 'Signed in', value: aggregate.signIns },
+            { label: 'Still active', value: aggregate.convertedToActive, accent: true },
+            { label: 'In pipeline', value: aggregate.addedToPipeline },
+            { label: 'Went quiet', value: aggregate.wentQuiet },
+          ]}
+        />
+
+        <h2
+          style={{
+            fontSize: 11,
+            fontWeight: 600,
+            letterSpacing: 0.5,
+            textTransform: 'uppercase',
+            color: '#8C7B6B',
+            marginBottom: 10,
+          }}
+        >
+          Captured sign-ins
+        </h2>
+        <SignInTable rows={rows} />
+      </div>
+    )
+  }
 
   const verifiedHostname = agent.workspace_id
     ? await getVerifiedDomainForWorkspace(agent.workspace_id)

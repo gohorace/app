@@ -19,9 +19,14 @@ import { Plus } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { listForAgent } from '@/lib/inspections/repo'
-import { inspectionOrigin, inspectionOriginForWorkspace } from '@/lib/inspections/origin'
-import { getVerifiedDomainForWorkspace } from '@/lib/domains/lookup'
 import type { Inspection } from '@/lib/inspections/types'
+import {
+  aggregatesForInspections,
+  type InspectionAggregate,
+} from '@/lib/inspections/aggregates'
+import { composeInspectionVoice } from '@/lib/inspections/horace-voice'
+import { InspectionsAskHorace } from '@/components/inspections/ask-horace-button'
+import { SummaryStatsRow } from '@/components/inspections/summary-stats-row'
 
 export const dynamic = 'force-dynamic'
 
@@ -111,6 +116,31 @@ export default async function InspectionsPage() {
 
   const totalCount = all.length
 
+  // HOR-249: live sign-in analytics for the past inspections — one batched
+  // read powers the summary row, the per-row chips, and the voice line.
+  const pastAgg = await aggregatesForInspections(admin, pastRows.map((r) => r.id))
+  const emptyAgg: InspectionAggregate = {
+    signIns: 0, convertedToActive: 0, addedToPipeline: 0, wentQuiet: 0,
+  }
+  const summary = pastRows.reduce(
+    (acc, r) => {
+      const a = pastAgg.get(r.id) ?? emptyAgg
+      acc.signIns += a.signIns
+      acc.convertedToActive += a.convertedToActive
+      acc.addedToPipeline += a.addedToPipeline
+      return acc
+    },
+    { signIns: 0, convertedToActive: 0, addedToPipeline: 0 },
+  )
+  const voice = composeInspectionVoice(
+    pastRows.map((r) => ({
+      label: propertyById.get(r.property_id)?.suburb || r.address,
+      scheduledAt: r.scheduled_at,
+      aggregate: pastAgg.get(r.id) ?? emptyAgg,
+      inspectionId: r.id,
+    })),
+  )
+
   return (
     <div style={{ padding: '32px 24px', maxWidth: 960 }}>
       <div
@@ -134,33 +164,84 @@ export default async function InspectionsPage() {
             bench — every scan turns into a tagged contact you can follow up.
           </p>
         </div>
-        <Link
-          href="/inspections/new"
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+          <InspectionsAskHorace />
+          <Link
+            href="/inspections/new"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '10px 14px',
+              fontSize: 13,
+              fontWeight: 500,
+              background: '#C4622D',
+              color: '#FFFFFF',
+              borderRadius: 6,
+              textDecoration: 'none',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            <Plus style={{ width: 14, height: 14 }} />
+            New inspection
+          </Link>
+        </div>
+      </div>
+
+      {/* HOR-249: Horace voice strip — past-week summary in voice. */}
+      {voice && (
+        <div
           style={{
-            display: 'inline-flex',
+            display: 'flex',
             alignItems: 'center',
-            gap: 6,
-            padding: '10px 14px',
-            fontSize: 13,
-            fontWeight: 500,
-            background: '#C4622D',
-            color: '#FFFFFF',
-            borderRadius: 6,
-            textDecoration: 'none',
-            whiteSpace: 'nowrap',
+            gap: 14,
+            padding: '14px 18px',
+            marginBottom: 24,
+            background: '#2E2823',
+            borderRadius: 10,
+            color: 'rgba(245,240,232,0.92)',
           }}
         >
-          <Plus style={{ width: 14, height: 14 }} />
-          New inspection
-        </Link>
-      </div>
+          <span
+            aria-hidden
+            style={{ width: 7, height: 7, borderRadius: '50%', background: '#C4622D', flexShrink: 0 }}
+          />
+          <p
+            className="font-display"
+            style={{ margin: 0, flex: 1, fontSize: 14.5, fontStyle: 'italic', lineHeight: 1.5 }}
+          >
+            {voice.line}
+          </p>
+          <Link
+            href={`/inspections/${voice.inspectionId}`}
+            style={{
+              fontSize: 12,
+              fontWeight: 500,
+              color: '#E8956D',
+              textDecoration: 'none',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            See sign-ins →
+          </Link>
+        </div>
+      )}
 
       {totalCount === 0 ? (
         <EmptyState />
       ) : (
         <>
           <Section title="Upcoming" rows={upcomingRows} emptyLine="Nothing scheduled — yet." />
-          <Section title="Past" rows={pastRows} emptyLine="Nothing finished yet." />
+          {pastRows.length > 0 && summary.signIns > 0 && (
+            <SummaryStatsRow
+              stats={[
+                { label: 'Sign-ins captured', value: summary.signIns },
+                { label: 'Now active', value: summary.convertedToActive, accent: true },
+                { label: 'In pipeline', value: summary.addedToPipeline },
+              ]}
+            />
+          )}
+          <Section title="Past" rows={pastRows} emptyLine="Nothing finished yet." agg={pastAgg} />
         </>
       )}
     </div>
@@ -206,14 +287,43 @@ function EmptyState() {
   )
 }
 
+function SignInChips({ aggregate }: { aggregate: InspectionAggregate | undefined }) {
+  const a = aggregate ?? { signIns: 0, convertedToActive: 0, addedToPipeline: 0, wentQuiet: 0 }
+  const chip = (label: string, value: number, accent: boolean) => (
+    <span
+      style={{
+        fontSize: 11,
+        fontFamily: 'var(--font-mono)',
+        color: accent ? '#A85220' : '#5E5246',
+        background: accent ? 'rgba(196,98,45,0.1)' : 'rgba(140,123,107,0.1)',
+        padding: '2px 8px',
+        borderRadius: 999,
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {value} {label}
+    </span>
+  )
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+      {chip('sign-ins', a.signIns, false)}
+      {chip('active', a.convertedToActive, true)}
+      {chip('pipeline', a.addedToPipeline, false)}
+    </div>
+  )
+}
+
 function Section({
   title,
   rows,
   emptyLine,
+  agg,
 }: {
   title: string
   rows: InspectionRow[]
   emptyLine: string
+  /** HOR-249: when present (past section), render per-row sign-in chips. */
+  agg?: Map<string, InspectionAggregate>
 }) {
   return (
     <div style={{ marginBottom: 32 }}>
@@ -275,10 +385,15 @@ function Section({
                 </div>
                 <div style={{ fontSize: 12, color: '#8C7B6B' }}>{formatScheduledAt(row.scheduled_at)}</div>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
-                <span style={{ fontSize: 11, color: '#C4622D', fontWeight: 500 }}>Show QR →</span>
-                <span style={{ fontSize: 10, color: '#8C7B6B', textTransform: 'capitalize' }}>{row.status}</span>
-              </div>
+              {/* HOR-249: past rows show sign-in chips; upcoming rows show the QR cue. */}
+              {agg ? (
+                <SignInChips aggregate={agg.get(row.id)} />
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+                  <span style={{ fontSize: 11, color: '#C4622D', fontWeight: 500 }}>Show QR →</span>
+                  <span style={{ fontSize: 10, color: '#8C7B6B', textTransform: 'capitalize' }}>{row.status}</span>
+                </div>
+              )}
             </Link>
           ))}
         </div>
