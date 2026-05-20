@@ -1,21 +1,15 @@
 'use client'
 
-import Link from 'next/link'
 import { Bell } from 'lucide-react'
 
 /**
- * BellButton — primary entry point to the Notifications stream.
+ * BellButton — single entry point to the Notifications slide-over.
  *
- *  - On `>= md`: clicking sets `location.hash = 'notifications'`, which
- *    the `<NotificationsSlideOver />` mounted in the dashboard layout
- *    listens to and toggles open.
- *  - On `< md`: just navigates to `/notifications` (full-screen stream).
- *    No overlay on mobile — the stream IS the mobile surface.
- *
- * Implemented as two siblings — a hidden-on-mobile button + a
- * hidden-on-desktop link — both rendering the same chrome. Avoids a
- * useMediaQuery hook (consistent with the rest of the codebase, which
- * gates responsive behaviour with Tailwind `md:` utilities).
+ * Clicking toggles `location.hash === '#notifications'`, which the
+ * `<NotificationsSlideOver />` mounted in the dashboard layout listens to.
+ * The slide-over renders 420px right-anchored on desktop and full-width
+ * on mobile (v2-M1 / HOR-242 — the dedicated /notifications page was
+ * removed; the slide-over is the only surface).
  *
  * Badge: numeric pill with the unread count (clamped to 99+). When
  * `attentionCount` is 0 the badge is omitted entirely.
@@ -78,42 +72,29 @@ export function BellButton({ attentionCount, label = 'Notifications' }: BellButt
   )
 
   return (
-    <>
-      {/* Desktop: toggle the slide-over via URL hash. Tailwind `md:` gates visibility. */}
-      <button
-        type="button"
-        aria-label={label}
-        onClick={() => {
-          if (typeof window === 'undefined') return
-          // Toggle: if the hash is already #notifications, clear it.
-          if (window.location.hash === '#notifications') {
-            history.replaceState(null, '', window.location.pathname + window.location.search)
-            // Manually nudge listeners — `replaceState` doesn't fire hashchange.
-            window.dispatchEvent(new HashChangeEvent('hashchange'))
-          } else {
-            window.location.hash = 'notifications'
-          }
-        }}
-        className="hidden md:inline-flex"
-        style={{
-          background: 'transparent',
-          border: 'none',
-          padding: 0,
-          cursor: 'pointer',
-        }}
-      >
-        {chrome}
-      </button>
-
-      {/* Mobile: navigate to /notifications. */}
-      <Link
-        href="/notifications"
-        aria-label={label}
-        className="md:hidden"
-        style={{ textDecoration: 'none' }}
-      >
-        {chrome}
-      </Link>
-    </>
+    <button
+      type="button"
+      aria-label={label}
+      onClick={() => {
+        if (typeof window === 'undefined') return
+        // Toggle: if the hash is already #notifications, clear it.
+        if (window.location.hash === '#notifications') {
+          history.replaceState(null, '', window.location.pathname + window.location.search)
+          // Manually nudge listeners — `replaceState` doesn't fire hashchange.
+          window.dispatchEvent(new HashChangeEvent('hashchange'))
+        } else {
+          window.location.hash = 'notifications'
+        }
+      }}
+      className="inline-flex"
+      style={{
+        background: 'transparent',
+        border: 'none',
+        padding: 0,
+        cursor: 'pointer',
+      }}
+    >
+      {chrome}
+    </button>
   )
 }

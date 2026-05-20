@@ -59,14 +59,15 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
-      {/* Desktop sidebar — hidden on mobile */}
+      {/* Desktop sidebar — hidden on mobile. Collapse pref lives client-side
+        * in `useSidebarPref` (localStorage). attentionCount is still fetched
+        * for the bell-button in page topbars and the notifications stream. */}
       <div className="hidden md:flex">
         <Sidebar
           orgName={workspaceName}
           agentFirstName={agent.first_name}
           agentLastName={agent.last_name}
           avatarUrl={agent.avatar_url}
-          attentionCount={attentionCount}
           trialDaysLeft={trialDaysLeft}
         />
       </div>
