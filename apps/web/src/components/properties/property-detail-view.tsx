@@ -17,6 +17,8 @@ import {
 } from 'lucide-react'
 import { AttachContactDialog } from './attach-contact-dialog'
 import { NotesPanel } from '@/components/dashboard/notes-panel'
+import { useCompanion } from '@/components/companion/companion-context'
+import { QuillIcon } from '@/components/ui/quill-icon'
 import {
   EngagementIndicator,
   PersonAvatar,
@@ -91,6 +93,7 @@ export function PropertyDetailView({
   timeline,
 }: PropertyDetailViewProps) {
   const router = useRouter()
+  const { openCompanion } = useCompanion()
   const [filter, setFilter] = useState<TimelineFilter>('all')
   // HOR-137: Attach contact dialog (mirrors AttachRoleDialog, inverted).
   const [attachOpen, setAttachOpen] = useState(false)
@@ -353,6 +356,36 @@ export function PropertyDetailView({
               <span>engagement.</span>
             </div>
           </div>
+          {/* HOR-247: Ask Horace on the charcoal strip — opens the companion
+              pre-prompted with the address in view. */}
+          <button
+            type="button"
+            onClick={() =>
+              openCompanion({
+                prompt: `Tell me about ${property.address}`,
+                contextLabel: `Property: ${property.address}`,
+              })
+            }
+            style={{
+              flexShrink: 0,
+              alignSelf: 'center',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '7px 12px',
+              background: 'rgba(232,149,109,0.18)',
+              color: '#E8956D',
+              border: '1px solid rgba(232,149,109,0.35)',
+              borderRadius: 7,
+              fontSize: 12,
+              fontWeight: 500,
+              cursor: 'pointer',
+              fontFamily: 'var(--font-body)',
+            }}
+          >
+            <QuillIcon style={{ width: 12, height: 12 }} />
+            Ask Horace
+          </button>
         </div>
 
         {/* Notes (HOR-130) */}
