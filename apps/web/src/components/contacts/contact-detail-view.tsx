@@ -27,7 +27,7 @@ import {
 import type { IdentityState } from '@/lib/design/badges'
 import { eventKind, eventLabel, eventUrl, formatEventUrl, type MergedEvent } from '@/lib/contacts/events'
 import { AttachRoleDialog } from './attach-role-dialog'
-import { NotesPanel } from '@/components/dashboard/notes-panel'
+import { NotesThread } from '@/components/notes/notes-thread'
 import { SendTrackedEmailButton } from '@/components/email/email-composer-trigger'
 import { AddToListSheet } from '@/components/lists/add-to-list-sheet'
 import { buildEmailSendIndex, type EmailSendSummary } from '@/lib/contacts/email-engagement'
@@ -526,14 +526,11 @@ export function ContactDetailView({
           )}
         </section>
 
-        {/* Notes (HOR-130 follow-up — Contacts share the same panel) */}
+        {/* Notes — HOR-252 threaded NotesThread (replaces the v1 textarea). */}
         {!isAnon && (
-          <NotesPanel
-            endpoint={`/api/contacts/${contact.id}`}
-            initial={contact.notes}
-            subtitle="A space for yourself. Horace keeps them with the contact — visible to everyone in your workspace."
-            placeholder="e.g. Met at the Paddington open this weekend. Their lease is up in November. Husband Andrew — call him Drew."
-          />
+          <div style={{ marginBottom: 18 }}>
+            <NotesThread contactId={contact.id} subjectKind="contact" />
+          </div>
         )}
 
         {/* Timeline */}

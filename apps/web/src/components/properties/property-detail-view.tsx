@@ -16,7 +16,7 @@ import {
   UserPlus,
 } from 'lucide-react'
 import { AttachContactDialog } from './attach-contact-dialog'
-import { NotesPanel } from '@/components/dashboard/notes-panel'
+import { NotesThread } from '@/components/notes/notes-thread'
 import { useCompanion } from '@/components/companion/companion-context'
 import { QuillIcon } from '@/components/ui/quill-icon'
 import {
@@ -388,12 +388,10 @@ export function PropertyDetailView({
           </button>
         </div>
 
-        {/* Notes (HOR-130) */}
-        <NotesPanel
-          endpoint={`/api/properties/${property.id}`}
-          initial={property.notes}
-          placeholder="e.g. Pitching for the listing next Thursday. Owners renovated kitchen last spring. Wife works in real estate so she'll ask sharp questions."
-        />
+        {/* Notes — HOR-252 threaded NotesThread (replaces the v1 textarea). */}
+        <div style={{ marginBottom: 22 }}>
+          <NotesThread propertyId={property.id} subjectKind="property" />
+        </div>
 
         {/* Contacts panel */}
         <section style={panelStyle}>
@@ -742,7 +740,8 @@ function GroupLabel({
   )
 }
 
-// NotesPanel moved to components/dashboard/notes-panel.tsx (HOR-130 follow-up)
+// Notes now render via NotesThread (HOR-252); the old NotesPanel is orphaned
+// pending an M12 cleanup sweep.
 // so Contact Detail can reuse it.
 
 function ChangeStatusButton({
