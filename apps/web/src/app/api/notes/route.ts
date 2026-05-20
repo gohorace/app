@@ -30,14 +30,23 @@ interface AgentRow {
   id: string
   first_name: string | null
   last_name: string | null
+  email: string | null
   role: string | null
 }
 
-function nameOf(a: AgentRow | undefined, id: string): { name: string; initials: string } {
+/**
+ * Resolve a display name + initials for an agent. Name-less agent rows
+ * (e.g. accounts created before the split-name onboarding, where the name
+ * lives in auth user_metadata, not on the agents row) fall back to the
+ * email local-part rather than the anonymous "A teammate".
+ */
+function nameOf(a: AgentRow | undefined): { name: string; initials: string } {
   if (!a) return { name: 'A teammate', initials: '?' }
-  const name = [a.first_name, a.last_name].filter(Boolean).join(' ') || 'A teammate'
-  const initials =
-    ((a.first_name?.[0] ?? '') + (a.last_name?.[0] ?? '')).toUpperCase() || '?'
+  const structured = [a.first_name, a.last_name].filter(Boolean).join(' ').trim()
+  const emailLocal = a.email?.split('@')[0]?.trim() ?? ''
+  const name = structured || emailLocal || 'A teammate'
+  const structuredInitials = ((a.first_name?.[0] ?? '') + (a.last_name?.[0] ?? '')).toUpperCase()
+  const initials = structuredInitials || emailLocal.slice(0, 2).toUpperCase() || '?'
   return { name, initials }
 }
 
@@ -69,13 +78,16 @@ export async function GET(request: Request) {
   // Workspace teammates — for the @mention picker + author rendering.
   const { data: agentRows } = await admin
     .from('agents')
-    .select('id, first_name, last_name, role')
+    .select('id, first_name, last_name, email, role')
     .eq('workspace_id', agent.workspace_id)
   const agents = (agentRows as AgentRow[] | null) ?? []
   const agentById = new Map(agents.map((a) => [a.id, a]))
   const teammates: NoteTeammate[] = agents.map((a) => {
-    const { name, initials } = nameOf(a, a.id)
-    return { id: a.id, name, firstName: a.first_name ?? name, role: a.role, initials }
+    const { name, initials } = nameOf(a)
+    // firstName drives the @mention token + picker label; first word of
+    // the resolved name keeps email-local fallbacks single-token.
+    const firstName = a.first_name?.trim() || name.split(' ')[0] || name
+    return { id: a.id, name, firstName, role: a.role, initials }
   })
 
   let query = admin
@@ -95,7 +107,7 @@ export async function GET(request: Request) {
   }
 
   const notes: Note[] = ((noteRows as NoteRow[] | null) ?? []).map((r) => {
-    const { name, initials } = nameOf(agentById.get(r.author_id), r.author_id)
+    const { name, initials } = nameOf(agentById.get(r.author_id))
     return {
       id: r.id,
       authorId: r.author_id,
@@ -162,7 +174,11 @@ export async function POST(request: Request) {
   // stream (contact_id null) — bell coverage for contact notes for now.
   const targets = mentions.filter((m) => m && m !== agent.id)
   if (targets.length > 0) {
-    const author = [user.user_metadata?.first_name, user.user_metadata?.last_name].filter(Boolean).join(' ')
+    const meta = user.user_metadata ?? {}
+    const author =
+      [meta.first_name, meta.last_name].filter(Boolean).join(' ').trim() ||
+      (typeof meta.full_name === 'string' ? meta.full_name.trim() : '') ||
+      (user.email ? user.email.split('@')[0] : '')
     const excerpt = text.length > 90 ? `${text.slice(0, 90)}…` : text
     const url = contactId ? `/contacts/${contactId}` : `/properties/${propertyId}`
     await admin.from('notification_log').insert(
