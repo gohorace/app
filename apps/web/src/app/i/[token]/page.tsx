@@ -36,6 +36,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getByToken } from '@/lib/inspections/repo'
 import { isWellFormed } from '@/lib/inspections/tokens'
 import { InspectionCaptureForm } from '@/components/inspections/inspection-capture-form'
+import { neutralChrome } from '@/lib/doorstep/neutral-chrome'
 
 export const dynamic = 'force-dynamic'
 
@@ -52,9 +53,13 @@ async function resolveToken(token: string) {
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { token } = await params
   const data = await resolveToken(token)
-  if (!data) return { title: 'Inspection sign-in' }
+  // Neutral chrome (favicon/manifest/PWA title) on every render — this page is
+  // prospect-facing on the neutral host and on agent custom domains; the
+  // Horace mark must never appear in the tab or a link preview (HOR-294).
+  if (!data) return { ...neutralChrome, title: 'Inspection sign-in' }
   const name = [data.agent.first_name, data.agent.last_name].filter(Boolean).join(' ').trim()
   return {
+    ...neutralChrome,
     title: name ? `Sign in — ${name}` : 'Inspection sign-in',
     description: '',
     robots: { index: false, follow: false },

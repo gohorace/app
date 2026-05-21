@@ -57,10 +57,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${playfair.variable} ${dmSans.variable} ${dmMono.variable}`}>
       <head>
-        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-        {/* Google Tag Manager */}
+        {/* apple-touch-icon comes from the metadata API (icons.apple) so the
+            prospect-facing Doorstep pages can override it with neutral chrome
+            per-page (HOR-294). A hardcoded <link> here would leak the Horace
+            icon on those surfaces regardless of page metadata. */}
+        {/* Google Tag Manager — guarded so it never fires on the neutral
+            Doorstep host (*.onthedoorstep.app). gohorace behaviour unchanged. */}
         <Script id="gtm-init" strategy="afterInteractive">
-          {`(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+          {`(function(w,d,s,l,i){if(/(^|\\.)onthedoorstep\\.app$/i.test(location.hostname))return;w[l]=w[l]||[];w[l].push({'gtm.start':
 new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
 j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
 'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
