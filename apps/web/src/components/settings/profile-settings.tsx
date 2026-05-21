@@ -46,7 +46,8 @@ const NAV_SECTIONS: NavSection[] = [
     label: 'Doorstep',
     blurb: 'Doorstep is the public sign-in surface — the page visitors land on after scanning your inspection QR.',
     items: [
-      { href: '/settings/custom-domain', label: 'Custom domain', icon: Globe, desc: 'Where Doorstep runs — your branded URL' },
+      { href: '/settings/custom-domain', label: 'Custom domain',  icon: Globe, desc: 'Where Doorstep runs — your branded URL' },
+      { href: '/settings/embed',         label: 'Website embed',   icon: Code,  desc: 'A sign-in form for your own website' },
     ],
   },
   {
