@@ -42,4 +42,17 @@ describe('isDoorstepHost()', () => {
     expect(isDoorstepHost(null)).toBe(false)
     expect(isDoorstepHost(undefined)).toBe(false)
   })
+
+  it('is www-insensitive (apex config matches the www host Vercel redirects to)', () => {
+    process.env.NEXT_PUBLIC_DOORSTEP_HOST = 'onthedoorstep.app'
+    expect(isDoorstepHost('www.onthedoorstep.app')).toBe(true)
+    expect(isDoorstepHost('WWW.OnTheDoorstep.app')).toBe(true)
+  })
+
+  it('matches the apex when configured with the www form', () => {
+    process.env.NEXT_PUBLIC_DOORSTEP_HOST = 'www.onthedoorstep.app'
+    expect(isDoorstepHost('onthedoorstep.app')).toBe(true)
+    expect(isDoorstepHost('www.onthedoorstep.app')).toBe(true)
+    expect(isDoorstepHost('gohorace.com')).toBe(false)
+  })
 })
