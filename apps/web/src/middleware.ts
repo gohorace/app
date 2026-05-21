@@ -173,6 +173,9 @@ export async function middleware(request: NextRequest) {
     // would break image-proxy prefetches outright.
     pathname.startsWith('/t/') ||
     pathname.startsWith('/api/inspections/capture') ||
+    // HOR-284: the website embed posts here cross-origin from the agent's
+    // own site (no Horace session). Origin-locked + honeypot in the handler.
+    pathname.startsWith('/api/embed/') ||
     pathname.startsWith('/install/') ||
     pathname.startsWith('/oauth/') ||
     pathname.startsWith('/.well-known/') ||
