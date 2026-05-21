@@ -21,7 +21,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { qrPngBuffer, buildQrFilename } from '@/lib/inspections/qr'
-import { inspectionOrigin, inspectionPublicUrl } from '@/lib/inspections/origin'
+import { doorstepOrigin, inspectionPublicUrl } from '@/lib/inspections/origin'
 
 export const dynamic = 'force-dynamic'
 
@@ -76,7 +76,7 @@ export async function GET(req: NextRequest, ctx: Ctx) {
 
   const publicUrl = agent.workspace_id
     ? await inspectionPublicUrl(agent.workspace_id, inspection.token, req)
-    : `${inspectionOrigin(req)}/i/${inspection.token}`
+    : `${doorstepOrigin(req)}/i/${inspection.token}`
 
   let png: Buffer
   try {

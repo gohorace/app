@@ -1,14 +1,29 @@
 import type { Metadata } from 'next'
+import { headers } from 'next/headers'
 import { MarketingNav } from '@/components/marketing/MarketingNav'
 import { MarketingFooter } from '@/components/marketing/MarketingFooter'
+import { isDoorstepHost } from '@/lib/doorstep/host'
+import { DoorstepPrivacy } from '@/components/doorstep/neutral-legal'
 import styles from '../prose.module.css'
 
-export const metadata: Metadata = {
-  title: 'Privacy — Horace',
-  description: 'Privacy policy for Horace, in plain language.',
+// HOR-282: host-aware. On the neutral Doorstep host the title must NOT carry
+// the Horace brand — even the browser tab is a prospect-facing surface.
+export function generateMetadata(): Metadata {
+  if (isDoorstepHost(headers().get('host'))) {
+    return { title: 'Privacy', description: 'How Doorstep handles the details you provide.' }
+  }
+  return {
+    title: 'Privacy — Horace',
+    description: 'Privacy policy for Horace, in plain language.',
+  }
 }
 
 export default function PrivacyPage() {
+  // Neutral, Horace-free policy on onthedoorstep.app; the Horace marketing
+  // policy (with nav/footer/voice) everywhere else.
+  if (isDoorstepHost(headers().get('host'))) {
+    return <DoorstepPrivacy />
+  }
   return (
     <div className={styles.page}>
       <MarketingNav />

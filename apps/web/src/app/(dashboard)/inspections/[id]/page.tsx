@@ -26,7 +26,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { qrDataUrl } from '@/lib/inspections/qr'
-import { inspectionOrigin, inspectionPublicUrl } from '@/lib/inspections/origin'
+import { doorstepOrigin, inspectionPublicUrl } from '@/lib/inspections/origin'
 import { getVerifiedDomainForWorkspace } from '@/lib/domains/lookup'
 import { ShareLinkBlock } from '@/components/inspections/share-link-block'
 import { signInDetail } from '@/lib/inspections/aggregates'
@@ -202,7 +202,7 @@ export default async function InspectionDetailPage({ params }: PageProps) {
     : null
   const publicUrl = agent.workspace_id
     ? await inspectionPublicUrl(agent.workspace_id, inspection.token)
-    : `${inspectionOrigin()}/i/${inspection.token}`
+    : `${doorstepOrigin()}/i/${inspection.token}`
 
   const qr = await qrDataUrl(publicUrl)
 
