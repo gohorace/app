@@ -85,13 +85,20 @@ const NAV_ITEMS_HIDDEN_FOR_SUPPORT = new Set<string>([
   '/settings/billing',
 ])
 
+// HOR-285 parked 2026-05-22: the website embed needs more product thought
+// before it's exposed to agents. Gated OFF by default — the code and the
+// /settings/embed page stay intact; only the entry point hides. Set
+// NEXT_PUBLIC_EMBED_ENABLED=true to bring it back.
+const EMBED_ENABLED = process.env.NEXT_PUBLIC_EMBED_ENABLED === 'true'
+
 export function ProfileSettings({ agentId, firstName, lastName, email, avatarUrl, workspaceName, seatType = 'agent' }: ProfileSettingsProps) {
   const navSections: NavSection[] = NAV_SECTIONS.map((section) => ({
     ...section,
-    items:
-      seatType === 'support'
-        ? section.items.filter((item) => !NAV_ITEMS_HIDDEN_FOR_SUPPORT.has(item.href))
-        : section.items,
+    items: section.items.filter((item) => {
+      if (!EMBED_ENABLED && item.href === '/settings/embed') return false
+      if (seatType === 'support' && NAV_ITEMS_HIDDEN_FOR_SUPPORT.has(item.href)) return false
+      return true
+    }),
   })).filter((section) => section.items.length > 0)
   const router = useRouter()
   const fileInputRef = useRef<HTMLInputElement>(null)

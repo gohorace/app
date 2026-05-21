@@ -1,3 +1,4 @@
+import { notFound } from 'next/navigation'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -14,6 +15,11 @@ import { EmbedOriginsManager } from '@/components/settings/embed-origins-manager
  * /api/embed/capture (HOR-284), which hard-rejects origins not listed here.
  */
 export default async function EmbedPage() {
+  // HOR-285 parked 2026-05-22 — hidden until the embed has had more product
+  // thought. Gated off by default; set NEXT_PUBLIC_EMBED_ENABLED=true to
+  // restore. Everything below stays intact.
+  if (process.env.NEXT_PUBLIC_EMBED_ENABLED !== 'true') notFound()
+
   const supabase = await createClient()
   const {
     data: { user },
