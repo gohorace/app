@@ -30,6 +30,41 @@ export interface RequestLike {
 }
 
 /**
+ * HOR-282: the neutral public host for Doorstep capture surfaces
+ * (onthedoorstep.app). This is the fallback origin when a workspace has
+ * NOT verified its own custom domain — and it deliberately is NOT
+ * `gohorace.com`. Keeping prospect-facing capture URLs off the Horace
+ * brand is load-bearing for the invisibility invariant: a researching
+ * vendor must never encounter the Horace name. (`inspectionOrigin` below
+ * still resolves the Horace app host and is fine for agent-facing URLs.)
+ *
+ * Resolution order:
+ *   1. https://<VERCEL_URL>          when VERCEL_ENV='preview' — so a QR
+ *      minted on a preview deploy scans back to that same preview, which
+ *      has the unmerged routes, not prod.
+ *   2. NEXT_PUBLIC_DOORSTEP_HOST     prod = onthedoorstep.app (bare host or URL)
+ *   3. new URL(req.url).origin       when a request is available (local dev)
+ *   4. 'https://onthedoorstep.app'   last-resort
+ */
+export function doorstepOrigin(req?: RequestLike | null): string {
+  if (process.env.VERCEL_ENV === 'preview' && process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}`
+  }
+  const configured = process.env.NEXT_PUBLIC_DOORSTEP_HOST?.trim().replace(/\/$/, '')
+  if (configured) {
+    return configured.startsWith('http') ? configured : `https://${configured}`
+  }
+  if (req && typeof req.url === 'string') {
+    try {
+      return new URL(req.url).origin
+    } catch {
+      // fall through
+    }
+  }
+  return 'https://onthedoorstep.app'
+}
+
+/**
  * Resolves the public origin without considering a custom domain.
  * Keeps the existing call sites working until they're migrated to the
  * async variant. Prefer `inspectionOriginForWorkspace` when a workspace
@@ -87,7 +122,8 @@ export async function inspectionOriginForWorkspace(
  *                     (the middleware on the custom host rewrites
  *                     /<token> → /i/<token> internally; the URL bar
  *                     stays short and branded)
- *   - Horace-hosted:  https://gohorace.com/i/<token>
+ *   - Neutral host:   https://onthedoorstep.app/i/<token>  (HOR-282)
+ *                     — never gohorace.com; see `doorstepOrigin`.
  *
  * Use this everywhere the URL is rendered — QR code, create-response
  * `public_url`, inspection detail page, daily-briefing links.
@@ -105,5 +141,5 @@ export async function inspectionPublicUrl(
   } catch (err) {
     console.error('inspectionPublicUrl lookup failed', { workspaceId, token, err })
   }
-  return `${inspectionOrigin(req)}/i/${token}`
+  return `${doorstepOrigin(req)}/i/${token}`
 }

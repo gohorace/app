@@ -1,6 +1,7 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 import { getCustomDomain } from '@/lib/domains/lookup'
+import { doorstepHost as resolveDoorstepHost } from '@/lib/doorstep/host'
 
 // 8-char base62 token format minted by lib/inspections/tokens.ts.
 const INSPECTION_TOKEN_RE = /^[A-Za-z0-9]{8}$/
@@ -36,6 +37,45 @@ export async function middleware(request: NextRequest) {
   // workspace domain matching). Caught on slice F smoke 2026-05-19.
   const appHostBare = appHost.startsWith('www.') ? appHost.slice(4) : appHost
   const trackingHost = appHostBare ? `r.${appHostBare}` : ''
+
+  // HOR-282: the neutral Doorstep capture host (NEXT_PUBLIC_DOORSTEP_HOST,
+  // prod = onthedoorstep.app). It's the default public host for QR +
+  // registration capture for every workspace that hasn't verified its own
+  // custom domain. Crucially the prospect — often a researching vendor —
+  // never sees the Horace brand here, so only the public capture surfaces
+  // and the standalone (neutral) legitimacy pages are reachable; every
+  // other path 404s so the dashboard/marketing can't bleed onto the domain.
+  // Unlike the HOR-204 branch below it needs no custom_domains lookup — the
+  // token in /i/<token> resolves the workspace.
+  const doorstepHost = resolveDoorstepHost()
+
+  if (host && doorstepHost && host === doorstepHost) {
+    const { pathname } = request.nextUrl
+    if (
+      pathname.startsWith('/_next/') ||
+      pathname === '/favicon.ico' ||
+      pathname === '/apple-touch-icon.png'
+    ) {
+      return NextResponse.next()
+    }
+    if (
+      pathname.startsWith('/i/') ||
+      pathname.startsWith('/api/inspections/capture') ||
+      // Neutral, host-aware legitimacy pages — no Horace branding (HOR-282).
+      pathname.startsWith('/privacy') ||
+      pathname.startsWith('/contact')
+      // M3 adds the registration capture path(s) to this allowlist.
+    ) {
+      return NextResponse.next()
+    }
+    const stripped = pathname.replace(/^\//, '')
+    if (INSPECTION_TOKEN_RE.test(stripped)) {
+      const url = request.nextUrl.clone()
+      url.pathname = `/i/${stripped}`
+      return NextResponse.rewrite(url)
+    }
+    return new NextResponse('Not found', { status: 404 })
+  }
 
   if (host && host !== appHost && host !== previewHost && host !== trackingHost && !host.endsWith('.vercel.app')) {
     const lookup = await getCustomDomain(host)
