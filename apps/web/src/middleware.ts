@@ -1,7 +1,7 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 import { getCustomDomain } from '@/lib/domains/lookup'
-import { doorstepHost as resolveDoorstepHost } from '@/lib/doorstep/host'
+import { isDoorstepHost } from '@/lib/doorstep/host'
 
 // 8-char base62 token format minted by lib/inspections/tokens.ts.
 const INSPECTION_TOKEN_RE = /^[A-Za-z0-9]{8}$/
@@ -47,9 +47,7 @@ export async function middleware(request: NextRequest) {
   // other path 404s so the dashboard/marketing can't bleed onto the domain.
   // Unlike the HOR-204 branch below it needs no custom_domains lookup — the
   // token in /i/<token> resolves the workspace.
-  const doorstepHost = resolveDoorstepHost()
-
-  if (host && doorstepHost && host === doorstepHost) {
+  if (isDoorstepHost(host)) {
     const { pathname } = request.nextUrl
     if (
       pathname.startsWith('/_next/') ||
