@@ -2,9 +2,10 @@
  * Horace companion — shared types for messages, actions, and the
  * conversation state owned by `CompanionProvider`.
  *
- * Brain is pattern-matched + canned for v2.0 (see `respond.ts`). The shape
- * is deliberately LLM-shaped — a real Anthropic call can drop into the
- * same `respond()` signature in v2.x without consumers changing.
+ * The brain is server-side (HOR-271): the drawer calls `requestReply`
+ * (`respond.ts`) → `POST /api/companion/respond` → `lib/ai/companion.ts`,
+ * which grounds every reply in the agent's real data. These types are the
+ * wire shape shared across that boundary.
  */
 
 export type ActionKind = 'draft-email' | 'add-to-list' | 'dismiss' | 'create-inspection'
@@ -84,6 +85,13 @@ export interface SystemMessage extends BaseMessage {
 }
 
 export type CompanionMessage = AgentMessage | HoraceMessage | SystemMessage
+
+/** Compact prior-turn shape sent to the brain for multi-turn memory.
+ *  Only agent + horace turns (system pills are dropped); text only. */
+export interface ConversationTurn {
+  role: 'agent' | 'horace'
+  text: string
+}
 
 export interface OpenCompanionOptions {
   /** Initial prompt to render as the agent's first message. Triggers an
