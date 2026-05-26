@@ -3,16 +3,17 @@
 import { ArrowUpRight, X } from 'lucide-react'
 import Image from 'next/image'
 import Link from 'next/link'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type {
   CompanionAction,
   CompanionMessage,
+  ConversationTurn,
   HoraceMessage,
 } from '@/lib/companion/types'
 import {
   emptyConversation,
   initialMessages,
-  respond,
+  requestReply,
   suggestedPrompts,
 } from '@/lib/companion/respond'
 import { ActionConfirm } from './action-confirm'
@@ -22,10 +23,10 @@ import { ActionConfirm } from './action-confirm'
  * Horace conversation. Header (charcoal), messages, suggested prompts
  * (when conversation is empty), composer.
  *
- * v2.0 brain is the pattern-matched `respond()` mock — see
- * `lib/companion/respond.ts`. The drawer pretends Horace is "typing"
- * with a 600ms delay before the response shows up, matching the
- * prototype's pacing.
+ * The brain is server-side (HOR-271): `requestReply` POSTs to
+ * `/api/companion/respond` and the drawer shows a typing indicator while
+ * the request is in flight. A request-id ref discards replies that a
+ * close/reopen or a newer send has superseded.
  *
  * Open / close is owned by the parent (`CompanionMount`). The drawer
  * stays mounted while closed (display: none) so animation state and
@@ -52,6 +53,16 @@ interface CompanionDrawerProps {
   onAction: (action: CompanionAction) => Promise<ActionAck>
 }
 
+/** Map the drawer thread to the compact history the brain consumes:
+ *  agent + horace turns only (system pills dropped), most recent kept. */
+function toHistory(messages: CompanionMessage[]): ConversationTurn[] {
+  const turns: ConversationTurn[] = []
+  for (const m of messages) {
+    if (m.kind === 'agent' || m.kind === 'horace') turns.push({ role: m.kind, text: m.text })
+  }
+  return turns.slice(-12)
+}
+
 export function CompanionDrawer({
   open,
   contextLabel,
@@ -65,7 +76,25 @@ export function CompanionDrawer({
   )
   const [input, setInput] = useState('')
   const [pendingAction, setPendingAction] = useState<CompanionAction | null>(null)
+  const [typing, setTyping] = useState(false)
   const scrollRef = useRef<HTMLDivElement | null>(null)
+  // Monotonic request id. Each ask increments it; a resolved reply is only
+  // applied if it still matches — so a close/reopen or a newer send discards
+  // any in-flight reply rather than appending it to the wrong thread.
+  const reqIdRef = useRef(0)
+
+  const runReply = useCallback(
+    async (text: string, ctx: string | undefined, history: ConversationTurn[]) => {
+      const myReq = ++reqIdRef.current
+      setTyping(true)
+      const reply = await requestReply(text, ctx, history)
+      if (reqIdRef.current !== myReq) return // superseded
+      setTyping(false)
+      setMessages((m) => [...m, reply])
+      if (reply.action) setPendingAction(reply.action)
+    },
+    [],
+  )
 
   // Reset conversation whenever the agent opens the drawer fresh. The
   // openToken changes on every `openCompanion` call, so even identical
@@ -73,25 +102,22 @@ export function CompanionDrawer({
   useEffect(() => {
     if (!open) return
     setPendingAction(null)
+    setTyping(false)
+    reqIdRef.current++ // cancel any reply still in flight from a previous open
     if (prompt) {
       setMessages(initialMessages(prompt, contextLabel))
-      const t = window.setTimeout(() => {
-        const reply = respond(prompt, contextLabel)
-        setMessages((m) => [...m, reply])
-        if (reply.action) setPendingAction(reply.action)
-      }, 600)
-      return () => window.clearTimeout(t)
+      void runReply(prompt, contextLabel, [])
     } else {
       setMessages(emptyConversation(contextLabel))
     }
-  }, [open, openToken, prompt, contextLabel])
+  }, [open, openToken, prompt, contextLabel, runReply])
 
   // Scroll to bottom whenever messages change or the action card appears.
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
-  }, [messages, pendingAction])
+  }, [messages, pendingAction, typing])
 
   // Esc closes (only when open).
   useEffect(() => {
@@ -105,14 +131,12 @@ export function CompanionDrawer({
 
   function send(text: string) {
     const trimmed = text.trim()
-    if (!trimmed) return
+    if (!trimmed || typing) return
+    // History = the thread as it stands *before* this new message.
+    const history = toHistory(messages)
     setMessages((m) => [...m, { kind: 'agent', text: trimmed }])
     setInput('')
-    window.setTimeout(() => {
-      const reply = respond(trimmed, contextLabel)
-      setMessages((m) => [...m, reply])
-      if (reply.action) setPendingAction(reply.action)
-    }, 600)
+    void runReply(trimmed, contextLabel, history)
   }
 
   async function confirm(action: CompanionAction) {
@@ -123,7 +147,7 @@ export function CompanionDrawer({
 
   if (!open) return null
 
-  const conversationIsEmpty = messages.length <= 2 && !pendingAction
+  const conversationIsEmpty = messages.length <= 2 && !pendingAction && !typing
 
   return (
     <div
@@ -252,6 +276,7 @@ export function CompanionDrawer({
           {messages.map((m, i) => (
             <MessageBubble key={i} message={m} />
           ))}
+          {typing && <TypingBubble />}
           {pendingAction && (
             <ActionConfirm
               action={pendingAction}
@@ -325,8 +350,9 @@ export function CompanionDrawer({
                   send(input)
                 }
               }}
-              placeholder="Ask Horace…"
+              placeholder={typing ? 'Horace is thinking…' : 'Ask Horace…'}
               rows={1}
+              disabled={typing}
               aria-label="Message Horace"
               style={{
                 flex: 1,
@@ -344,19 +370,19 @@ export function CompanionDrawer({
             <button
               type="button"
               onClick={() => send(input)}
-              disabled={!input.trim()}
+              disabled={!input.trim() || typing}
               aria-label="Send"
               style={{
                 width: 28,
                 height: 28,
                 borderRadius: 7,
-                background: input.trim() ? '#C4622D' : 'rgba(140,123,107,0.15)',
+                background: input.trim() && !typing ? '#C4622D' : 'rgba(140,123,107,0.15)',
                 border: 'none',
-                color: input.trim() ? '#FAF7F2' : '#8C7B6B',
+                color: input.trim() && !typing ? '#FAF7F2' : '#8C7B6B',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                cursor: input.trim() ? 'pointer' : 'default',
+                cursor: input.trim() && !typing ? 'pointer' : 'default',
                 padding: 0,
                 transition: 'background 120ms',
               }}
@@ -379,6 +405,50 @@ export function CompanionDrawer({
           </div>
         </div>
       </aside>
+    </div>
+  )
+}
+
+// ── Typing indicator ─────────────────────────────────────────────────────────
+
+function TypingBubble() {
+  return (
+    <div style={{ alignSelf: 'flex-start', maxWidth: '90%' }} aria-live="polite" aria-label="Horace is thinking">
+      <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+        <Image
+          src="/horace-parchment.png"
+          alt=""
+          width={28}
+          height={28}
+          style={{ borderRadius: '50%', flexShrink: 0, marginTop: 2 }}
+        />
+        <div
+          style={{
+            padding: '12px 14px',
+            background: '#FAF7F2',
+            border: '1px solid rgba(140,123,107,0.2)',
+            borderRadius: '14px 14px 14px 4px',
+            display: 'flex',
+            gap: 4,
+            alignItems: 'center',
+          }}
+        >
+          {[0, 1, 2].map((i) => (
+            <span
+              key={i}
+              aria-hidden
+              style={{
+                width: 5,
+                height: 5,
+                borderRadius: '50%',
+                background: '#8C7B6B',
+                animation: 'pulse-dot 1.2s infinite',
+                animationDelay: `${i * 0.18}s`,
+              }}
+            />
+          ))}
+        </div>
+      </div>
     </div>
   )
 }

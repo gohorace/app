@@ -1,21 +1,21 @@
 /**
- * Horace companion — conversation brain (v2.0).
+ * Horace companion — conversation client + static helpers.
  *
- * Ports the prototype's `greet` + `respondTo` + `suggestedPrompts` +
- * `actionConfirmation` from `companion.jsx` verbatim. v2.0 ships this as
- * a pure-client pattern matcher — fast, deterministic, demo-aware. v2.x
- * swaps the body of `respond()` for a real Anthropic call without
- * consumers (drawer, action handlers) changing.
+ * The brain is now server-side: `requestReply` POSTs to
+ * `/api/companion/respond` (HOR-271), which retrieves a workspace-scoped
+ * slice of the agent's data and returns a grounded `HoraceMessage`. This
+ * replaces the v2.0 pattern-matched mock — the Anthropic key stays on the
+ * server and every link/action id in the reply is real.
  *
- * Voice rules (from the v2 handoff README): third person, no emoji, no
- * exclamation, em-dashes for rhythm. Keep that in mind editing strings.
+ * The greeting, suggested-prompt chips, and post-confirm copy stay
+ * client-side and static (ported from the prototype's `companion.jsx`).
+ *
+ * Voice rules (from the v2 handoff README): first person to the agent,
+ * third person about contacts, no emoji, no exclamation, em-dashes for
+ * rhythm.
  */
 
-import type {
-  CompanionAction,
-  CompanionMessage,
-  HoraceMessage,
-} from './types'
+import type { CompanionAction, CompanionMessage, ConversationTurn, HoraceMessage } from './types'
 
 // ── Greeting ────────────────────────────────────────────────────────────────
 
@@ -53,124 +53,38 @@ export function emptyConversation(
   return [{ kind: 'horace', text: greet(contextLabel) }]
 }
 
-// ── Response (pattern-matched mock; LLM call lives here in v2.x) ─────────────
+// ── Response (server-backed brain) ───────────────────────────────────────────
 
-export function respond(
+const UNREACHABLE: HoraceMessage = {
+  kind: 'horace',
+  text: "I couldn't reach my notes just now — try me again in a moment.",
+}
+
+/**
+ * Ask the server-side brain for a grounded reply. Always resolves to a
+ * `HoraceMessage` — on any network/parse failure it returns a soft
+ * "couldn't reach" message rather than throwing, so the drawer can render
+ * it like any other turn.
+ */
+export async function requestReply(
   prompt: string,
-  _contextLabel?: string | undefined,
-): HoraceMessage {
-  const p = prompt.toLowerCase()
-
-  if (
-    p.includes('inspection') &&
-    (p.includes('set up') ||
-      p.includes('schedule') ||
-      p.includes('create') ||
-      p.includes('new'))
-  ) {
-    return {
-      kind: 'horace',
-      text: "I'll set the bones — 99 Buderim St, Saturday 10am. I've generated the QR token and pre-tagged it 'Buderim Sat'. Confirm and I'll publish.",
-      action: {
-        kind: 'create-inspection',
-        target: '99 Buderim St, Currimundi',
-        when: 'Saturday 10:00 am',
-        token: 'buderim-sat',
-      },
+  contextLabel: string | undefined,
+  history: ConversationTurn[] = [],
+): Promise<HoraceMessage> {
+  try {
+    const res = await fetch('/api/companion/respond', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ prompt, contextLabel: contextLabel ?? null, history }),
+    })
+    if (!res.ok) return UNREACHABLE
+    const data = (await res.json()) as Partial<HoraceMessage>
+    if (data?.kind === 'horace' && typeof data.text === 'string' && data.text.trim()) {
+      return data as HoraceMessage
     }
-  }
-
-  if (p.includes('sarah')) {
-    return {
-      kind: 'horace',
-      text: 'Sarah Thompson is here because she returned to 47 Maple a third time this week — Tuesday at lunch, Wednesday morning, and again two hours ago. Each visit, she paused on the floor plan and scrolled past sold prices in the neighbourhood.',
-      italics:
-        'That pattern usually means a private appraisal in their head. A call lands well here.',
-      references: [
-        { label: 'Open 47 Maple Street', route: '/properties/47-maple' },
-        { label: 'See full timeline', route: '/contacts/sarah-thompson' },
-      ],
-    }
-  }
-
-  if (p.includes('draft') && p.includes('marcus')) {
-    return {
-      kind: 'horace',
-      text: "Here's a soft-touch draft — referencing his two-property morning without spooking him.",
-      action: {
-        kind: 'draft-email',
-        target: 'Marcus Bell',
-        subject: 'Two places caught your eye',
-        body: 'Hi Marcus — saw you spent some time on 1049 Eenie Creek and 604 Embelia this morning. Different vibes, both solid. Happy to talk through either if it would help, no pressure either way. — A.',
-      },
-    }
-  }
-
-  if (p.includes('draft')) {
-    return {
-      kind: 'horace',
-      text: "I've drafted something measured — it leaves them the next move.",
-      action: {
-        kind: 'draft-email',
-        target: 'this contact',
-        subject: 'A quick note',
-        body: "Hi — saw you've been spending time on the listing. No reply needed, but if there's anything I can answer, I'm a phone call away. — A.",
-      },
-    }
-  }
-
-  if (p.includes('add') && (p.includes('list') || p.includes('watch'))) {
-    return {
-      kind: 'horace',
-      text: 'Adding to Watch closely — she meets the criteria (three named visits, intent above 50).',
-      action: {
-        kind: 'add-to-list',
-        target: 'Sarah Thompson',
-        listName: 'Watch closely',
-      },
-    }
-  }
-
-  if (p.includes('paddington')) {
-    return {
-      kind: 'horace',
-      text: 'Three named contacts have been active in Paddington this week: Sarah Thompson, an anonymous returning visitor on 47 Maple, and a quick session by Marcus Bell on Sunday. Sarah is the warmest by some distance.',
-      references: [{ label: 'See contacts in Paddington', route: '/contacts' }],
-    }
-  }
-
-  if (p.includes('changed') || p.includes('47 maple')) {
-    return {
-      kind: 'horace',
-      text: 'On 47 Maple: 17 sessions in the last week, 3 of them named. Sarah accounts for half the named time. One new anonymous visitor pattern building — someone in Brisbane returning twice.',
-      references: [{ label: 'Open 47 Maple', route: '/properties/47-maple' }],
-    }
-  }
-
-  if (p.includes('buderim') || p.includes('follow-up')) {
-    return {
-      kind: 'horace',
-      text: 'Three sign-ins from Buderim are still active. I can draft each separately — same skeleton, tailored per person.',
-      action: {
-        kind: 'draft-email',
-        target: '3 still-active sign-ins from Buderim',
-        subject: 'Saturday at Buderim',
-        body: 'Hi {name} — thanks for swinging by Saturday. Saw you took another look at the listing earlier this week. Any questions about the place or the area, just say. — A.',
-      },
-    }
-  }
-
-  if (p.includes('dismiss')) {
-    return {
-      kind: 'horace',
-      text: 'Noted. Moving on.',
-      action: { kind: 'dismiss', target: 'this signal' },
-    }
-  }
-
-  return {
-    kind: 'horace',
-    text: "I'm still learning the shape of this question. In the meantime — try asking me about a specific contact, property, or inspection, and I'll pull what I'm seeing.",
+    return UNREACHABLE
+  } catch {
+    return UNREACHABLE
   }
 }
 
