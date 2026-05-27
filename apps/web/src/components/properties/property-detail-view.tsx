@@ -1,8 +1,7 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import {
   Anchor,
   ArrowLeft,
@@ -92,11 +91,18 @@ export function PropertyDetailView({
   topContact,
   timeline,
 }: PropertyDetailViewProps) {
-  const router = useRouter()
   const { openCompanion } = useCompanion()
   const [filter, setFilter] = useState<TimelineFilter>('all')
   // HOR-137: Attach contact dialog (mirrors AttachRoleDialog, inverted).
   const [attachOpen, setAttachOpen] = useState(false)
+  // HOR-232: optimistic status — ChangeStatusButton updates this instantly on
+  // save (rolling back on error), so the badge doesn't wait on a full
+  // router.refresh round-trip (~2.5s). Re-sync when the server sends a new
+  // property (navigation / external refresh).
+  const [status, setStatus] = useState<PropertyStatus | null>(property.status)
+  useEffect(() => {
+    setStatus(property.status)
+  }, [property.id, property.status])
 
   const tone = toneFor(property.id)
   const filtered = useMemo(() => {
@@ -201,7 +207,7 @@ export function PropertyDetailView({
           {/* Info column */}
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6, flexWrap: 'wrap' }}>
-              <StateBadge status={property.status} size="lg" />
+              <StateBadge status={status} size="lg" />
               <span style={metaPillStyle}>
                 <Database style={{ width: 11, height: 11 }} />
                 Read-only · data vendor
@@ -241,9 +247,9 @@ export function PropertyDetailView({
               <SpecCell label="land" value="—" />
               <SpecCell
                 label={
-                  property.status === 'sold'
+                  status === 'sold'
                     ? 'last sold'
-                    : property.status === 'listed'
+                    : status === 'listed'
                       ? 'asking'
                       : 'last sold'
                 }
@@ -278,7 +284,7 @@ export function PropertyDetailView({
                   View most active contact
                 </button>
               )}
-              <ChangeStatusButton propertyId={property.id} currentStatus={property.status} onChanged={() => router.refresh()} />
+              <ChangeStatusButton propertyId={property.id} currentStatus={status} onStatusChange={setStatus} />
               <button
                 type="button"
                 onClick={() => setAttachOpen(true)}
@@ -747,45 +753,49 @@ function GroupLabel({
 function ChangeStatusButton({
   propertyId,
   currentStatus,
-  onChanged,
+  onStatusChange,
 }: {
   propertyId: string
   currentStatus: PropertyStatus | null
-  onChanged: () => void
+  /** Optimistically set the parent's status; called again to roll back on error. */
+  onStatusChange: (next: PropertyStatus | null) => void
 }) {
   const [open, setOpen] = useState(false)
-  const [saving, setSaving] = useState(false)
-  // HOR-232: the PATCH used to be fire-and-forget — if the server rejected
-  // the value (e.g. a check-constraint violation) the menu still closed and
-  // refreshed, so the change silently reverted. Surface the failure instead.
+  // HOR-232: surface a save failure instead of silently reverting (the PATCH
+  // used to be fire-and-forget).
   const [error, setError] = useState<string | null>(null)
 
   const options: PropertyStatus[] = ['listed', 'appraising', 'watching', 'sold']
 
-  async function set(status: PropertyStatus) {
-    if (saving) return
-    setSaving(true)
+  async function set(next: PropertyStatus) {
+    if (next === currentStatus) {
+      setOpen(false)
+      return
+    }
+    // Optimistic: update the badge instantly and close the menu — no waiting
+    // on the PATCH or a full router.refresh. Roll back + surface the error if
+    // the server rejects it.
+    const prev = currentStatus
     setError(null)
+    setOpen(false)
+    onStatusChange(next)
     try {
       const res = await fetch(`/api/properties/${propertyId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status }),
+        body: JSON.stringify({ status: next }),
       })
       if (!res.ok) {
         const detail = (await res.json().catch(() => null)) as { error?: string } | null
+        onStatusChange(prev)
         setError(detail?.error ? `Couldn't save — ${detail.error}` : "Couldn't save — try again.")
-        setSaving(false)
-        return
+        setOpen(true)
       }
     } catch {
+      onStatusChange(prev)
       setError("Couldn't save — check your connection.")
-      setSaving(false)
-      return
+      setOpen(true)
     }
-    setSaving(false)
-    setOpen(false)
-    onChanged()
   }
 
   return (
