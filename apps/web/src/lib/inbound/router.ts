@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database, Json } from '@/types/database.types'
 import { parseEmail } from './parsers'
+import { sendPortalEnquiryAlert } from '@/lib/notifications/push'
 import { isParseError, type ParsedEnquiry, type ResendFetchedEmail } from './types'
 
 type Admin = SupabaseClient<Database>
@@ -104,6 +105,17 @@ export async function processInboundEmail(
   // Find or create contact by (agent_id, lowercased email).
   const contactId = await findOrCreateContact(admin, agentId, parseResult, meta.sourcePortal)
 
+  // Detect replays: the whole pipeline is idempotent on message_id, so a
+  // Resend retry re-runs everything. The enquiry upsert below is safe to
+  // repeat, but the timeline event + notification must fire ONCE — only on
+  // the first time we capture this enquiry.
+  const { data: priorEnquiry } = await admin
+    .from('enquiries')
+    .select('id')
+    .eq('inbound_email_id', inboundEmailId)
+    .maybeSingle()
+  const isReplay = !!priorEnquiry
+
   // Upsert enquiry. UNIQUE on inbound_email_id makes replay idempotent.
   const { data: enquiry, error: enqErr } = await admin
     .from('enquiries')
@@ -142,11 +154,89 @@ export async function processInboundEmail(
     .update({ parse_status: 'parsed', parse_error: null })
     .eq('id', inboundEmailId)
 
+  // First capture only: write the contact-timeline activity (HOR-235) and
+  // fire the agent notification (HOR-233). Best-effort — a failure here must
+  // not fail the webhook (Resend would retry the whole capture).
+  if (!isReplay && contactId) {
+    await recordPortalEnquiryActivity(admin, {
+      agentId,
+      contactId,
+      enquiryId: enquiry.id,
+      parsed: parseResult,
+      sourcePortal: meta.sourcePortal,
+    })
+  }
+
   return {
     kind: 'parsed',
     inboundEmailId,
     enquiryId: enquiry.id,
     contactId,
+  }
+}
+
+/**
+ * On first capture of a portal enquiry: write a `portal_enquiry` event so
+ * the contact's activity timeline shows it (HOR-235 — get_contact_events
+ * surfaces contact-anchored events automatically), and fire the agent
+ * notification (HOR-233). Each step is independently guarded; neither can
+ * break the inbound webhook.
+ */
+async function recordPortalEnquiryActivity(
+  admin: Admin,
+  args: {
+    agentId: string
+    contactId: string
+    enquiryId: string
+    parsed: ParsedEnquiry
+    sourcePortal: string | null
+  },
+): Promise<void> {
+  const { agentId, contactId, enquiryId, parsed, sourcePortal } = args
+
+  // Timeline event (HOR-235). contact-anchored: contact_id set, session_id
+  // NULL — picked up by the contact-anchored branch of get_contact_events.
+  try {
+    const { data: agent } = await admin
+      .from('agents')
+      .select('workspace_id')
+      .eq('id', agentId)
+      .maybeSingle()
+
+    if (agent?.workspace_id) {
+      // The generated events Insert type predates the v1-model ALTERs
+      // (contact_id, attributed_agent_id, nullable session_id) and the
+      // widened event_type CHECK — cast until database.types.ts regenerates.
+      const eventRow = {
+        workspace_id: agent.workspace_id,
+        session_id: null,
+        contact_id: contactId,
+        event_type: 'portal_enquiry',
+        properties: {
+          enquiry_id: enquiryId,
+          source_portal: sourcePortal,
+          listing_address: parsed.listing_address,
+          listing_external_id: parsed.listing_external_id,
+          listing_url: parsed.listing_url,
+          intent: parsed.intent,
+        },
+        occurred_at: new Date().toISOString(),
+        attributed_agent_id: agentId,
+      }
+      const { error } = await admin.from('events').insert(eventRow as never)
+      if (error) console.error('inbound-router: portal_enquiry event insert failed', error)
+    } else {
+      console.warn('inbound-router: no workspace for agent — skipping portal_enquiry event', { agentId })
+    }
+  } catch (err) {
+    console.error('inbound-router: portal_enquiry event insert threw', err)
+  }
+
+  // Notification (HOR-233) — in-app feed row + web push, deduped 30min.
+  try {
+    await sendPortalEnquiryAlert(agentId, contactId, parsed.enquirer_name, parsed.listing_address, sourcePortal)
+  } catch (err) {
+    console.error('inbound-router: portal enquiry alert failed', err)
   }
 }
 
@@ -211,6 +301,7 @@ async function findOrCreateContact(
       last_name: lastName,
       source: 'portal',
       medium: sourcePortal,
+      ingestion_method: 'portal_enquiry',
       identified_at: new Date().toISOString(),
     })
     .select('id')

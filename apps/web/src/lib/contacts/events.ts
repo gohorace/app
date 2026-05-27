@@ -152,6 +152,19 @@ export function eventLabel(event: MergedEvent, emailSubject?: string | null): st
       const form = (p.form_name as string | undefined) ?? (p.form_id as string | undefined)
       return form ? `Submitted "${form}"` : 'Sent an enquiry'
     }
+    // HOR-235 — portal (REA/Domain) enquiry. Names the channel + listing
+    // per the issue's acceptance.
+    case 'portal_enquiry': {
+      const portal = p.source_portal === 'rea'
+        ? 'realestate.com.au'
+        : p.source_portal === 'domain'
+          ? 'Domain'
+          : 'a portal'
+      const listing = (p.listing_address as string | undefined)?.trim()
+      return listing
+        ? `Enquired via ${portal} — "${listing}"`
+        : `Enquired via ${portal}`
+    }
     case 'return_visit':
       return 'Came back to your site'
     case 'page_view': {
