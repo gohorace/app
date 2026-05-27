@@ -28,6 +28,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database.types'
 import type { CompanionAction, ConversationTurn, HoraceMessage, MessageReference } from '@/lib/companion/types'
+import { getContactEmailSends, type EmailSendSummary } from '@/lib/contacts/email-engagement'
 
 type AdminClient = SupabaseClient<Database>
 
@@ -53,6 +54,9 @@ export interface Grounding {
   lists: GroundingList[]
   /** Pre-formatted recent-activity lines for the focus contact (contacts[0]). */
   events: string[]
+  /** Recent email sends for the focus contact (contacts[0]), newest first and
+   *  capped. Powers "did they open / click my email?" — HOR-306. */
+  emailEngagement: EmailSendSummary[]
   contextLabel: string | undefined
 }
 
@@ -87,6 +91,31 @@ function formatEvents(rows: unknown[]): string[] {
       : ''
     return `- ${when ? `${when}: ` : ''}${detail}`
   })
+}
+
+/** One terse line per email send for the grounding block. Zero-count clauses
+ *  are dropped so the model never reads "opened 0×" as a signal; for a tracked
+ *  send with no opens we say so plainly (lets Horace answer "not yet"), and an
+ *  untracked send reports "not tracked" rather than implying silence == unread. */
+function formatEmailSend(s: EmailSendSummary): string {
+  const fmt = (d: string | null) =>
+    d ? new Date(d).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' }) : ''
+  const parts: string[] = [`"${s.subject?.trim() || '(no subject)'}"`]
+  parts.push(s.sent_at ? `sent ${fmt(s.sent_at)}` : 'not sent yet')
+  if (s.status !== 'sent') parts.push(s.status.replace(/_/g, ' '))
+  if (!s.tracked) {
+    parts.push('not tracked')
+  } else {
+    parts.push(
+      s.open_count > 0
+        ? `opened ${s.open_count}×${s.first_opened_at ? ` (first ${fmt(s.first_opened_at)})` : ''}`
+        : 'not opened yet',
+    )
+    if (s.click_count > 0) {
+      parts.push(`clicked ${s.click_count}×${s.first_clicked_at ? ` (first ${fmt(s.first_clicked_at)})` : ''}`)
+    }
+  }
+  return parts.join(' · ')
 }
 
 /** Workspace-scoped retrieval. Always returns *some* real contacts (falls back
@@ -149,12 +178,16 @@ export async function retrieveGrounding(
   }))
 
   let events: string[] = []
+  let emailEngagement: EmailSendSummary[] = []
   if (contacts[0]) {
     const { data: ev } = await supabase.rpc('get_contact_events', { p_contact_id: contacts[0].id })
     events = formatEvents((ev ?? []) as unknown[])
+    // Focus contact only — one extra query, no N+1. Reuses the HOR-228 loader
+    // so the companion and the contact detail view tell the same story.
+    emailEngagement = (await getContactEmailSends(supabase, agentId, contacts[0].id)).slice(0, 5)
   }
 
-  return { contacts, lists, events, contextLabel }
+  return { contacts, lists, events, emailEngagement, contextLabel }
 }
 
 // ── Prompt ──────────────────────────────────────────────────────────────────
@@ -163,7 +196,7 @@ const SYSTEM_PROMPT = `You are Horace — a quiet, perceptive real-estate market
 
 Voice: confident, brief, slightly poetic. No emoji. No exclamation marks. Use em dashes for rhythm. Keep the main reply under 80 words.
 
-You are given a slice of the agent's real data (CONTACTS, LISTS, RECENT ACTIVITY). You must respond with ONLY a single JSON object — no markdown, no code fences, no prose around it — in this exact shape:
+You are given a slice of the agent's real data (CONTACTS, LISTS, RECENT ACTIVITY, and — when the focus contact has been emailed — EMAIL ENGAGEMENT). You must respond with ONLY a single JSON object — no markdown, no code fences, no prose around it — in this exact shape:
 
 {
   "text": string,                  // your reply to the agent
@@ -184,6 +217,8 @@ Hard rules:
 - Never invent a CONTACT, LIST, email address, route, or id that is not present in the data below. If the data doesn't contain who the agent asked about, say so plainly — do not fabricate a person or a link.
 - Only reference contacts/lists by the exact id given. Links use /contacts/<id> or /lists/<id> with those ids.
 - Facts the agent states in the conversation (e.g. a recent sale price, how they met a contact, a property detail) ARE usable — draft with them and treat them as true. The "never invent" rule is about entities and links, not about facts the agent volunteers. You don't need a record of a sale to use one the agent just told you about.
+- When EMAIL ENGAGEMENT is present you CAN and should answer whether your emails to that contact were opened or clicked — cite the specific counts and dates shown. When it is absent for the person asked about, say there's no tracked email to them yet rather than implying an open or click that isn't in the data.
+- Email opens are an imperfect signal — mail apps and security scanners can load the tracking pixel without a human reading anything. Say a message was "opened", never "read", and treat a click as the stronger, more reliable sign of genuine interest. Don't over-claim opens.
 - You are a thinking partner and signal reader, not a CRM. Do not invent tasks, deal stages, or follow-up reminders.
 - Answer open-ended and casual questions ("what can you help me with?", "help me think about Brian") naturally — but ALWAYS through the JSON envelope, with your reply in "text". Never respond with bare prose outside the JSON.`
 
@@ -213,6 +248,11 @@ export function buildGroundingBlock(g: Grounding, prompt: string, history: Conve
     lines.push('')
     lines.push(`RECENT ACTIVITY for ${g.contacts[0]?.name ?? 'the focus contact'}:`)
     lines.push(...g.events)
+  }
+  if (g.emailEngagement.length > 0) {
+    lines.push('')
+    lines.push(`EMAIL ENGAGEMENT for ${g.contacts[0]?.name ?? 'the focus contact'} (newest first):`)
+    for (const s of g.emailEngagement) lines.push(`- ${formatEmailSend(s)}`)
   }
   if (history.length > 0) {
     lines.push('')

@@ -15,6 +15,7 @@ const grounding: Grounding = {
   ],
   lists: [{ id: 'l-watch', name: 'Watch closely' }],
   events: [],
+  emailEngagement: [],
   contextLabel: 'Digest',
 }
 
@@ -177,5 +178,56 @@ describe('buildGroundingBlock — conversation history', () => {
     const block = buildGroundingBlock(grounding, 'hi', [])
     expect(block).not.toContain('CONVERSATION SO FAR')
     expect(block).toContain("The agent's latest message: hi")
+  })
+})
+
+describe('buildGroundingBlock — email engagement', () => {
+  const withEngagement: Grounding = {
+    ...grounding,
+    emailEngagement: [
+      {
+        id: 'es-1',
+        subject: '47 Maple — your private viewing',
+        to_email: 'sarah@example.com',
+        status: 'sent',
+        tracked: true,
+        sent_at: '2026-05-18',
+        first_opened_at: '2026-05-20',
+        first_clicked_at: '2026-05-20',
+        open_count: 2,
+        click_count: 1,
+      },
+      {
+        id: 'es-2',
+        subject: 'Following up',
+        to_email: 'sarah@example.com',
+        status: 'sent',
+        tracked: true,
+        sent_at: '2026-05-10',
+        first_opened_at: null,
+        first_clicked_at: null,
+        open_count: 0,
+        click_count: 0,
+      },
+    ],
+  }
+
+  it('renders an EMAIL ENGAGEMENT section with subject, opens and clicks', () => {
+    const block = buildGroundingBlock(withEngagement, 'did she open my email?')
+    expect(block).toContain('EMAIL ENGAGEMENT for Sarah Thompson')
+    expect(block).toContain('47 Maple — your private viewing')
+    expect(block).toContain('opened 2×')
+    expect(block).toContain('clicked 1×')
+  })
+
+  it('reports a tracked send with no opens as "not opened yet" and omits a zero-click clause', () => {
+    const block = buildGroundingBlock(withEngagement, 'any movement?')
+    expect(block).toContain('not opened yet')
+    expect(block).not.toContain('clicked 0×')
+  })
+
+  it('omits the whole section when there is no engagement', () => {
+    const block = buildGroundingBlock(grounding, 'hi')
+    expect(block).not.toContain('EMAIL ENGAGEMENT')
   })
 })
