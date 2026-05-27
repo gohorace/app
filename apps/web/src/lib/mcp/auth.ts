@@ -2,6 +2,7 @@ import { createHash, randomBytes } from 'crypto'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 const TOKEN_PREFIX = 'hor_'
+const REFRESH_TOKEN_PREFIX = 'hor_rt_'
 
 export interface McpAuthContext {
   workspaceId: string
@@ -12,6 +13,14 @@ export function mintToken(): { plaintext: string; hash: string } {
   const plaintext = TOKEN_PREFIX + randomBytes(24).toString('base64url')
   const hash = hashToken(plaintext)
   return { plaintext, hash }
+}
+
+// Refresh tokens are stored (hashed) in oauth_refresh_tokens, not
+// workspace_api_tokens, so they never resolve as bearer access tokens even
+// though they share the `hor_` stem.
+export function mintRefreshToken(): { plaintext: string; hash: string } {
+  const plaintext = REFRESH_TOKEN_PREFIX + randomBytes(32).toString('base64url')
+  return { plaintext, hash: hashToken(plaintext) }
 }
 
 export function hashToken(plaintext: string): string {
