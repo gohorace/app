@@ -1,0 +1,54 @@
+-- ============================================================
+-- Supabase database-linter ERROR remediation (2026-05-28)
+--
+-- Clears three EXTERNAL/SECURITY linter errors on prod:
+--   1. 0010_security_definer_view  — public.inbound_emails_unresolved
+--   2. 0013_rls_disabled_in_public — gnaf.localities
+--   3. 0013_rls_disabled_in_public — gnaf.address_principal
+--
+-- ── Root cause ──────────────────────────────────────────────
+-- ⚠️ The gnaf schema IS exposed to PostgREST in prod, contradicting
+-- the comment in 20260517000001_gnaf_schema.sql which assumed it
+-- was not. Exposure is REQUIRED: the app reads gnaf via the
+-- service-role client with `.schema('gnaf')` — see
+--   apps/web/src/app/(dashboard)/properties/page.tsx        (locality centroids)
+--   apps/web/src/app/api/core-markets/route.ts              (locality_pid validate)
+-- PostgREST only routes `.schema('gnaf')` requests when gnaf is in
+-- the project's exposed-schema list, so it was added to the dashboard
+-- API settings — but supabase/config.toml (local) was never updated
+-- to match, and the migration's RLS-ENABLE statements did not take on
+-- prod (known _migrations drift; see migration note). Net effect: the
+-- gnaf tables are reachable via the anon/authenticated keys with RLS
+-- OFF → all 733k addresses readable by any client. RLS-enable restores
+-- the schema's original design (deny-all for anon/authenticated;
+-- service-role and the SECURITY DEFINER search_localities RPC bypass
+-- RLS and keep working).
+--
+-- The view defect is independent of drift: it was created with a plain
+-- CREATE OR REPLACE VIEW (SECURITY DEFINER by default), so it runs as
+-- its owner and bypasses inbound_emails RLS — leaking every workspace's
+-- unresolved inbound emails (incl. agent_id-NULL / unmatched rows that
+-- are meant to be service-role-only) to any authenticated caller.
+--
+-- All statements below are idempotent and safe to re-run even if part
+-- of the original gnaf migration did land.
+-- ============================================================
+
+-- ─── 1 & 2. gnaf RLS (re-apply 20260517000001's intent) ─────────────
+-- No policies on purpose: RLS-enabled-with-no-policy denies all anon/
+-- authenticated reads, while service_role (app reads) and the
+-- SECURITY DEFINER search_localities RPC bypass RLS. FK checks
+-- (core_markets.locality_pid, properties → address_principal) and the
+-- ingest script run with owner privileges and are unaffected. NOT
+-- forced, so the table owner / ingest path is never blocked.
+ALTER TABLE gnaf.localities         ENABLE ROW LEVEL SECURITY;
+ALTER TABLE gnaf.address_principal  ENABLE ROW LEVEL SECURITY;
+
+-- ─── 3. inbound_emails_unresolved → security_invoker ────────────────
+-- Flip the operational monitor to run with the querying user's
+-- permissions so inbound_emails RLS (20260510000005) applies. Operators
+-- query it as service_role (Studio / admin tooling) and still see every
+-- row; authenticated callers now see only their workspace's matched
+-- rows, never the agent_id-NULL unmatched ones. No app code reads this
+-- view (operator-only), so the tightened scope breaks nothing.
+ALTER VIEW public.inbound_emails_unresolved SET (security_invoker = true);
