@@ -755,17 +755,34 @@ function ChangeStatusButton({
 }) {
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
+  // HOR-232: the PATCH used to be fire-and-forget — if the server rejected
+  // the value (e.g. a check-constraint violation) the menu still closed and
+  // refreshed, so the change silently reverted. Surface the failure instead.
+  const [error, setError] = useState<string | null>(null)
 
   const options: PropertyStatus[] = ['listed', 'appraising', 'watching', 'sold']
 
   async function set(status: PropertyStatus) {
     if (saving) return
     setSaving(true)
-    await fetch(`/api/properties/${propertyId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status }),
-    })
+    setError(null)
+    try {
+      const res = await fetch(`/api/properties/${propertyId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      })
+      if (!res.ok) {
+        const detail = (await res.json().catch(() => null)) as { error?: string } | null
+        setError(detail?.error ? `Couldn't save — ${detail.error}` : "Couldn't save — try again.")
+        setSaving(false)
+        return
+      }
+    } catch {
+      setError("Couldn't save — check your connection.")
+      setSaving(false)
+      return
+    }
     setSaving(false)
     setOpen(false)
     onChanged()
@@ -775,7 +792,10 @@ function ChangeStatusButton({
     <div style={{ position: 'relative' }}>
       <button
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => {
+          setError(null)
+          setOpen((o) => !o)
+        }}
         style={secondaryBtnStyle}
       >
         <Edit3 style={{ width: 13, height: 13 }} />
@@ -820,6 +840,22 @@ function ChangeStatusButton({
                 <StateBadge status={opt} />
               </div>
             ))}
+            {error && (
+              <div
+                role="alert"
+                style={{
+                  margin: '4px 6px 2px',
+                  padding: '7px 8px',
+                  fontSize: 11,
+                  lineHeight: 1.4,
+                  color: '#9C4A1F',
+                  background: 'rgba(196,98,45,0.1)',
+                  borderRadius: 5,
+                }}
+              >
+                {error}
+              </div>
+            )}
           </div>
         </>
       )}

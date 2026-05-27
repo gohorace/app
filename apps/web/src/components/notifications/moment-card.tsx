@@ -13,9 +13,11 @@
  * without comparing against the mock in a browser.
  */
 
+import { useState } from 'react'
 import {
   ArrowUpRight,
   Check,
+  Circle,
   Eye,
   Flame,
   Home,
@@ -43,8 +45,10 @@ export interface MomentCardProps {
   resolved?: boolean
   /** Primary action handler — fires when the agent taps the primary button. */
   onPrimary?: (moment: StreamMoment) => void
-  /** Overflow menu trigger — fires when the agent taps the More button. */
-  onMore?: (moment: StreamMoment) => void
+  /** Mark this moment read — fired from the overflow (⋮) menu. */
+  onMarkRead?: (moment: StreamMoment) => void
+  /** Mark this moment unread — fired from the overflow (⋮) menu. */
+  onMarkUnread?: (moment: StreamMoment) => void
   /** Whole-card tap handler — anything outside the action buttons. */
   onOpen?: (moment: StreamMoment) => void
   /** How a batched/stacked moment renders (flat chip vs literal offset cards). */
@@ -57,11 +61,13 @@ export function MomentCard({
   moment,
   resolved = false,
   onPrimary,
-  onMore,
+  onMarkRead,
+  onMarkUnread,
   onOpen,
   stackStyle = 'flat',
   resolvedLabel = 'Added to Warming up',
 }: MomentCardProps) {
+  const [menuOpen, setMenuOpen] = useState(false)
   const tone = MOMENT_TONES[moment.type]
   const Icon = ICON_BY_TONE[tone.icon]
   const isRead = !moment.unread
@@ -318,32 +324,134 @@ export function MomentCard({
                 {moment.primary}
               </button>
             )}
-            <button
-              type="button"
-              aria-label="More"
-              onClick={(e) => {
-                e.stopPropagation()
-                onMore?.(moment)
-              }}
-              style={{
-                width: 26,
-                height: 26,
-                borderRadius: 6,
-                border: 'none',
-                background: 'transparent',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#8C7B6B',
-              }}
-            >
-              <MoreHorizontal style={{ width: 14, height: 14, strokeWidth: 2 }} />
-            </button>
+            <div style={{ position: 'relative' }}>
+              <button
+                type="button"
+                aria-label="More"
+                aria-haspopup="menu"
+                aria-expanded={menuOpen}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setMenuOpen((o) => !o)
+                }}
+                style={{
+                  width: 26,
+                  height: 26,
+                  borderRadius: 6,
+                  border: 'none',
+                  background: menuOpen ? 'rgba(140,123,107,0.12)' : 'transparent',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#8C7B6B',
+                }}
+              >
+                <MoreHorizontal style={{ width: 14, height: 14, strokeWidth: 2 }} />
+              </button>
+              {menuOpen && (
+                <>
+                  {/* Click-catcher closes the menu (covers the whole viewport
+                      so a tap anywhere — including another card — dismisses). */}
+                  <div
+                    style={{ position: 'fixed', inset: 0, zIndex: 30 }}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setMenuOpen(false)
+                    }}
+                  />
+                  <div
+                    role="menu"
+                    style={{
+                      position: 'absolute',
+                      top: 'calc(100% + 4px)',
+                      right: 0,
+                      zIndex: 31,
+                      minWidth: 168,
+                      background: '#FAF7F2',
+                      border: '1px solid rgba(140,123,107,0.22)',
+                      borderRadius: 8,
+                      boxShadow: '0 12px 32px rgba(26,22,18,0.18)',
+                      padding: 4,
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {moment.unread ? (
+                      <MenuItem
+                        icon={Check}
+                        label="Mark as read"
+                        onClick={() => {
+                          setMenuOpen(false)
+                          onMarkRead?.(moment)
+                        }}
+                      />
+                    ) : (
+                      <MenuItem
+                        icon={Circle}
+                        label="Mark as unread"
+                        onClick={() => {
+                          setMenuOpen(false)
+                          onMarkUnread?.(moment)
+                        }}
+                      />
+                    )}
+                    {onOpen && (
+                      <MenuItem
+                        icon={ArrowUpRight}
+                        label={moment.subject.kind === 'property' ? 'Open property' : 'Open contact'}
+                        onClick={() => {
+                          setMenuOpen(false)
+                          onOpen(moment)
+                        }}
+                      />
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
       </div>
     </div>
+  )
+}
+
+function MenuItem({
+  icon: Icon,
+  label,
+  onClick,
+}: {
+  icon: LucideIcon
+  label: string
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      onClick={onClick}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        width: '100%',
+        padding: '8px 10px',
+        background: 'transparent',
+        border: 'none',
+        borderRadius: 5,
+        cursor: 'pointer',
+        fontSize: 12.5,
+        fontWeight: 500,
+        color: '#1A1612',
+        fontFamily: "'DM Sans', sans-serif",
+        textAlign: 'left',
+      }}
+      onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(140,123,107,0.1)')}
+      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+    >
+      <Icon style={{ width: 13, height: 13, color: '#8C7B6B', strokeWidth: 2 }} />
+      {label}
+    </button>
   )
 }
 

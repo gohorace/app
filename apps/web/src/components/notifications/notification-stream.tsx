@@ -21,7 +21,8 @@ export interface NotificationStreamProps {
   stackStyle?: StackStyle
   onMarkAllRead?: () => void
   onPrimary?: (moment: StreamMoment) => void
-  onMore?: (moment: StreamMoment) => void
+  onMarkRead?: (moment: StreamMoment) => void
+  onMarkUnread?: (moment: StreamMoment) => void
   onOpen?: (moment: StreamMoment) => void
   onSettings?: () => void
   onClose?: () => void
@@ -40,7 +41,8 @@ export function NotificationStream({
   stackStyle = 'flat',
   onMarkAllRead,
   onPrimary,
-  onMore,
+  onMarkRead,
+  onMarkUnread,
   onOpen,
   onSettings,
   onClose,
@@ -92,7 +94,8 @@ export function NotificationStream({
                       resolved={resolvedIds?.has(moment.id) ?? false}
                       stackStyle={stackStyle}
                       onPrimary={onPrimary}
-                      onMore={onMore}
+                      onMarkRead={onMarkRead}
+                      onMarkUnread={onMarkUnread}
                       onOpen={onOpen}
                     />
                   ))}

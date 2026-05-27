@@ -40,6 +40,11 @@ export function deriveMomentType(
     case 'sms_form':
       return 'high_intent'
 
+    // HOR-233 — a portal (REA/Domain) enquiry is a strong, named intent
+    // signal; render it as a high-intent moment in the stream.
+    case 'alert_portal_enquiry':
+      return 'high_intent'
+
     case 'alert_score_threshold':
     case 'alert_threshold':
     case 'sms_threshold':

@@ -89,6 +89,36 @@ export function NotificationsSlideOver() {
     setItems((prev) => prev.map((m) => (m.id === id ? { ...m, unread: false } : m)))
   }, [])
 
+  const markUnreadLocal = useCallback((id: string) => {
+    setItems((prev) => prev.map((m) => (m.id === id ? { ...m, unread: true } : m)))
+  }, [])
+
+  // HOR-234 kebab: mark a single item read/unread. Optimistic local update +
+  // POST, then refresh so the server-rendered bell badge (HOR-231) re-counts.
+  const handleMarkRead = useCallback(
+    (moment: StreamMoment) => {
+      markReadLocal(moment.id)
+      void fetch(`/api/notifications/${moment.id}/read`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ read: true }),
+      }).then(() => startTransition(() => router.refresh()))
+    },
+    [markReadLocal, router],
+  )
+
+  const handleMarkUnread = useCallback(
+    (moment: StreamMoment) => {
+      markUnreadLocal(moment.id)
+      void fetch(`/api/notifications/${moment.id}/read`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ read: false }),
+      }).then(() => startTransition(() => router.refresh()))
+    },
+    [markUnreadLocal, router],
+  )
+
   const handleMarkAllRead = useCallback(() => {
     setItems((prev) => prev.map((m) => (m.unread ? { ...m, unread: false } : m)))
     void fetch('/api/notifications/mark-all-read', { method: 'POST' }).then(() =>
@@ -99,7 +129,11 @@ export function NotificationsSlideOver() {
   const handleOpen = useCallback(
     (moment: StreamMoment) => {
       markReadLocal(moment.id)
-      void fetch(`/api/notifications/${moment.id}/read`, { method: 'POST' })
+      // Refresh so the bell badge decrements even when we don't navigate
+      // (e.g. property subjects just close the panel). HOR-231.
+      void fetch(`/api/notifications/${moment.id}/read`, { method: 'POST' }).then(() =>
+        startTransition(() => router.refresh()),
+      )
       close()
       if (moment.subject.kind === 'contact') {
         router.push(`/contacts/${moment.subject.id}`)
@@ -194,6 +228,8 @@ export function NotificationsSlideOver() {
           container="desktop"
           onMarkAllRead={handleMarkAllRead}
           onPrimary={handlePrimary}
+          onMarkRead={handleMarkRead}
+          onMarkUnread={handleMarkUnread}
           onOpen={handleOpen}
           onSettings={() => {
             close()

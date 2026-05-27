@@ -3,8 +3,13 @@ import { createClient } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'
 
-export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
+
+  // Optional body `{ read?: boolean }` — HOR-234 kebab toggles read state both
+  // ways. Defaults to read=true so existing callers (tap-to-open) are unchanged.
+  const body = (await req.json().catch(() => null)) as { read?: boolean } | null
+  const markRead = body?.read !== false
 
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -12,9 +17,8 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
 
   const { error } = await supabase
     .from('notification_log')
-    .update({ read_at: new Date().toISOString() })
+    .update({ read_at: markRead ? new Date().toISOString() : null })
     .eq('id', id)
-    .is('read_at', null)
 
   if (error) {
     console.error('[activity] mark-read failed:', error)
