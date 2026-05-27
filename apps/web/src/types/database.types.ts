@@ -567,6 +567,29 @@ export type Database = {
         }
         Relationships: []
       }
+      oauth_refresh_tokens: {
+        Row: {
+          id: string; token_hash: string; client_id: string
+          user_id: string; agent_id: string; workspace_id: string
+          scope: string; expires_at: string; revoked_at: string | null
+          rotated_from: string | null; last_used_at: string | null; created_at: string
+        }
+        Insert: {
+          id?: string; token_hash: string; client_id: string
+          user_id: string; agent_id: string; workspace_id: string
+          scope?: string; expires_at: string; revoked_at?: string | null
+          rotated_from?: string | null; last_used_at?: string | null; created_at?: string
+        }
+        Update: {
+          id?: string; token_hash?: string; client_id?: string
+          user_id?: string; agent_id?: string; workspace_id?: string
+          scope?: string; expires_at?: string; revoked_at?: string | null
+          rotated_from?: string | null; last_used_at?: string | null; created_at?: string
+        }
+        Relationships: [
+          { foreignKeyName: 'oauth_refresh_tokens_rotated_from_fkey'; columns: ['rotated_from']; isOneToOne: false; referencedRelation: 'oauth_refresh_tokens'; referencedColumns: ['id'] }
+        ]
+      }
       identified_devices: {
         Row: {
           id: string; workspace_id: string; contact_id: string
@@ -832,6 +855,17 @@ export type Database = {
           redirect_uri: string
           code_challenge: string
           code_challenge_method: string
+          scope: string
+        }>
+      }
+      consume_refresh_token: {
+        Args: { p_token_hash: string }
+        Returns: Array<{
+          id: string
+          client_id: string
+          user_id: string
+          agent_id: string
+          workspace_id: string
           scope: string
         }>
       }

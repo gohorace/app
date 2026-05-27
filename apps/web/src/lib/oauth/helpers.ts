@@ -1,7 +1,12 @@
 import { createHash, randomBytes, timingSafeEqual } from 'crypto'
 
 export const AUTH_CODE_TTL_SECONDS = 600          // 10 minutes
-export const ACCESS_TOKEN_TTL_SECONDS = 60 * 60 * 24 * 90  // 90 days
+// Short-lived now that refresh tokens exist: a leaked access token is only
+// useful for an hour, and revocation (clearing the row) actually bites.
+export const ACCESS_TOKEN_TTL_SECONDS = 60 * 60   // 1 hour
+// Long-lived but rotated on every use, and reissued (sliding) on each refresh
+// — so an actively-used connector never expires, an abandoned one does.
+export const REFRESH_TOKEN_TTL_SECONDS = 60 * 60 * 24 * 365  // 1 year
 export const DEFAULT_SCOPE = 'mcp'
 
 /**
