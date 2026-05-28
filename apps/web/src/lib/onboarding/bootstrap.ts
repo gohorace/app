@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { postToSignupsChannel } from '@/lib/notifications/slack'
 import { redirect } from 'next/navigation'
 import type { OnboardingStep } from './state'
 
@@ -109,6 +110,15 @@ export async function bootstrapOnboardingContext(): Promise<OnboardingContext> {
       console.error('[onboarding] create_workspace_with_agent error:', rpcError)
       throw new Error('Failed to set up workspace. Please contact support.')
     }
+
+    // Internal ops signal: ping the team Slack when a new account provisions.
+    // This branch runs exactly once per self-serve signup (the pending_*
+    // metadata is cleared just below, so subsequent visits skip it).
+    // Best-effort — postToSignupsChannel swallows its own errors.
+    const signupName = [first, last].filter(Boolean).join(' ').trim()
+    await postToSignupsChannel(
+      `🎉 New signup: ${signupName || '(no name)'} <${user.email ?? 'no email'}> — ${pendingAgencyName}`,
+    )
 
     await admin.auth.admin.updateUserById(user.id, {
       user_metadata: {

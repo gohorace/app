@@ -1,7 +1,6 @@
-export async function postToAlertVolumeChannel(text: string): Promise<void> {
-  const url = process.env.SLACK_ALERT_VOLUME_WEBHOOK_URL
+async function postToWebhook(envKey: string, url: string | undefined, text: string): Promise<void> {
   if (!url) {
-    console.warn('[slack] SLACK_ALERT_VOLUME_WEBHOOK_URL not set — skipping')
+    console.warn(`[slack] ${envKey} not set — skipping`)
     return
   }
   try {
@@ -17,4 +16,12 @@ export async function postToAlertVolumeChannel(text: string): Promise<void> {
   } catch (err) {
     console.error('[slack] post threw:', err)
   }
+}
+
+export async function postToAlertVolumeChannel(text: string): Promise<void> {
+  return postToWebhook('SLACK_ALERT_VOLUME_WEBHOOK_URL', process.env.SLACK_ALERT_VOLUME_WEBHOOK_URL, text)
+}
+
+export async function postToSignupsChannel(text: string): Promise<void> {
+  return postToWebhook('SLACK_SIGNUPS_WEBHOOK_URL', process.env.SLACK_SIGNUPS_WEBHOOK_URL, text)
 }
