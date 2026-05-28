@@ -18,6 +18,18 @@ describe('deriveMomentType', () => {
     }
   })
 
+  // HOR-280 — these were counted toward the bell badge but, without a mapping,
+  // never rendered in the stream, so the badge over-counted.
+  it('returns newly_known for Doorstep capture + embed alerts', () => {
+    for (const t of ['alert_inspection_capture', 'alert_embed_capture']) {
+      expect(deriveMomentType(row(t))).toBe('newly_known')
+    }
+  })
+
+  it('returns returning for inspection revisit', () => {
+    expect(deriveMomentType(row('alert_inspection_revisit'))).toBe('returning')
+  })
+
   it('returns newly_known for return-visit when identified <24h before send', () => {
     const sent = '2026-05-14T10:00:00+10:00'
     const identified = '2026-05-14T01:00:00+10:00' // 9h before
