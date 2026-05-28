@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { vapidSubject } from '@/lib/notifications/vapid'
 
 export async function POST() {
   const supabase = await createClient()
@@ -19,7 +20,6 @@ export async function POST() {
   // Check VAPID config
   const vapidPublic  = process.env.VAPID_PUBLIC_KEY
   const vapidPrivate = process.env.VAPID_PRIVATE_KEY
-  const vapidEmail   = process.env.VAPID_EMAIL ?? 'mailto:hello@horace.app'
 
   if (!vapidPublic || !vapidPrivate) {
     return NextResponse.json({
@@ -41,7 +41,16 @@ export async function POST() {
 
   // Send test notification to all subscriptions
   const webpush = await import('web-push')
-  webpush.setVapidDetails(vapidEmail, vapidPublic, vapidPrivate)
+  try {
+    webpush.setVapidDetails(vapidSubject(), vapidPublic, vapidPrivate)
+  } catch (err) {
+    // HOR-296 — a bare-email VAPID_EMAIL made setVapidDetails throw an
+    // unhandled 500 ("Vapid subject is not a url or mailto url"). vapidSubject
+    // normalises that, but keep a clean error for any other bad config.
+    return NextResponse.json({
+      error: `VAPID config invalid: ${err instanceof Error ? err.message : String(err)}. Check VAPID_EMAIL (must be a mailto: or https: URL).`,
+    }, { status: 500 })
+  }
 
   const payload = JSON.stringify({
     title: 'Horace is watching.',

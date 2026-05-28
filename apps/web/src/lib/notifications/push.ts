@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { postToAlertVolumeChannel } from '@/lib/notifications/slack'
+import { vapidSubject } from './vapid'
 
 const DEDUP_MINUTES = 30
 const VOLUME_CAP_PER_24H = 8
@@ -46,14 +47,20 @@ async function sendWebPush(endpoint: string, p256dh: string, auth: string, paylo
 
   const vapidPublic  = process.env.VAPID_PUBLIC_KEY
   const vapidPrivate = process.env.VAPID_PRIVATE_KEY
-  const vapidEmail   = process.env.VAPID_EMAIL ?? 'mailto:hello@horace.app'
 
   if (!vapidPublic || !vapidPrivate) {
     console.warn('[push] VAPID keys not set — skipping push')
     return false
   }
 
-  webpush.setVapidDetails(vapidEmail, vapidPublic, vapidPrivate)
+  try {
+    webpush.setVapidDetails(vapidSubject(), vapidPublic, vapidPrivate)
+  } catch (err) {
+    // Malformed VAPID config (e.g. a bare-email VAPID_EMAIL) — don't let it
+    // throw through dispatch and 500 the whole alert path (HOR-296).
+    console.error('[push] invalid VAPID config — skipping push', err)
+    return false
+  }
 
   try {
     await webpush.sendNotification(
