@@ -11,45 +11,48 @@ const defaultRules = [
 ]
 
 export default function ScoringPage() {
+  // Own scroll container — dashboard <main> delegates scrolling per page (HOR-297).
   return (
-    <div className="p-8 space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Scoring rules</h1>
-        <p className="text-muted-foreground">How points are awarded for lead activity</p>
-      </div>
+    <div className="flex-1 overflow-y-auto pb-20 md:pb-0">
+      <div className="p-8 space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Scoring rules</h1>
+          <p className="text-muted-foreground">How points are awarded for lead activity</p>
+        </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Default scoring rules</CardTitle>
-          <CardDescription>
-            These rules apply to all leads. Custom overrides coming soon.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="p-0">
-          <table className="w-full text-sm">
-            <thead className="border-b">
-              <tr className="text-left text-muted-foreground">
-                <th className="px-6 py-3 font-medium">Activity</th>
-                <th className="px-6 py-3 font-medium text-right">Points</th>
-                <th className="px-6 py-3 font-medium text-right">Cap</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {defaultRules.map((rule) => (
-                <tr key={rule.event_type}>
-                  <td className="px-6 py-3 font-medium">{rule.label}</td>
-                  <td className="px-6 py-3 text-right">
-                    <Badge variant="secondary">+{rule.points}</Badge>
-                  </td>
-                  <td className="px-6 py-3 text-right text-muted-foreground text-xs">
-                    {rule.cap}
-                  </td>
+        <Card>
+          <CardHeader>
+            <CardTitle>Default scoring rules</CardTitle>
+            <CardDescription>
+              These rules apply to all leads. Custom overrides coming soon.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="p-0">
+            <table className="w-full text-sm">
+              <thead className="border-b">
+                <tr className="text-left text-muted-foreground">
+                  <th className="px-6 py-3 font-medium">Activity</th>
+                  <th className="px-6 py-3 font-medium text-right">Points</th>
+                  <th className="px-6 py-3 font-medium text-right">Cap</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </CardContent>
-      </Card>
+              </thead>
+              <tbody className="divide-y">
+                {defaultRules.map((rule) => (
+                  <tr key={rule.event_type}>
+                    <td className="px-6 py-3 font-medium">{rule.label}</td>
+                    <td className="px-6 py-3 text-right">
+                      <Badge variant="secondary">+{rule.points}</Badge>
+                    </td>
+                    <td className="px-6 py-3 text-right text-muted-foreground text-xs">
+                      {rule.cap}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   )
 }

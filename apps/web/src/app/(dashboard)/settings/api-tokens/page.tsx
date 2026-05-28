@@ -19,30 +19,33 @@ export default async function ApiTokensPage() {
   const appUrl = getAppUrl()
   const mcpUrl = appUrl ? `${appUrl}/api/mcp` : ''
 
+  // Own scroll container — dashboard <main> delegates scrolling per page (HOR-297).
   return (
-    <div className="p-8 space-y-6 max-w-3xl">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">API tokens</h1>
-        <p className="text-muted-foreground">
-          Mint a token to connect Horace to your Claude account via MCP.
-        </p>
-      </div>
+    <div className="flex-1 overflow-y-auto pb-20 md:pb-0">
+      <div className="p-8 space-y-6 max-w-3xl">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">API tokens</h1>
+          <p className="text-muted-foreground">
+            Mint a token to connect Horace to your Claude account via MCP.
+          </p>
+        </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Key className="w-4 h-4" />
-            Your tokens
-          </CardTitle>
-          <CardDescription>
-            Tokens authenticate as your agent identity. Treat them like passwords —
-            you can only see the token value once, at creation.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <ApiTokensManager initialTokens={tokens ?? []} mcpUrl={mcpUrl} />
-        </CardContent>
-      </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Key className="w-4 h-4" />
+              Your tokens
+            </CardTitle>
+            <CardDescription>
+              Tokens authenticate as your agent identity. Treat them like passwords —
+              you can only see the token value once, at creation.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ApiTokensManager initialTokens={tokens ?? []} mcpUrl={mcpUrl} />
+          </CardContent>
+        </Card>
+      </div>
     </div>
   )
 }

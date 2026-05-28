@@ -45,22 +45,26 @@ export default async function CustomDomainSettingsPage() {
 
   if (!membership) {
     return (
-      <div className="p-8 max-w-3xl">
-        <h1 className="text-2xl font-bold tracking-tight">Custom domain</h1>
-        <p className="text-muted-foreground mt-2">
-          You don&apos;t belong to a workspace yet.
-        </p>
+      <div className="flex-1 overflow-y-auto pb-20 md:pb-0">
+        <div className="p-8 max-w-3xl">
+          <h1 className="text-2xl font-bold tracking-tight">Custom domain</h1>
+          <p className="text-muted-foreground mt-2">
+            You don&apos;t belong to a workspace yet.
+          </p>
+        </div>
       </div>
     )
   }
 
   if (membership.role !== 'owner' && membership.role !== 'admin') {
     return (
-      <div className="p-8 max-w-3xl">
-        <h1 className="text-2xl font-bold tracking-tight">Custom domain</h1>
-        <p className="text-muted-foreground mt-2">
-          Custom domains are managed by the workspace owner.
-        </p>
+      <div className="flex-1 overflow-y-auto pb-20 md:pb-0">
+        <div className="p-8 max-w-3xl">
+          <h1 className="text-2xl font-bold tracking-tight">Custom domain</h1>
+          <p className="text-muted-foreground mt-2">
+            Custom domains are managed by the workspace owner.
+          </p>
+        </div>
       </div>
     )
   }
@@ -97,32 +101,35 @@ export default async function CustomDomainSettingsPage() {
       }
     : null
 
+  // Own scroll container — dashboard <main> delegates scrolling per page (HOR-297).
   return (
-    <div className="p-8 space-y-6 max-w-3xl">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Custom domain</h1>
-        <p className="text-muted-foreground">
-          Doorstep runs on a domain your attendees recognise. Add a subdomain
-          like <code className="font-mono text-xs">inspections.agentname.com.au</code>
-          {' '}and we&apos;ll handle the certificate.
-        </p>
-      </div>
+    <div className="flex-1 overflow-y-auto pb-20 md:pb-0">
+      <div className="p-8 space-y-6 max-w-3xl">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Custom domain</h1>
+          <p className="text-muted-foreground">
+            Doorstep runs on a domain your attendees recognise. Add a subdomain
+            like <code className="font-mono text-xs">inspections.agentname.com.au</code>
+            {' '}and we&apos;ll handle the certificate.
+          </p>
+        </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Globe className="w-4 h-4" />
-            Doorstep domain
-          </CardTitle>
-          <CardDescription>
-            One verified domain per workspace. Add a CNAME with your DNS host;
-            we provision the certificate automatically.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <CustomDomainManager initialDomain={initialDomain} />
-        </CardContent>
-      </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Globe className="w-4 h-4" />
+              Doorstep domain
+            </CardTitle>
+            <CardDescription>
+              One verified domain per workspace. Add a CNAME with your DNS host;
+              we provision the certificate automatically.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <CustomDomainManager initialDomain={initialDomain} />
+          </CardContent>
+        </Card>
+      </div>
     </div>
   )
 }

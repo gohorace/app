@@ -48,30 +48,33 @@ export default async function IntegrationsPage({ searchParams }: PageProps) {
   const params = await searchParams
   const banner = resolveBanner(params)
 
+  // Own scroll container — dashboard <main> delegates scrolling per page (HOR-297).
   return (
-    <div className="p-8 space-y-6 max-w-3xl">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Integrations</h1>
-        <p className="text-muted-foreground">
-          Connect external services so Horace can act on your behalf — like sending tracked email from your Gmail account.
-        </p>
-      </div>
+    <div className="flex-1 overflow-y-auto pb-20 md:pb-0">
+      <div className="p-8 space-y-6 max-w-3xl">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Integrations</h1>
+          <p className="text-muted-foreground">
+            Connect external services so Horace can act on your behalf — like sending tracked email from your Gmail account.
+          </p>
+        </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Plug className="w-4 h-4" />
-            Gmail
-          </CardTitle>
-          <CardDescription>
-            Send tracked emails to contacts from your Gmail account. We ask only for the{' '}
-            <code className="text-[0.85em]">gmail.send</code> scope — Horace cannot read your inbox.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <GmailIntegrationManager integration={integration} banner={banner} />
-        </CardContent>
-      </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Plug className="w-4 h-4" />
+              Gmail
+            </CardTitle>
+            <CardDescription>
+              Send tracked emails to contacts from your Gmail account. We ask only for the{' '}
+              <code className="text-[0.85em]">gmail.send</code> scope — Horace cannot read your inbox.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <GmailIntegrationManager integration={integration} banner={banner} />
+          </CardContent>
+        </Card>
+      </div>
     </div>
   )
 }
