@@ -15,17 +15,27 @@ export function PushManager() {
 }
 
 export async function requestPushPermission(): Promise<PushSubscription | null> {
-  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return null
+  // Unsupported browser (e.g. iOS Safari outside an installed PWA). Throw so
+  // the caller can show the real reason rather than "permission denied".
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    throw new Error('This browser doesn’t support push notifications.')
+  }
 
   const permission = await Notification.requestPermission()
+  // null === the user declined/dismissed the browser prompt; the caller maps
+  // this (and only this) to the "permission denied" message.
   if (permission !== 'granted') return null
 
   const reg = await navigator.serviceWorker.ready
 
+  // HOR-296 — a missing VAPID public key is a server-config gap
+  // (NEXT_PUBLIC_VAPID_PUBLIC_KEY unset at build time), not a permission
+  // problem. Throw a clear message instead of returning null, which the form
+  // would otherwise report as "permission denied — check your browser".
   const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
   if (!vapidKey) {
     console.error('[push] NEXT_PUBLIC_VAPID_PUBLIC_KEY not set')
-    return null
+    throw new Error('Push notifications aren’t set up for this site yet. Please contact support.')
   }
 
   const existing = await reg.pushManager.getSubscription()
