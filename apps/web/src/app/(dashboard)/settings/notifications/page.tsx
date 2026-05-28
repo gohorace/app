@@ -25,23 +25,29 @@ export default async function NotificationsPage() {
       ? settings.briefing_emails
       : [agent?.email ?? settings?.agent_email ?? ''].filter(Boolean)
 
+  // The dashboard <main> is `overflow-hidden h-full` and delegates scrolling
+  // to each page (see (dashboard)/layout.tsx). Without an own scroll container
+  // the form is clipped and "Save settings" is unreachable (HOR-297). Mirror
+  // the profile settings page's `flex-1 overflow-y-auto` wrapper.
   return (
-    <div className="p-6 md:p-8 max-w-lg space-y-6">
-      <div>
-        <h1 className="text-xl font-bold tracking-tight">Alerts & briefing</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Configure push notifications and your daily email round-up
-        </p>
+    <div className="flex-1 overflow-y-auto pb-20 md:pb-0">
+      <div className="p-6 md:p-8 max-w-lg space-y-6">
+        <div>
+          <h1 className="text-xl font-bold tracking-tight">Alerts & briefing</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Configure push notifications and your daily email round-up
+          </p>
+        </div>
+        <NotificationsForm
+          initial={{
+            push_alert_mode:     (settings?.push_alert_mode as 'threshold' | 'all' | 'hourly_digest') ?? 'threshold',
+            alert_threshold:      settings?.sms_threshold_score  ?? 50,
+            briefing_emails:      defaultEmails,
+            timezone:             settings?.timezone             ?? 'Australia/Sydney',
+            daily_briefing_hour:  settings?.daily_briefing_hour  ?? 17,
+          }}
+        />
       </div>
-      <NotificationsForm
-        initial={{
-          push_alert_mode:     (settings?.push_alert_mode as 'threshold' | 'all' | 'hourly_digest') ?? 'threshold',
-          alert_threshold:      settings?.sms_threshold_score  ?? 50,
-          briefing_emails:      defaultEmails,
-          timezone:             settings?.timezone             ?? 'Australia/Sydney',
-          daily_briefing_hour:  settings?.daily_briefing_hour  ?? 17,
-        }}
-      />
     </div>
   )
 }
