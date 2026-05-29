@@ -12,6 +12,7 @@ import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { createApiV1Db } from '@/lib/api-v1/db'
 import { resolveAdminContext } from '@/lib/api-v1/admin-guard'
+import { postConnectionRequest } from '@/lib/notifications/slack'
 
 const CONNECTION_COLUMNS =
   'id, system, display_name, status, auth_method, inbound_enabled, outbound_enabled, last_synced_at, last_error, connected_at, requested_at, created_at'
@@ -101,6 +102,25 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Failed to submit request' }, { status: 500 })
   }
 
-  // Phase 5 (HOR-325): post the request to #connection-requests here.
+  // Post to #connection-requests so the team can wire it up by hand. Inert if
+  // the webhook env is unset; never let a Slack hiccup fail the request.
+  try {
+    const [{ data: ws }, { data: agent }] = await Promise.all([
+      db.from('workspaces').select('name').eq('id', ctx.workspaceId).maybeSingle(),
+      db.from('agents').select('first_name, last_name, email').eq('id', ctx.agentId).maybeSingle(),
+    ])
+    await postConnectionRequest({
+      agencyName: (ws?.name as string) ?? 'Unknown agency',
+      agencyId: ctx.workspaceId,
+      agentName: [agent?.first_name, agent?.last_name].filter(Boolean).join(' ') || 'Unknown',
+      agentEmail: (agent?.email as string) ?? user.email ?? 'unknown',
+      crm: v.display_name,
+      inbound: v.inbound,
+      outbound: v.outbound,
+    })
+  } catch (e) {
+    console.error('[connections] slack notify failed', e)
+  }
+
   return NextResponse.json({ connection: data })
 }
