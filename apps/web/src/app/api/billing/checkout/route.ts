@@ -6,6 +6,8 @@ import { getStripe } from '@/lib/stripe/client'
 
 const bodySchema = z.object({
   plan: z.enum(['pro_monthly', 'pro_annual']),
+  // HOR-295 — expired/lapsed users buy outright (no second free trial).
+  noTrial: z.boolean().optional(),
 })
 
 const PRICE_ENV: Record<'pro_monthly' | 'pro_annual', string> = {
@@ -71,7 +73,8 @@ export async function POST(req: NextRequest) {
     mode: 'subscription',
     line_items: [{ price: priceId, quantity: 1 }],
     subscription_data: {
-      trial_period_days: 14,
+      // Omit the trial for expired/lapsed buyers — they pay now (HOR-295).
+      ...(parsed.data.noTrial ? {} : { trial_period_days: 14 }),
       metadata: { workspace_id: agent.workspace_id },
     },
     payment_method_collection: 'always',

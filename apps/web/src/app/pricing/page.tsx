@@ -87,10 +87,19 @@ export default function PricingPage() {
   const monthlyBtnRef = useRef<HTMLButtonElement>(null)
   const annualBtnRef = useRef<HTMLButtonElement>(null)
   const [isLoggedIn, setIsLoggedIn] = useState(false)
+  // HOR-295 — the billing gate sends expired/lapsed users here with
+  // ?expired=1 (see lib/billing/gate.ts). They've already had their trial, so
+  // the Pro CTA becomes "Buy now" and routes straight to a no-trial checkout
+  // rather than trying (and failing) to start another trial.
+  const [isExpired, setIsExpired] = useState(false)
 
   useEffect(() => {
     const supabase = createClient()
     supabase.auth.getSession().then(({ data: { session } }) => setIsLoggedIn(!!session))
+  }, [])
+
+  useEffect(() => {
+    setIsExpired(new URLSearchParams(window.location.search).get('expired') === '1')
   }, [])
 
   const ctaHref = isLoggedIn ? '/dashboard' : '/login'
@@ -148,6 +157,40 @@ export default function PricingPage() {
         return
       }
       window.location.href = '/dashboard?billing=trial-started'
+    } catch (err) {
+      console.error(err)
+      setTrialLoading(false)
+    }
+  }
+
+  // HOR-295 — expired/lapsed users buy outright: a no-trial Stripe checkout
+  // (card charged now) rather than another 14-day trial. Reuses trialLoading
+  // for the button's pending state.
+  async function startCheckout(plan: 'pro', overridePeriod?: Period) {
+    const targetPeriod = overridePeriod ?? period
+    if (!isLoggedIn) {
+      const redirectTo = `/pricing?plan=${plan}&period=${targetPeriod}&expired=1`
+      window.location.href = `/signup?redirectTo=${encodeURIComponent(redirectTo)}`
+      return
+    }
+    setTrialLoading(true)
+    try {
+      const res = await fetch('/api/billing/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          plan: `${plan}_${targetPeriod === 'annual' ? 'annual' : 'monthly'}`,
+          noTrial: true,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        console.error('Checkout failed:', data)
+        alert(data.error ?? 'Could not start checkout')
+        setTrialLoading(false)
+        return
+      }
+      window.location.href = data.url
     } catch (err) {
       console.error(err)
       setTrialLoading(false)
@@ -224,9 +267,9 @@ export default function PricingPage() {
                     type="button"
                     className={styles.tierCta}
                     disabled={trialLoading}
-                    onClick={() => startTrial('pro')}
+                    onClick={() => (isExpired ? startCheckout('pro') : startTrial('pro'))}
                   >
-                    {trialLoading ? 'Loading…' : tier.cta}
+                    {trialLoading ? 'Loading…' : isExpired ? 'Buy now' : tier.cta}
                   </button>
                 ) : 'comingSoon' in tier && tier.comingSoon ? (
                   <span
