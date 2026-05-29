@@ -6,6 +6,7 @@ import { getAppUrl } from '@/lib/url'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { ShieldCheck } from 'lucide-react'
 import { ApiAndDataManager, type ApiV1KeyRow } from '@/components/settings/api-and-data-manager'
+import { WebhooksManager } from '@/components/settings/webhooks-manager'
 
 const COMMITMENTS: Array<{ title: string; body: string }> = [
   {
@@ -88,7 +89,10 @@ export default async function ApiAndDataPage() {
       </Card>
 
       {isAdmin ? (
-        <ApiAndDataManager initialKeys={initialKeys} baseUrl={baseUrl} />
+        <>
+          <ApiAndDataManager initialKeys={initialKeys} baseUrl={baseUrl} />
+          <WebhooksManager />
+        </>
       ) : (
         <Card>
           <CardHeader>
