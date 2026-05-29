@@ -59,53 +59,55 @@ export default async function ApiAndDataPage() {
   const baseUrl = `${getAppUrl()}/api/v1`
 
   return (
-    <div className="p-8 space-y-6 max-w-3xl">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">API &amp; data</h1>
-        <p className="text-muted-foreground">
-          Your keys, and a one-click way to take everything Horace knows for you.
-        </p>
-      </div>
+    <div className="flex-1 overflow-y-auto pb-20 md:pb-0">
+      <div className="p-8 space-y-6 max-w-3xl">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">API &amp; data</h1>
+          <p className="text-muted-foreground">
+            Your keys, and a one-click way to take everything Horace knows for you.
+          </p>
+        </div>
 
-      {/* Sovereignty — "Your data. Full stop." */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <ShieldCheck className="w-4 h-4" />
-            Your data. Full stop.
-          </CardTitle>
-          <CardDescription>The promises behind everything on this page.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <ul className="grid gap-4 sm:grid-cols-2">
-            {COMMITMENTS.map((c) => (
-              <li key={c.title} className="space-y-1">
-                <p className="text-sm font-medium">{c.title}</p>
-                <p className="text-sm text-muted-foreground">{c.body}</p>
-              </li>
-            ))}
-          </ul>
-        </CardContent>
-      </Card>
-
-      {isAdmin ? (
-        <>
-          <ApiAndDataManager initialKeys={initialKeys} baseUrl={baseUrl} />
-          <WebhooksManager />
-        </>
-      ) : (
+        {/* Sovereignty — "Your data. Full stop." */}
         <Card>
           <CardHeader>
-            <CardTitle>API keys &amp; export</CardTitle>
-            <CardDescription>
-              Keys and the full data export are managed by your agency&apos;s admins. Ask one of
-              them if you need access.
-            </CardDescription>
+            <CardTitle className="flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4" />
+              Your data. Full stop.
+            </CardTitle>
+            <CardDescription>The promises behind everything on this page.</CardDescription>
           </CardHeader>
+          <CardContent>
+            <ul className="grid gap-4 sm:grid-cols-2">
+              {COMMITMENTS.map((c) => (
+                <li key={c.title} className="space-y-1">
+                  <p className="text-sm font-medium">{c.title}</p>
+                  <p className="text-sm text-muted-foreground">{c.body}</p>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
         </Card>
-      )}
 
-      <p className="text-sm text-muted-foreground pt-2">Seize the moment — Horace</p>
+        {isAdmin ? (
+          <>
+            <ApiAndDataManager initialKeys={initialKeys} baseUrl={baseUrl} />
+            <WebhooksManager />
+          </>
+        ) : (
+          <Card>
+            <CardHeader>
+              <CardTitle>API keys &amp; export</CardTitle>
+              <CardDescription>
+                Keys and the full data export are managed by your agency&apos;s admins. Ask one of
+                them if you need access.
+              </CardDescription>
+            </CardHeader>
+          </Card>
+        )}
+
+        <p className="text-sm text-muted-foreground pt-2">Seize the moment — Horace</p>
+      </div>
     </div>
   )
 }
