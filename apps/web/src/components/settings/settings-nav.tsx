@@ -13,10 +13,7 @@ import {
   Inbox,
   BarChart2,
   Link2,
-  Cable,
   Plug,
-  ShieldOff,
-  Key,
   Database,
   Upload,
   LifeBuoy,
@@ -71,11 +68,8 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: 'Data & integrations',
     items: [
-      { href: '/settings/connections', label: 'Connections', icon: Cable },
       { href: '/settings/integrations', label: 'Integrations', icon: Plug },
-      { href: '/settings/email-exclusions', label: 'Email exclusions', icon: ShieldOff },
-      { href: '/settings/api-tokens', label: 'API tokens', icon: Key },
-      { href: '/settings/api-and-data', label: 'API & data', icon: Database },
+      { href: '/settings/api-and-data', label: 'API & developer access', icon: Database },
       { href: '/import', label: 'Import contacts', icon: Upload },
     ],
   },
