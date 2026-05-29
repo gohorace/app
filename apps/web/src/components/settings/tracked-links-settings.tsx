@@ -1,8 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import Link from 'next/link'
-import { ArrowLeft, Link as LinkIcon, CheckCircle2 } from 'lucide-react'
+import { Link as LinkIcon, CheckCircle2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -43,15 +42,6 @@ export function TrackedLinksSettings({ defaultUrl }: Props) {
 
   return (
     <div className="p-4 md:p-8 space-y-5 max-w-lg">
-      <Link
-        href="/settings"
-        className="inline-flex items-center gap-1.5 text-sm font-medium"
-        style={{ color: '#8C7B6B' }}
-      >
-        <ArrowLeft className="w-4 h-4" />
-        Settings
-      </Link>
-
       <div>
         <h1 className="font-display font-semibold tracking-tight" style={{ fontSize: '24px', color: '#1A1612' }}>
           Tracked links
