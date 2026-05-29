@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowRight, Check, CircleDashed, Home, KeyRound, Loader2, X } from 'lucide-react'
+import { ArrowRight, Check, CircleDashed, Home, KeyRound, Loader2, Search, X } from 'lucide-react'
 import { PropertyThumb, toneFor } from '@/lib/design/badges'
 
 type RoleChoice = 'seller' | 'buyer'
@@ -35,9 +35,12 @@ export function AttachRoleDialog({
   const [role, setRole] = useState<RoleChoice>('seller')
   const [propertyId, setPropertyId] = useState<string | null>(null)
   const [properties, setProperties] = useState<PropertyOption[]>([])
+  const [query, setQuery] = useState('')
+  const [highlight, setHighlight] = useState(0)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const listRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     fetch('/api/properties')
@@ -48,6 +51,48 @@ export function AttachRoleDialog({
       .catch(() => setProperties([]))
       .finally(() => setLoading(false))
   }, [])
+
+  // Client-side filter over the loaded list. GET /api/properties caps at
+  // 100 rows (ordered by recency), so the whole workspace is in memory and
+  // searching never needs a round-trip. Matches street + suburb.
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return properties
+    return properties.filter((p) =>
+      [p.street_number, p.street_name, p.suburb]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+        .includes(q),
+    )
+  }, [properties, query])
+
+  // Reset the keyboard cursor whenever the result set changes under it.
+  useEffect(() => {
+    setHighlight(0)
+  }, [query])
+
+  // Keep the highlighted row visible as the cursor moves through a
+  // scrolled list.
+  useEffect(() => {
+    const node = listRef.current?.children[highlight] as HTMLElement | undefined
+    node?.scrollIntoView({ block: 'nearest' })
+  }, [highlight])
+
+  function handleSearchKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (filtered.length === 0) return
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setHighlight((h) => Math.min(h + 1, filtered.length - 1))
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setHighlight((h) => Math.max(h - 1, 0))
+    } else if (e.key === 'Enter') {
+      e.preventDefault()
+      const p = filtered[highlight]
+      if (p) setPropertyId(p.id)
+    }
+  }
 
   async function handleSubmit() {
     if (!propertyId || saving) return
@@ -185,6 +230,43 @@ export function AttachRoleDialog({
             Which property?
           </div>
 
+          {!loading && properties.length > 0 && (
+            <div style={{ position: 'relative', marginBottom: 8 }}>
+              <Search
+                style={{
+                  position: 'absolute',
+                  left: 11,
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  width: 14,
+                  height: 14,
+                  color: '#8C7B6B',
+                  pointerEvents: 'none',
+                }}
+              />
+              <input
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={handleSearchKeyDown}
+                placeholder="Search your properties…"
+                aria-label="Search properties"
+                autoComplete="off"
+                style={{
+                  width: '100%',
+                  padding: '9px 12px 9px 33px',
+                  background: '#FFFFFF',
+                  border: '1.5px solid rgba(140,123,107,0.18)',
+                  borderRadius: 8,
+                  fontSize: 13,
+                  color: '#1A1612',
+                  fontFamily: 'var(--font-body)',
+                  outline: 'none',
+                }}
+              />
+            </div>
+          )}
+
           {loading ? (
             <div style={{ padding: '20px 8px', display: 'flex', alignItems: 'center', gap: 8, color: '#8C7B6B', fontSize: 12 }}>
               <Loader2 style={{ width: 13, height: 13 }} className="animate-spin" />
@@ -211,23 +293,42 @@ export function AttachRoleDialog({
                 first.
               </div>
             </div>
+          ) : filtered.length === 0 ? (
+            <div
+              style={{
+                padding: '14px 16px',
+                fontSize: 12,
+                color: '#5E5246',
+                background: 'rgba(140,123,107,0.06)',
+                border: '1px dashed rgba(140,123,107,0.25)',
+                borderRadius: 8,
+                lineHeight: 1.55,
+              }}
+            >
+              No properties match “{query.trim()}”. Try a different street or suburb.
+            </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 4 }}>
-              {properties.map((p) => {
+            <div
+              ref={listRef}
+              style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 4, maxHeight: 260, overflowY: 'auto' }}
+            >
+              {filtered.map((p, i) => {
                 const address = [p.street_number, p.street_name].filter(Boolean).join(' ') || p.suburb || 'Address pending'
                 const selected = p.id === propertyId
+                const highlighted = i === highlight
                 return (
                   <button
                     type="button"
                     key={p.id}
                     onClick={() => setPropertyId(p.id)}
+                    onMouseEnter={() => setHighlight(i)}
                     style={{
                       display: 'flex',
                       alignItems: 'center',
                       gap: 11,
                       padding: '8px 12px',
-                      background: '#FFFFFF',
-                      border: `1.5px solid ${selected ? '#C4622D' : 'rgba(140,123,107,0.18)'}`,
+                      background: highlighted && !selected ? 'rgba(196,98,45,0.06)' : '#FFFFFF',
+                      border: `1.5px solid ${selected ? '#C4622D' : highlighted ? 'rgba(196,98,45,0.4)' : 'rgba(140,123,107,0.18)'}`,
                       borderRadius: 8,
                       cursor: 'pointer',
                       textAlign: 'left',
