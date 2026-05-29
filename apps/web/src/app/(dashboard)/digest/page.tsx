@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { DigestView, type DigestViewModel } from '@/components/digest/digest-view'
 import { type DigestSignal } from '@/components/digest/signal-card'
-import { intentForScore, guidanceForEventType } from '@/lib/design/intent'
+import { intentForScore } from '@/lib/design/intent'
 import { fetchAttentionCount } from '@/lib/notifications/attention-count'
 import {
   generateContactInsight,
@@ -32,9 +32,11 @@ export default async function DigestPage({
   // Gated behind VERCEL_ENV — production deploys ignore the flag so users
   // can never accidentally see mock data, regardless of URL.
   const allowDemo = process.env.VERCEL_ENV !== 'production'
-  if (searchParams.demo === '1' && allowDemo) {
-    // 3 mirrors the bell-badge count in the design comp.
-    return <DigestView model={{ ...demoModel(), attentionCount: 3 }} />
+  if ((searchParams.demo === '1' || searchParams.demo === 'quiet') && allowDemo) {
+    // 3 mirrors the bell-badge count in the design comp. ?demo=quiet shows the
+    // ambient-only quiet-day permutation.
+    const scenario = searchParams.demo === 'quiet' ? 'quiet' : 'live'
+    return <DigestView model={{ ...demoModel(scenario), attentionCount: 3 }} />
   }
 
   const supabase = await createClient()
@@ -171,7 +173,12 @@ export default async function DigestPage({
     : ''
 
   // ── Shape the view-model ─────────────────────────────────────────────────
-  const signals: DigestSignal[] = enriched.map((l) => {
+  // Phase 0: briefing leads are all KNOWN, named contacts. The firewall-safe
+  // draft + pretext (Phase 2), outcome loop (Phase 3) and the probable /
+  // anonymous / ambient identity states (Phase 4) layer on in later PRs — so
+  // a Phase-0 live card shows the insight + the read, with no draft yet
+  // (informational; not counted by the Stream counter until a draft exists).
+  const signals: DigestSignal[] = enriched.map((l, i) => {
     const intent = intentForScore(l.score) ?? 'low'
     return {
       contactId: l.contactId,
@@ -179,10 +186,14 @@ export default async function DigestPage({
       initials: makeInitials(l.firstName, l.lastName, l.email),
       suburb: l.suburb,
       timing: formatTiming(l.lastSeenAt),
+      identity: 'known',
+      // The lone top-of-roster high-intent lead leads "Act now"; the rest sit
+      // in "Worth a look". Urgency-based tiering is refined in Phase 4.
+      tier: i === 0 && intent === 'high' ? 'act-now' : 'worth-a-look',
       intent,
-      guidance: guidanceForEventType(l.topEventType),
-      nudge: l.nudge,
-      tags: l.tags,
+      newlyKnown: l.topEventType === 'form_submit' || l.topEventType === 'return_visit',
+      insight: l.tags.length ? l.tags.join(' · ') : 'Active on your site recently.',
+      read: l.nudge,
     }
   })
 
@@ -215,72 +226,124 @@ export default async function DigestPage({
 }
 
 // ─── Demo dataset ────────────────────────────────────────────────────────────
-// Mirrors the four canonical signals in the design's screens.jsx so we can
-// verify the populated layout on a preview without seeding real activity.
-// Only renders when ?demo=1 is set — never served by default.
+// Content-true to the V2 prototype (digest-data.js). Exercises all four
+// identity-state permutations + the firewall-safe drafts + the outcome loop,
+// so we can verify the design on a preview without seeding real activity.
+// Only renders when ?demo=1 (live week) or ?demo=quiet (ambient-only) — never
+// served by default. THE FIREWALL: every `pretext` is a public/relationship
+// hook; `insight` may name behaviour, `read` hands over the pretext only.
 
-function demoModel(): DigestViewModel {
-  const signals: DigestSignal[] = [
-    // Lead card: the anonymous-becomes-known moment. Banner + tinted bg
-    // makes this the most visually weighted signal in the roster.
-    {
-      contactId: 'demo-priya-raman',
-      name: 'Priya Raman',
-      initials: 'PR',
-      suburb: 'Paddington, NSW',
-      timing: 'Identified 12 min ago',
-      intent: 'high',
-      guidance: 'contextual',
-      nudge: 'Horace had been watching this one for two weeks. She just put her name to it.',
-      tags: ['Newly identified', '14 sessions', '14 anonymous sessions'],
-      pillLabel: 'Newly known',
-      isAnonymousNowKnown: true,
+function demoModel(scenario: 'live' | 'quiet'): DigestViewModel {
+  // Known — act-now. Near-submit, the genuine "call before Friday".
+  const marcus: DigestSignal = {
+    contactId: 'demo-marcus-bell',
+    name: 'Marcus Bell',
+    initials: 'MB',
+    suburb: 'Glebe, NSW',
+    timing: 'Active this morning',
+    identity: 'known',
+    tier: 'act-now',
+    intent: 'high',
+    insight: 'Started a contact form this morning and didn’t send it. Fourth visit this week.',
+    read: 'He’s close — the kind of close that calls someone else by Friday if no one calls him first. A recent Glebe result is reason enough to land in his inbox today.',
+    pretext: 'a recent Glebe sale',
+    draft: {
+      subject: 'A quick read on the Glebe market',
+      body: 'Hi Marcus,\n\nA home just sold strongly a few streets from you in Glebe, and it’s stirred up genuine buyer interest in the area. If you’ve ever been curious what your place might do in this market, I’d be glad to put together a quick, no-obligation read.\n\nNo rush either way — reach out whenever suits.\n\nJames',
     },
-    {
-      contactId: 'demo-sarah-thompson',
-      name: 'Sarah Thompson',
-      initials: 'ST',
-      suburb: 'Paddington, NSW',
-      timing: 'Active 2h ago',
-      intent: 'high',
-      guidance: 'advisory',
-      nudge: 'She’s been on the appraisal page twice this week. Lead with that.',
-      tags: ['Appraisal', '3 sessions', 'Returning'],
+    outcome: { steps: ['sent', 'opened', 'replied'], note: 'You spoke last autumn — he asked to stay in the loop.' },
+  }
+
+  // Known — worth a look. Circling the appraisal page; softened after a quiet thread.
+  const sarah: DigestSignal = {
+    contactId: 'demo-sarah-thompson',
+    name: 'Sarah Thompson',
+    initials: 'ST',
+    suburb: 'Paddington, NSW',
+    timing: 'Active 2h ago',
+    identity: 'known',
+    tier: 'worth-a-look',
+    intent: 'high',
+    insight: 'On the appraisal page twice this week — her third session in five days.',
+    read: 'She’s circling, and she’s done this before. Worth a warm note — a recent Paddington sale gives you a reason to reach out.',
+    pretext: 'a recent Paddington result',
+    draft: {
+      subject: 'What’s happening in Paddington right now',
+      body: 'Hi Sarah,\n\nWe just wrapped a strong result on a Paddington terrace and there’s real momentum in the area at the moment. If a short market update would be useful, I’d happily pull one together for you.\n\nAlways here if you’d like to talk it through.\n\nJames',
     },
-    {
-      contactId: 'demo-marcus-bell',
-      name: 'Marcus Bell',
-      initials: 'MB',
-      suburb: 'Glebe, NSW',
-      timing: 'Active this morning',
-      intent: 'high',
-      guidance: 'time-sensitive',
-      nudge: 'Started a contact form, didn’t send. Catch him before he tries someone else.',
-      tags: ['Contact form', 'Near-submit'],
+    outcome: { steps: ['sent', 'opened', 'quiet'], note: 'Your last note was opened twice, no reply — so I’ve softened today’s angle.' },
+  }
+
+  // Known — newly identified after a fortnight anonymous. The satisfying convert.
+  const priya: DigestSignal = {
+    contactId: 'demo-priya-raman',
+    name: 'Priya Raman',
+    initials: 'PR',
+    suburb: 'Paddington, NSW',
+    timing: 'Identified 12 min ago',
+    identity: 'known',
+    tier: 'worth-a-look',
+    intent: 'high',
+    newlyKnown: true,
+    insight: '14 sessions over a fortnight, all anonymous — until she added her name 12 minutes ago.',
+    read: 'A fortnight of quiet attention, and now she’s put her name to it. No rush — just a warm hello while she’s thinking about it.',
+    pretext: 'a local introduction as her Paddington agent',
+    draft: {
+      subject: 'Hello from James — your Paddington local',
+      body: 'Hi Priya,\n\nJames here — I look after a good part of the Paddington market and thought I’d introduce myself. If you’d ever like a relaxed, no-pressure sense of what local homes are doing, just say the word.\n\nLovely to be in touch.\n\nJames',
     },
-    {
-      contactId: 'demo-david-nguyen',
-      name: 'David Nguyen',
-      initials: 'DN',
-      suburb: 'Surry Hills, NSW',
-      timing: 'Yesterday',
-      intent: 'mid',
-      guidance: 'contextual',
-      nudge: 'Browsing sold results on Maple Street. Classic pre-appraisal pattern.',
-      tags: ['Sold results', 'Maple St'],
+    outcome: { steps: ['new'], note: 'First reach-out — I’ll track how it lands and shape the next one.' },
+  }
+
+  // Probable — device matches Tom at 0.78 (≥ 0.75 threshold). Confirm reveals the draft.
+  const tom: DigestSignal = {
+    contactId: 'demo-tom-obrien',
+    name: 'Tom O’Brien',
+    initials: 'TO',
+    suburb: 'Balmain, NSW',
+    timing: 'Active 1h ago',
+    identity: 'probable',
+    tier: 'worth-a-look',
+    intent: 'mid',
+    confidence: 0.78,
+    insight: 'Five visits to the Balmain sold results this week. The device matches Tom O’Brien in your contacts.',
+    read: 'Looks like Tom from Balmain — but I’m not certain enough to put words in your mouth. Confirm it’s him and I’ll have a note ready to go.',
+    pretext: 'recent Balmain results',
+    draft: {
+      subject: 'The Balmain market, if it’s useful',
+      body: 'Hi Tom,\n\nBalmain’s had a few notable results lately and the market’s moving in an interesting way. If you’d find a quick local update handy, I’m glad to send one through.\n\nNo obligation at all — just reach out whenever.\n\nJames',
     },
-    {
-      contactId: 'demo-claire-adeyemi',
-      name: 'Claire Adeyemi',
-      initials: 'CA',
-      suburb: 'Newtown, NSW',
-      timing: '3 days ago',
-      intent: 'low',
-      guidance: 'contextual',
-      nudge: 'Downloaded the Newtown report. Early-stage, but she came back for it.',
-      tags: ['Suburb report'],
-    },
-  ]
+    outcome: { steps: ['new'], note: 'First reach-out — I’ll track how it lands.' },
+  }
+
+  // Anonymous — honest action is "watch closely", never an email.
+  const anon: DigestSignal = {
+    contactId: 'demo-anon-maple',
+    name: 'Anonymous visitor',
+    initials: null,
+    suburb: 'Surry Hills, NSW',
+    timing: 'Active 40 min ago',
+    identity: 'anonymous',
+    tier: 'worth-a-look',
+    intent: 'mid',
+    insight: 'Circled 12 Maple Street five times this week — same device, no name attached.',
+    read: 'No name yet, but this one keeps coming back. Nothing to send — let me keep watching, and I’ll tell you the moment they surface.',
+  }
+
+  // Ambient — suburb-level, no individual. Suppressed on a busy day; the hero of a quiet one.
+  const ambient: DigestSignal = {
+    contactId: 'demo-ambient-paddington',
+    name: 'Something’s stirring in Paddington',
+    initials: null,
+    suburb: 'Paddington, NSW',
+    timing: 'This week',
+    identity: 'ambient',
+    tier: 'ambient',
+    insight: 'Three new anonymous visitors started on Paddington listings this week. Nobody’s stepped forward yet.',
+    read: 'Quiet week — nothing on your site needs you today. But three new vendors started circling Paddington. The ground’s shifting; I’ll tell you the moment it’s a person.',
+  }
+
+  const signals = scenario === 'quiet' ? [ambient] : [marcus, sarah, priya, tom, anon, ambient]
 
   return {
     dateLabel: new Date().toLocaleDateString('en-AU', {
@@ -288,15 +351,13 @@ function demoModel(): DigestViewModel {
       day: 'numeric',
       month: 'long',
     }),
-    sentAtLabel: '6:02 am',
+    sentAtLabel: scenario === 'quiet' ? '6:04 am' : '6:02 am',
     narrative:
-      'Four contacts worth your attention today. Sarah Thompson looks ready — she’s been on the appraisal page twice this week. Marcus Bell got close to a contact form. And someone I’d been watching for a fortnight just put her name to it.',
+      scenario === 'quiet'
+        ? 'A genuinely quiet one — nothing on your site needs you today, and that’s alright. I’ve kept watch. The one thing worth knowing is the suburb itself starting to move.'
+        : 'One to act on this morning, and a handful worth a look. Marcus got close to a contact form and could try someone else by Friday — start there. Sarah’s circling again, and someone I’d watched for a fortnight finally put her name to it.',
     signals,
-    stats: {
-      worthAttention: 4,
-      highIntent: 2,
-      newlyKnown: 1,
-    },
+    stats: { worthAttention: 4, highIntent: 2, newlyKnown: 1 },
     rail: demoRail(),
     websiteUrl: 'https://jamesreid.com.au',
     isDemo: true,

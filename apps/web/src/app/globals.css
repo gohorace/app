@@ -325,6 +325,14 @@
   0%, 100% { opacity: 1;    transform: scale(1); }
   50%      { opacity: 0.55; transform: scale(0.9); }
 }
+/* `pulseDot` — the expanding-ring pulse on the Digest "N to clear" counter and
+ * the "Sent just now" outcome step (Activity & Signals V2). Distinct from the
+ * steady opacity `pulse-dot` above. */
+@keyframes pulseDot {
+  0%   { box-shadow: 0 0 0 0 rgba(196,98,45,0.45); }
+  70%  { box-shadow: 0 0 0 6px rgba(196,98,45,0); }
+  100% { box-shadow: 0 0 0 0 rgba(196,98,45,0); }
+}
 
 /* Companion trigger — soft shadow lift on hover, matches sidebar tokens. */
 .companion-trigger {
