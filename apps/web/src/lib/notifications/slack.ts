@@ -19,9 +19,52 @@ async function postToWebhook(envKey: string, url: string | undefined, text: stri
 }
 
 export async function postToAlertVolumeChannel(text: string): Promise<void> {
-  return postToWebhook('SLACK_ALERT_VOLUME_WEBHOOK_URL', process.env.SLACK_ALERT_VOLUME_WEBHOOK_URL, text)
+  return postToWebhook(
+    'SLACK_ALERT_VOLUME_WEBHOOK_URL',
+    process.env.SLACK_ALERT_VOLUME_WEBHOOK_URL,
+    text,
+  )
 }
 
 export async function postToSignupsChannel(text: string): Promise<void> {
   return postToWebhook('SLACK_SIGNUPS_WEBHOOK_URL', process.env.SLACK_SIGNUPS_WEBHOOK_URL, text)
+}
+
+// HOR-325 · CRM connection requests → #connection-requests. Internal ops
+// message (not Horace's agent-facing voice) — everything the team needs to
+// wire the connection up by hand without a follow-up.
+export interface ConnectionRequestPayload {
+  agencyName: string
+  agencyId: string
+  agentName: string
+  agentEmail: string
+  crm: string
+  inbound: boolean
+  outbound: boolean
+}
+
+export function formatConnectionRequest(p: ConnectionRequestPayload): string {
+  const intent =
+    p.inbound && p.outbound
+      ? 'Contacts in + Doorstep leads out'
+      : p.inbound
+        ? 'Pull contacts in'
+        : p.outbound
+          ? 'Send Doorstep leads out'
+          : 'Not specified'
+  return [
+    '*New connection request*',
+    `Agency: ${p.agencyName} (\`${p.agencyId}\`)`,
+    `Requested by: ${p.agentName} <${p.agentEmail}>`,
+    `CRM: ${p.crm}`,
+    `Intent: ${intent}`,
+  ].join('\n')
+}
+
+export async function postConnectionRequest(p: ConnectionRequestPayload): Promise<void> {
+  return postToWebhook(
+    'SLACK_CONNECTION_REQUESTS_WEBHOOK_URL',
+    process.env.SLACK_CONNECTION_REQUESTS_WEBHOOK_URL,
+    formatConnectionRequest(p),
+  )
 }
