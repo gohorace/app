@@ -45,7 +45,11 @@ interface PushPayload {
 async function sendWebPush(endpoint: string, p256dh: string, auth: string, payload: PushPayload): Promise<boolean> {
   const webpush = await import('web-push')
 
-  const vapidPublic  = process.env.VAPID_PUBLIC_KEY
+  // Prefer the client/subscription key (NEXT_PUBLIC_*): that's the key the
+  // browser subscribed with, so the server must sign with the same one or the
+  // push service rejects it. Falling back to VAPID_PUBLIC_KEY makes a mis-set
+  // or swapped VAPID_PUBLIC_KEY non-fatal (HOR-296).
+  const vapidPublic  = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || process.env.VAPID_PUBLIC_KEY
   const vapidPrivate = process.env.VAPID_PRIVATE_KEY
 
   if (!vapidPublic || !vapidPrivate) {

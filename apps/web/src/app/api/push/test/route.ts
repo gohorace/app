@@ -17,8 +17,10 @@ export async function POST() {
 
   if (!agent) return NextResponse.json({ error: 'No agent found' }, { status: 400 })
 
-  // Check VAPID config
-  const vapidPublic  = process.env.VAPID_PUBLIC_KEY
+  // Check VAPID config. Prefer the client/subscription key (NEXT_PUBLIC_*) so
+  // the server signs with the same key the browser subscribed with; fall back
+  // to VAPID_PUBLIC_KEY (HOR-296).
+  const vapidPublic  = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || process.env.VAPID_PUBLIC_KEY
   const vapidPrivate = process.env.VAPID_PRIVATE_KEY
 
   if (!vapidPublic || !vapidPrivate) {
@@ -117,7 +119,7 @@ export async function GET() {
     .eq('agent_id', agent.id)
 
   return NextResponse.json({
-    vapidConfigured: !!(process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY),
+    vapidConfigured: !!((process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || process.env.VAPID_PUBLIC_KEY) && process.env.VAPID_PRIVATE_KEY),
     clientKeyConfigured: !!process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
     subscriptionCount: count ?? 0,
   })
