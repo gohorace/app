@@ -45,6 +45,19 @@ export function deriveMomentType(
     case 'alert_portal_enquiry':
       return 'high_intent'
 
+    // HOR-280 — Doorstep capture + embed alerts are persisted with display
+    // copy (title + contact_id), so attention-count counted them toward the
+    // bell badge, but they had no moment mapping here and so never rendered
+    // in the stream — the badge read higher than the visible items. Map them
+    // so the count matches the stream again. A capture is a just-identified
+    // contact ("Horace just met …"); a revisit is a known contact returning.
+    case 'alert_inspection_capture': // HOR-153 — open-home QR capture
+    case 'alert_embed_capture':      // HOR-284 — same-origin website embed
+      return 'newly_known'
+
+    case 'alert_inspection_revisit': // HOR-154 — captured contact returns
+      return 'returning'
+
     case 'alert_score_threshold':
     case 'alert_threshold':
     case 'sms_threshold':
