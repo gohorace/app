@@ -28,6 +28,58 @@ interface Props {
 const API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
 
 /**
+ * Google's PlaceAutocompleteElement renders its own leading magnifying-glass
+ * icon inside a CLOSED shadow DOM. It exposes no `::part()` for the icon and
+ * no CSS variable to hide it, so the only way to reach it is to inject a style
+ * into its shadow root — which requires the root to be open. We force ONLY
+ * `gmp-*` elements' shadow roots open (every other web component keeps its
+ * default), then hide the icon so a single map-pin remains (HOR-331).
+ */
+function ensureGmpShadowOpen() {
+  if (typeof HTMLElement === 'undefined') return
+  const proto = HTMLElement.prototype
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  if ((proto.attachShadow as any).__horPatched) return
+  const original = proto.attachShadow
+  function patched(this: HTMLElement, init: ShadowRootInit) {
+    if (this.tagName?.toLowerCase().startsWith('gmp-')) {
+      return original.call(this, { ...init, mode: 'open' })
+    }
+    return original.call(this, init)
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ;(patched as any).__horPatched = true
+  proto.attachShadow = patched
+}
+
+/**
+ * Inject a style into the element's (now-open) shadow root hiding Google's
+ * built-in search icon. `visibility: hidden` (not `display: none`) preserves
+ * the input's existing left padding so our overlaid <MapPin> stays aligned.
+ * Retries across a few frames in case the shadow root attaches lazily.
+ */
+function hideGoogleSearchIcon(el: HTMLElement) {
+  let attempts = 0
+  const inject = () => {
+    const root = el.shadowRoot
+    if (root) {
+      if (!root.querySelector('style[data-hor331]')) {
+        const style = document.createElement('style')
+        style.setAttribute('data-hor331', '')
+        // `.autocomplete-icon` is Google's internal class for the leading
+        // search icon. Internal/undocumented — if Google renames it the icon
+        // reappears but nothing breaks.
+        style.textContent = '.autocomplete-icon{visibility:hidden!important;}'
+        root.appendChild(style)
+      }
+      return
+    }
+    if (attempts++ < 20) requestAnimationFrame(inject)
+  }
+  inject()
+}
+
+/**
  * Reusable Google Places autocomplete + manual structured-field fallback.
  *
  * Uses Google's new `PlaceAutocompleteElement` Web Component (Places API
@@ -67,6 +119,8 @@ export function AddressAutocomplete({
   // Load the Places library + mount the PlaceAutocompleteElement.
   useEffect(() => {
     if (!API_KEY || !hostRef.current) return
+
+    ensureGmpShadowOpen()
 
     let cancelled = false
 
@@ -160,6 +214,7 @@ export function AddressAutocomplete({
 
         hostRef.current.replaceChildren(el)
         elementRef.current = el
+        hideGoogleSearchIcon(el)
         setAvailable(true)
       })
       .catch((err) => {
