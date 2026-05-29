@@ -45,33 +45,36 @@ export default async function EmailExclusionsPage() {
     exclusions = ((data ?? []) as ExclusionRow[]) ?? []
   }
 
+  // Own scroll container — dashboard <main> delegates scrolling per page (HOR-297).
   return (
-    <div className="p-8 space-y-6 max-w-3xl">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Email exclusions</h1>
-        <p className="text-muted-foreground">
-          Recipients you never want Horace to send tracked email to. Block individual
-          addresses (<code className="text-[0.9em]">foo@bar.com</code>) or whole
-          domains (<code className="text-[0.9em]">*@bar.com</code>).
-        </p>
-      </div>
+    <div className="flex-1 overflow-y-auto pb-20 md:pb-0">
+      <div className="p-8 space-y-6 max-w-3xl">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Email exclusions</h1>
+          <p className="text-muted-foreground">
+            Recipients you never want Horace to send tracked email to. Block individual
+            addresses (<code className="text-[0.9em]">foo@bar.com</code>) or whole
+            domains (<code className="text-[0.9em]">*@bar.com</code>).
+          </p>
+        </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <ShieldOff className="w-4 h-4" />
-            Your exclusion list
-          </CardTitle>
-          <CardDescription>
-            Horace seeds an AU-default list of common portal / aggregator domains.
-            You can remove a default if you genuinely send to it, but most agents
-            never need to touch them.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <EmailExclusionsManager initialExclusions={exclusions} />
-        </CardContent>
-      </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <ShieldOff className="w-4 h-4" />
+              Your exclusion list
+            </CardTitle>
+            <CardDescription>
+              Horace seeds an AU-default list of common portal / aggregator domains.
+              You can remove a default if you genuinely send to it, but most agents
+              never need to touch them.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <EmailExclusionsManager initialExclusions={exclusions} />
+          </CardContent>
+        </Card>
+      </div>
     </div>
   )
 }

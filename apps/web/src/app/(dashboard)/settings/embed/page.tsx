@@ -64,81 +64,84 @@ export default async function EmbedPage() {
   const initialOrigins = (settings?.snippet_domains as string[] | undefined) ?? []
   const autoAllowed = (((domainRows as { hostname: string }[] | null) ?? []).map((d) => d.hostname))
 
+  // Own scroll container — dashboard <main> delegates scrolling per page (HOR-297).
   return (
-    <div className="p-8 space-y-6 max-w-3xl">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Website embed</h1>
-        <p className="text-muted-foreground">
-          A sign-in form for your own website. It captures a name and mobile, then watches what that
-          visitor does next.
-        </p>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Your embed code</CardTitle>
-          <CardDescription>
-            Paste this where you want the form to appear — an appraisal page, a contact page, a
-            listing. The form shows up wherever you put the{' '}
-            <code className="text-xs bg-muted px-1 py-0.5 rounded">&lt;div&gt;</code>.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="relative">
-            <pre className="bg-muted rounded-lg p-4 text-xs overflow-x-auto whitespace-pre-wrap break-all pr-12">
-              <code>{snippetCode}</code>
-            </pre>
-            <div className="absolute top-2 right-2">
-              <CopyButton text={snippetCode} />
-            </div>
-          </div>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Badge variant="outline">Embed key</Badge>
-            <code className="text-xs bg-muted px-2 py-1 rounded font-mono">{snippetKey}</code>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Allowed sites</CardTitle>
-          <CardDescription>
-            For security, the form only accepts sign-ins from sites you list here. Add the website
-            you’re pasting the embed on.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <EmbedOriginsManager initialOrigins={initialOrigins} autoAllowed={autoAllowed} />
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>How to install</CardTitle>
-        </CardHeader>
-        <CardContent className="text-sm text-muted-foreground space-y-3">
-          <ul className="space-y-1.5 list-disc list-inside">
-            <li>
-              <strong className="text-foreground">WordPress:</strong> add a “Custom HTML” block
-              where you want the form and paste the code in.
-            </li>
-            <li>
-              <strong className="text-foreground">Squarespace / Wix:</strong> add an “Embed” or
-              “Custom code / HTML” element and paste the code in.
-            </li>
-            <li>
-              <strong className="text-foreground">Hand-coded site:</strong> paste the code straight
-              into your page’s HTML.
-            </li>
-          </ul>
-          <p>
-            It loads asynchronously and inherits your site’s styling — to a visitor it looks like
-            your own form. Don’t forget to add your site under{' '}
-            <strong className="text-foreground">Allowed sites</strong> above, or sign-ins won’t go
-            through.
+    <div className="flex-1 overflow-y-auto pb-20 md:pb-0">
+      <div className="p-8 space-y-6 max-w-3xl">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Website embed</h1>
+          <p className="text-muted-foreground">
+            A sign-in form for your own website. It captures a name and mobile, then watches what that
+            visitor does next.
           </p>
-        </CardContent>
-      </Card>
+        </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Your embed code</CardTitle>
+            <CardDescription>
+              Paste this where you want the form to appear — an appraisal page, a contact page, a
+              listing. The form shows up wherever you put the{' '}
+              <code className="text-xs bg-muted px-1 py-0.5 rounded">&lt;div&gt;</code>.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="relative">
+              <pre className="bg-muted rounded-lg p-4 text-xs overflow-x-auto whitespace-pre-wrap break-all pr-12">
+                <code>{snippetCode}</code>
+              </pre>
+              <div className="absolute top-2 right-2">
+                <CopyButton text={snippetCode} />
+              </div>
+            </div>
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Badge variant="outline">Embed key</Badge>
+              <code className="text-xs bg-muted px-2 py-1 rounded font-mono">{snippetKey}</code>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Allowed sites</CardTitle>
+            <CardDescription>
+              For security, the form only accepts sign-ins from sites you list here. Add the website
+              you’re pasting the embed on.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <EmbedOriginsManager initialOrigins={initialOrigins} autoAllowed={autoAllowed} />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>How to install</CardTitle>
+          </CardHeader>
+          <CardContent className="text-sm text-muted-foreground space-y-3">
+            <ul className="space-y-1.5 list-disc list-inside">
+              <li>
+                <strong className="text-foreground">WordPress:</strong> add a “Custom HTML” block
+                where you want the form and paste the code in.
+              </li>
+              <li>
+                <strong className="text-foreground">Squarespace / Wix:</strong> add an “Embed” or
+                “Custom code / HTML” element and paste the code in.
+              </li>
+              <li>
+                <strong className="text-foreground">Hand-coded site:</strong> paste the code straight
+                into your page’s HTML.
+              </li>
+            </ul>
+            <p>
+              It loads asynchronously and inherits your site’s styling — to a visitor it looks like
+              your own form. Don’t forget to add your site under{' '}
+              <strong className="text-foreground">Allowed sites</strong> above, or sign-ins won’t go
+              through.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   )
 }

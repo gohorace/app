@@ -43,11 +43,13 @@ export default async function TeamSettingsPage() {
 
   if (!callerMembership) {
     return (
-      <div className="p-8 max-w-3xl">
-        <h1 className="text-2xl font-bold tracking-tight">Team</h1>
-        <p className="text-muted-foreground mt-2">
-          You don&apos;t belong to a workspace yet.
-        </p>
+      <div className="flex-1 overflow-y-auto pb-20 md:pb-0">
+        <div className="p-8 max-w-3xl">
+          <h1 className="text-2xl font-bold tracking-tight">Team</h1>
+          <p className="text-muted-foreground mt-2">
+            You don&apos;t belong to a workspace yet.
+          </p>
+        </div>
       </div>
     )
   }
@@ -68,12 +70,14 @@ export default async function TeamSettingsPage() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   if ((callerAgent as any)?.seat_type === 'support') {
     return (
-      <div className="p-8 max-w-3xl">
-        <h1 className="text-2xl font-bold tracking-tight">Team</h1>
-        <p className="text-muted-foreground mt-2">
-          Team management is handled by the workspace owner. Ask them if you
-          need access changed.
-        </p>
+      <div className="flex-1 overflow-y-auto pb-20 md:pb-0">
+        <div className="p-8 max-w-3xl">
+          <h1 className="text-2xl font-bold tracking-tight">Team</h1>
+          <p className="text-muted-foreground mt-2">
+            Team management is handled by the workspace owner. Ask them if you
+            need access changed.
+          </p>
+        </div>
       </div>
     )
   }
@@ -155,38 +159,41 @@ export default async function TeamSettingsPage() {
     }
   })
 
+  // Own scroll container — dashboard <main> delegates scrolling per page (HOR-297).
   return (
-    <div className="p-8 space-y-6 max-w-3xl">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Team</h1>
-        <p className="text-muted-foreground">
-          Invite teammates to your workspace, manage roles, and revoke access.
-        </p>
-      </div>
+    <div className="flex-1 overflow-y-auto pb-20 md:pb-0">
+      <div className="p-8 space-y-6 max-w-3xl">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Team</h1>
+          <p className="text-muted-foreground">
+            Invite teammates to your workspace, manage roles, and revoke access.
+          </p>
+        </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Users className="w-4 h-4" />
-            Members &amp; invites
-          </CardTitle>
-          <CardDescription>
-            Owners can remove members and manage everything. Admins can invite
-            and revoke. Viewers see this page read-only.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <TeamManager
-            workspaceId={workspaceId}
-            callerRole={callerRole}
-            ownerCount={ownerCount}
-            workspacePlan={(workspaceRow?.plan as string | null) ?? null}
-            supportSeatsEnabled={SUPPORT_SEATS_ENABLED}
-            initialMembers={members}
-            initialInvites={invites}
-          />
-        </CardContent>
-      </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Users className="w-4 h-4" />
+              Members &amp; invites
+            </CardTitle>
+            <CardDescription>
+              Owners can remove members and manage everything. Admins can invite
+              and revoke. Viewers see this page read-only.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <TeamManager
+              workspaceId={workspaceId}
+              callerRole={callerRole}
+              ownerCount={ownerCount}
+              workspacePlan={(workspaceRow?.plan as string | null) ?? null}
+              supportSeatsEnabled={SUPPORT_SEATS_ENABLED}
+              initialMembers={members}
+              initialInvites={invites}
+            />
+          </CardContent>
+        </Card>
+      </div>
     </div>
   )
 }
