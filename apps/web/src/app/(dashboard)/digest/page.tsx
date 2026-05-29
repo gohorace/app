@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { DigestView, type DigestViewModel } from '@/components/digest/digest-view'
 import { type DigestSignal } from '@/components/digest/signal-card'
+import { type DigestRailData } from '@/components/digest/digest-rail'
 import { intentForScore } from '@/lib/design/intent'
 import { fetchAttentionCount } from '@/lib/notifications/attention-count'
 import {
@@ -358,48 +359,60 @@ function demoModel(scenario: 'live' | 'quiet'): DigestViewModel {
         : 'One to act on this morning, and a handful worth a look. Marcus got close to a contact form and could try someone else by Friday — start there. Sarah’s circling again, and someone I’d watched for a fortnight finally put her name to it.',
     signals,
     stats: { worthAttention: 4, highIntent: 2, newlyKnown: 1 },
-    rail: demoRail(),
+    rail: demoRail(scenario),
     websiteUrl: 'https://jamesreid.com.au',
     isDemo: true,
   }
 }
 
-function demoRail() {
+// "Your rhythm" intensity rail — 14 days ending today. Columns align between
+// the two strips so signal visibly trails activity by ~a day. Content-true to
+// the prototype (digest-data.js). Activity = coral, Signal = teal/moss; shaded
+// by opacity (never a hex ramp). Today is the open dashed "+" on Activity.
+const RAIL_DAYS = [
+  'Sat 16', 'Sun 17', 'Mon 18', 'Tue 19', 'Wed 20', 'Thu 21', 'Fri 22',
+  'Sat 23', 'Sun 24', 'Mon 25', 'Tue 26', 'Wed 27', 'Thu 28', 'Fri 29',
+]
+
+function demoRail(scenario: 'live' | 'quiet'): DigestRailData {
+  if (scenario === 'quiet') {
+    return {
+      activityColor: '#C4622D',
+      signalColor: '#3D5246',
+      days: RAIL_DAYS,
+      activity: [1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, null],
+      signal: [1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0],
+      note: 'Slow stretch — no drama. One tracked send today is an easy way back on it.',
+    }
+  }
   return {
-    lists: [
-      { name: 'Warming up',         count: 6,  accent: 'high' as const },
-      { name: 'Watch closely',      count: 4,  accent: 'high' as const },
-      { name: 'Quiet but circling', count: 8,  accent: 'low'  as const },
-      { name: 'Paddington vendors', count: 12, accent: 'none' as const },
-    ],
-    weekSoFar: [
-      { day: 'MON' as const, count: 3,    isToday: false },
-      { day: 'TUE' as const, count: 5,    isToday: false },
-      { day: 'WED' as const, count: 4,    isToday: true  },
-      { day: 'THU' as const, count: null, isToday: false },
-      { day: 'FRI' as const, count: null, isToday: false },
-    ],
-    weekNote: 'Quiet Thursday and Friday — Horace will tell you when something stirs.',
+    activityColor: '#C4622D',
+    signalColor: '#3D5246',
+    days: RAIL_DAYS,
+    // Thu 21 push (3) → Fri 22 signal (3); Thu 28 push (4) → Fri 29 still landing.
+    activity: [0, 0, 1, 2, 1, 3, 1, 0, 0, 2, 1, 1, 4, null],
+    signal: [1, 0, 0, 1, 2, 2, 3, 1, 0, 1, 2, 1, 2, 1],
+    note: 'Thursday’s push is still landing as Friday signal. Today’s open — send one and watch it fill.',
   }
 }
 
-// Real-mode rail. Lists feature deferred (HOR-122 backlog) — render an
-// empty Lists card. Week-so-far data needs persisted digest history
-// (also deferred) — render the day strip with the current weekday
-// highlighted but no counts yet.
-function realRail() {
-  const todayShort = new Date()
-    .toLocaleDateString('en-AU', { weekday: 'short' })
-    .toUpperCase()
-    .slice(0, 3) as 'MON' | 'TUE' | 'WED' | 'THU' | 'FRI'
+// Real-mode rail. The live activity/signal series (tracked sends from
+// `email_sends`, returning signal from `events`) wires in Phases 2–4; until
+// then render the empty 14-day frame with today's open cell so the rhythm
+// surface is present and fills in as the agent acts.
+function realRail(): DigestRailData {
+  const days = Array.from({ length: 14 }, (_, k) => {
+    const d = new Date()
+    d.setDate(d.getDate() - (13 - k))
+    return `${d.toLocaleDateString('en-AU', { weekday: 'short' })} ${d.getDate()}`
+  })
   return {
-    lists: [], // empty → card shows "Lists coming soon" copy
-    weekSoFar: (['MON', 'TUE', 'WED', 'THU', 'FRI'] as const).map((day) => ({
-      day,
-      count: null,
-      isToday: day === todayShort,
-    })),
-    weekNote: 'Your week-at-a-glance lands here once Horace has a few days of digests under its belt.',
+    activityColor: '#C4622D',
+    signalColor: '#3D5246',
+    days,
+    activity: [...Array(13).fill(null), null], // all empty; last = today's open cell
+    signal: Array(14).fill(null),
+    note: 'Your rhythm fills in here as your tracked sends — and the signal they bring back — start to land.',
   }
 }
 
