@@ -1,31 +1,8 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import {
-  ChevronRight,
-  Bell,
-  Code,
-  BarChart2,
-  Key,
-  LogOut,
-  Building2,
-  Link2,
-  Inbox,
-  MapPin,
-  Users,
-  Camera,
-  Loader2,
-  Upload,
-  LifeBuoy,
-  Globe,
-  CreditCard,
-  Plug,
-  ShieldOff,
-  Cable,
-  Database,
-} from 'lucide-react'
+import { LogOut, Building2, Camera, Loader2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { InstallPrompt } from './install-prompt'
 
@@ -36,163 +13,13 @@ interface ProfileSettingsProps {
   email: string | null
   avatarUrl: string | null
   workspaceName: string
-  /** HOR-203: support seats see a reduced nav (no Team / Billing). */
+  /** Accepted for call-site compatibility; nav gating now lives in the shell. */
   seatType?: 'agent' | 'support'
 }
 
-// HOR-250: v2 regroups the flat settings nav into five labelled sections.
-// User feedback during design moved Core markets + Portal address out of
-// Doorstep and into Signals & alerts — honoured here.
-interface NavItem {
-  href: string
-  label: string
-  icon: typeof Users
-  desc: string
-}
-interface NavSection {
-  label: string
-  /** Optional sub-label under the section header (Doorstep gets one). */
-  blurb?: string
-  items: NavItem[]
-}
-
-const NAV_SECTIONS: NavSection[] = [
-  {
-    label: 'Workspace',
-    items: [
-      {
-        href: '/settings/team',
-        label: 'Team',
-        icon: Users,
-        desc: 'Invite teammates, manage roles',
-      },
-      {
-        href: '/settings/billing',
-        label: 'Plan & billing',
-        icon: CreditCard,
-        desc: 'Your plan, card on file, invoices',
-      },
-    ],
-  },
-  {
-    label: 'Doorstep',
-    blurb:
-      'Doorstep is the public sign-in surface — the page visitors land on after scanning your inspection QR.',
-    items: [
-      {
-        href: '/settings/custom-domain',
-        label: 'Custom domain',
-        icon: Globe,
-        desc: 'Where Doorstep runs — your branded URL',
-      },
-      {
-        href: '/settings/embed',
-        label: 'Website embed',
-        icon: Code,
-        desc: 'A sign-in form for your own website',
-      },
-    ],
-  },
-  {
-    label: 'Signals & alerts',
-    items: [
-      {
-        href: '/settings/notifications',
-        label: 'Alerts & briefing',
-        icon: Bell,
-        desc: 'Push notifications, daily email',
-      },
-      {
-        href: '/settings/core-markets',
-        label: 'Core markets',
-        icon: MapPin,
-        desc: 'Suburbs in your patch — up to three',
-      },
-      {
-        href: '/settings/portal',
-        label: 'Portal address',
-        icon: Inbox,
-        desc: 'Your inbound email for REA / Domain enquiries',
-      },
-      {
-        href: '/settings/scoring',
-        label: 'Scoring rules',
-        icon: BarChart2,
-        desc: 'How intent points are awarded',
-      },
-      {
-        href: '/settings/tracked-links',
-        label: 'Tracked links',
-        icon: Link2,
-        desc: 'Per-contact links + default destination',
-      },
-      {
-        href: '/settings/snippet',
-        label: 'Install snippet',
-        icon: Code,
-        desc: 'Website tracking code',
-      },
-    ],
-  },
-  {
-    label: 'Data & integrations',
-    items: [
-      {
-        href: '/settings/connections',
-        label: 'Connections',
-        icon: Cable,
-        desc: 'Hook up your CRM — Rex, VaultRE and more',
-      },
-      {
-        href: '/settings/integrations',
-        label: 'Integrations',
-        icon: Plug,
-        desc: 'Connect Gmail and other services',
-      },
-      {
-        href: '/settings/email-exclusions',
-        label: 'Email exclusions',
-        icon: ShieldOff,
-        desc: 'Recipients you never want Horace to email',
-      },
-      {
-        href: '/settings/api-tokens',
-        label: 'API tokens',
-        icon: Key,
-        desc: 'Tokens for MCP clients (e.g. Claude)',
-      },
-      {
-        href: '/settings/api-and-data',
-        label: 'API & data',
-        icon: Database,
-        desc: 'Your API keys, webhooks and one-click export',
-      },
-      {
-        href: '/import',
-        label: 'Import contacts',
-        icon: Upload,
-        desc: 'Bring contacts in from a CSV',
-      },
-    ],
-  },
-  {
-    label: 'Help',
-    items: [
-      { href: '/help', label: 'Help & guides', icon: LifeBuoy, desc: 'Walkthroughs and answers' },
-    ],
-  },
-]
-
-// Support seats don't manage the workspace — Team and Billing are
-// hidden from their nav (and gated server-side at the page level).
-const NAV_ITEMS_HIDDEN_FOR_SUPPORT = new Set<string>(['/settings/team', '/settings/billing'])
-
-// HOR-285 parked 2026-05-22: the website embed needs more product thought
-// before it's exposed to agents. Gated OFF by default — the code and the
-// /settings/embed page stay intact; only the entry point hides. Set
-// NEXT_PUBLIC_EMBED_ENABLED=true to bring it back.
-const EMBED_ENABLED = process.env.NEXT_PUBLIC_EMBED_ENABLED === 'true'
-
+// HOR-329: the grouped settings nav moved to the persistent shell
+// (components/settings/settings-nav.tsx + the /settings layout). This
+// component is now just the Profile section content.
 export function ProfileSettings({
   agentId,
   firstName,
@@ -200,16 +27,7 @@ export function ProfileSettings({
   email,
   avatarUrl,
   workspaceName,
-  seatType = 'agent',
 }: ProfileSettingsProps) {
-  const navSections: NavSection[] = NAV_SECTIONS.map((section) => ({
-    ...section,
-    items: section.items.filter((item) => {
-      if (!EMBED_ENABLED && item.href === '/settings/embed') return false
-      if (seatType === 'support' && NAV_ITEMS_HIDDEN_FOR_SUPPORT.has(item.href)) return false
-      return true
-    }),
-  })).filter((section) => section.items.length > 0)
   const router = useRouter()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
@@ -387,91 +205,9 @@ export function ProfileSettings({
         </div>
       </div>
 
-      {/* Settings nav — grouped into v2 sections (HOR-250) */}
-      {navSections.map((section) => (
-        <div key={section.label} style={{ marginBottom: '18px' }}>
-          <h2
-            style={{
-              margin: '0 0 8px',
-              fontSize: '13px',
-              fontWeight: 600,
-              color: '#1A1612',
-              letterSpacing: '-0.01em',
-            }}
-          >
-            {section.label}
-          </h2>
-          {section.blurb && (
-            <p
-              style={{
-                margin: '0 0 10px',
-                fontSize: '12px',
-                color: '#8C7B6B',
-                lineHeight: 1.5,
-                maxWidth: 560,
-              }}
-            >
-              {section.blurb}
-            </p>
-          )}
-          <div
-            style={{
-              background: '#FAF7F2',
-              border: '1px solid rgba(140,123,107,0.2)',
-              borderRadius: '12px',
-              overflow: 'hidden',
-            }}
-          >
-            {section.items.map(({ href, label, icon: Icon, desc }, i) => (
-              <Link
-                key={href}
-                href={href}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '12px',
-                  padding: '14px 18px',
-                  textDecoration: 'none',
-                  borderTop: i === 0 ? 'none' : '1px solid rgba(140,123,107,0.12)',
-                  transition: 'background 150ms',
-                }}
-                className="settings-nav-row"
-              >
-                <div
-                  style={{
-                    width: '32px',
-                    height: '32px',
-                    borderRadius: '8px',
-                    background: 'rgba(196,98,45,0.1)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0,
-                  }}
-                >
-                  <Icon style={{ width: '15px', height: '15px', color: '#C4622D' }} />
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{ fontSize: '13px', fontWeight: 600, color: '#1A1612', margin: 0 }}>
-                    {label}
-                  </p>
-                  <p style={{ fontSize: '11px', color: '#8C7B6B', margin: 0, marginTop: '1px' }}>
-                    {desc}
-                  </p>
-                </div>
-                <ChevronRight
-                  style={{ width: '16px', height: '16px', color: '#8C7B6B', flexShrink: 0 }}
-                />
-              </Link>
-            ))}
-          </div>
-        </div>
-      ))}
-
       {/* HOR-250: data-sovereignty strip — trust commitment, verbatim. */}
       <div
         style={{
-          marginBottom: '18px',
           padding: '20px 22px',
           background: '#2E2823',
           color: '#F5F0E8',
@@ -524,9 +260,10 @@ export function ProfileSettings({
       {/* Add to home screen */}
       <InstallPrompt />
 
-      {/* Sign out */}
+      {/* Sign out (mobile path — desktop rail has its own) */}
       <button
         onClick={signOut}
+        className="md:hidden"
         style={{
           width: '100%',
           display: 'flex',
@@ -541,7 +278,6 @@ export function ProfileSettings({
           fontSize: '13px',
           fontWeight: 500,
           textAlign: 'left',
-          transition: 'background 150ms',
         }}
       >
         <LogOut style={{ width: '15px', height: '15px' }} />

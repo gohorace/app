@@ -14,9 +14,8 @@
  */
 
 import { useCallback, useState } from 'react'
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, MapPin, Plus, X, Check, AlertCircle, Loader2 } from 'lucide-react'
+import { MapPin, Plus, X, Check, AlertCircle, Loader2 } from 'lucide-react'
 import { SuburbPicker, type SelectedLocality } from '@/components/core-markets/suburb-picker'
 
 export interface CoreMarketRow {
@@ -70,15 +69,6 @@ export function CoreMarketsSettings({ markets }: Props) {
 
   return (
     <div className="p-4 md:p-8 space-y-5 max-w-2xl">
-      <Link
-        href="/settings"
-        className="inline-flex items-center gap-1.5 text-sm font-medium"
-        style={{ color: '#8C7B6B' }}
-      >
-        <ArrowLeft className="w-4 h-4" />
-        Settings
-      </Link>
-
       <div>
         <h1 className="font-display font-semibold tracking-tight" style={{ fontSize: '24px', color: '#1A1612' }}>
           Core markets
