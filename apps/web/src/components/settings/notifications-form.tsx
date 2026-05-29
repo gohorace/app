@@ -91,7 +91,7 @@ function PushStatusCard() {
       await loadDiag()
       setEnableResult({ ok: true })
     } catch (err) {
-      setEnableResult({ error: String(err) })
+      setEnableResult({ error: err instanceof Error ? err.message : String(err) })
     }
     setEnabling(false)
   }

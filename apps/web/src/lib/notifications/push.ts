@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { postToAlertVolumeChannel } from '@/lib/notifications/slack'
+import { vapidSubject } from './vapid'
 
 const DEDUP_MINUTES = 30
 const VOLUME_CAP_PER_24H = 8
@@ -44,16 +45,26 @@ interface PushPayload {
 async function sendWebPush(endpoint: string, p256dh: string, auth: string, payload: PushPayload): Promise<boolean> {
   const webpush = await import('web-push')
 
-  const vapidPublic  = process.env.VAPID_PUBLIC_KEY
+  // Prefer the client/subscription key (NEXT_PUBLIC_*): that's the key the
+  // browser subscribed with, so the server must sign with the same one or the
+  // push service rejects it. Falling back to VAPID_PUBLIC_KEY makes a mis-set
+  // or swapped VAPID_PUBLIC_KEY non-fatal (HOR-296).
+  const vapidPublic  = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || process.env.VAPID_PUBLIC_KEY
   const vapidPrivate = process.env.VAPID_PRIVATE_KEY
-  const vapidEmail   = process.env.VAPID_EMAIL ?? 'mailto:hello@horace.app'
 
   if (!vapidPublic || !vapidPrivate) {
     console.warn('[push] VAPID keys not set — skipping push')
     return false
   }
 
-  webpush.setVapidDetails(vapidEmail, vapidPublic, vapidPrivate)
+  try {
+    webpush.setVapidDetails(vapidSubject(), vapidPublic, vapidPrivate)
+  } catch (err) {
+    // Malformed VAPID config (e.g. a bare-email VAPID_EMAIL) — don't let it
+    // throw through dispatch and 500 the whole alert path (HOR-296).
+    console.error('[push] invalid VAPID config — skipping push', err)
+    return false
+  }
 
   try {
     await webpush.sendNotification(

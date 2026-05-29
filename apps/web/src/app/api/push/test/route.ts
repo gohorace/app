@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { vapidSubject } from '@/lib/notifications/vapid'
 
 export async function POST() {
   const supabase = await createClient()
@@ -16,10 +17,11 @@ export async function POST() {
 
   if (!agent) return NextResponse.json({ error: 'No agent found' }, { status: 400 })
 
-  // Check VAPID config
-  const vapidPublic  = process.env.VAPID_PUBLIC_KEY
+  // Check VAPID config. Prefer the client/subscription key (NEXT_PUBLIC_*) so
+  // the server signs with the same key the browser subscribed with; fall back
+  // to VAPID_PUBLIC_KEY (HOR-296).
+  const vapidPublic  = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || process.env.VAPID_PUBLIC_KEY
   const vapidPrivate = process.env.VAPID_PRIVATE_KEY
-  const vapidEmail   = process.env.VAPID_EMAIL ?? 'mailto:hello@horace.app'
 
   if (!vapidPublic || !vapidPrivate) {
     return NextResponse.json({
@@ -41,7 +43,16 @@ export async function POST() {
 
   // Send test notification to all subscriptions
   const webpush = await import('web-push')
-  webpush.setVapidDetails(vapidEmail, vapidPublic, vapidPrivate)
+  try {
+    webpush.setVapidDetails(vapidSubject(), vapidPublic, vapidPrivate)
+  } catch (err) {
+    // HOR-296 — a bare-email VAPID_EMAIL made setVapidDetails throw an
+    // unhandled 500 ("Vapid subject is not a url or mailto url"). vapidSubject
+    // normalises that, but keep a clean error for any other bad config.
+    return NextResponse.json({
+      error: `VAPID config invalid: ${err instanceof Error ? err.message : String(err)}. Check VAPID_EMAIL (must be a mailto: or https: URL).`,
+    }, { status: 500 })
+  }
 
   const payload = JSON.stringify({
     title: 'Horace is watching.',
@@ -108,7 +119,7 @@ export async function GET() {
     .eq('agent_id', agent.id)
 
   return NextResponse.json({
-    vapidConfigured: !!(process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY),
+    vapidConfigured: !!((process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || process.env.VAPID_PUBLIC_KEY) && process.env.VAPID_PRIVATE_KEY),
     clientKeyConfigured: !!process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
     subscriptionCount: count ?? 0,
   })
