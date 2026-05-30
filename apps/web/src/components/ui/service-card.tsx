@@ -16,6 +16,8 @@ export interface ServiceCardProps {
   statusVariant?: BadgeProps['variant']
   statusLabel?: string
   onConnect?: () => void
+  /** Label for the "Connect" button when not connected. Defaults to "Connect". */
+  connectLabel?: string
   defaultOpen?: boolean
   /** Nested manage panel, revealed when a connected card is expanded. */
   children?: React.ReactNode
@@ -34,6 +36,7 @@ export function ServiceCard({
   statusVariant = 'stone',
   statusLabel,
   onConnect,
+  connectLabel = 'Connect',
   defaultOpen,
   children,
   className,
@@ -79,7 +82,7 @@ export function ServiceCard({
           </Button>
         ) : (
           <Button size="sm" onClick={onConnect}>
-            Connect
+            {connectLabel}
           </Button>
         )}
       </div>

@@ -4,16 +4,11 @@
  * Server-rendered team management page. Fetches the workspace's
  * members + pending invites and the caller's role, then hands off
  * to the client TeamManager for interactions.
- *
- * `workspace_invites` isn't in database.types.ts yet — local row
- * interface + as-any cast on the .from() call. Regenerate types
- * post-merge to clean this up.
  */
 
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Users } from 'lucide-react'
+import { SectionHeading } from '@/components/ui/section-heading'
 import { TeamManager, type MemberRow, type PendingInviteRow } from '@/components/settings/team-manager'
 
 interface InviteFromDb {
@@ -34,7 +29,6 @@ export default async function TeamSettingsPage() {
 
   const admin = createAdminClient()
 
-  // Find caller's workspace + role.
   const { data: callerMembership } = await admin
     .from('workspace_members')
     .select('workspace_id, role')
@@ -44,11 +38,9 @@ export default async function TeamSettingsPage() {
   if (!callerMembership) {
     return (
       <div className="flex-1 overflow-y-auto pb-20 md:pb-0">
-        <div className="p-8 max-w-3xl">
-          <h1 className="text-2xl font-bold tracking-tight">Team</h1>
-          <p className="text-muted-foreground mt-2">
-            You don&apos;t belong to a workspace yet.
-          </p>
+        <div className="p-4 md:p-8 max-w-[660px]">
+          <SectionHeading title="Team" description="Invite teammates to your workspace, manage roles, and revoke access." />
+          <p className="text-sm text-[var(--fg-secondary)]">You don&apos;t belong to a workspace yet.</p>
         </div>
       </div>
     )
@@ -57,8 +49,6 @@ export default async function TeamSettingsPage() {
   const workspaceId = callerMembership.workspace_id
   const callerRole = callerMembership.role as 'owner' | 'admin' | 'viewer'
 
-  // HOR-203: support seats can't manage the team. Surface a friendly
-  // empty state rather than rendering an empty member list.
   const { data: callerAgent } = await admin
     .from('agents')
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -71,32 +61,23 @@ export default async function TeamSettingsPage() {
   if ((callerAgent as any)?.seat_type === 'support') {
     return (
       <div className="flex-1 overflow-y-auto pb-20 md:pb-0">
-        <div className="p-8 max-w-3xl">
-          <h1 className="text-2xl font-bold tracking-tight">Team</h1>
-          <p className="text-muted-foreground mt-2">
-            Team management is handled by the workspace owner. Ask them if you
-            need access changed.
+        <div className="p-4 md:p-8 max-w-[660px]">
+          <SectionHeading title="Team" description="Invite teammates to your workspace, manage roles, and revoke access." />
+          <p className="text-sm text-[var(--fg-secondary)]">
+            Team management is handled by the workspace owner. Ask them if you need access changed.
           </p>
         </div>
       </div>
     )
   }
 
-  // Fetch members. workspace_members carries the auth role; agents carries
-  // the operational role + name + email. Two queries + stitch in JS — small
-  // member counts per workspace make this fine.
-  // Also fetch the workspace's plan so the UI can gate Pro-only behaviour
-  // (single agent slot, support-only invite dropdown).
   const [
     { data: memberRows },
     { data: agentRows },
     { data: invitesRaw },
     { data: workspaceRow },
   ] = await Promise.all([
-    admin
-      .from('workspace_members')
-      .select('user_id, role, created_at')
-      .eq('workspace_id', workspaceId),
+    admin.from('workspace_members').select('user_id, role, created_at').eq('workspace_id', workspaceId),
     admin
       .from('agents')
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -110,14 +91,9 @@ export default async function TeamSettingsPage() {
       .is('accepted_at', null)
       .is('revoked_at', null)
       .order('created_at', { ascending: false }),
-    admin
-      .from('workspaces')
-      .select('plan')
-      .eq('id', workspaceId)
-      .maybeSingle(),
+    admin.from('workspaces').select('plan').eq('id', workspaceId).maybeSingle(),
   ])
 
-  // Stitch agents into members by user_id.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const agentByUser = new Map<string, any>(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -139,10 +115,8 @@ export default async function TeamSettingsPage() {
     }
   })
 
-  // Count owners (for sole-owner-guard hint in the UI).
   const ownerCount = members.filter((m) => m.authRole === 'owner').length
 
-  // Stitch inviter name into invites.
   const invites: PendingInviteRow[] = (invitesRaw as InviteFromDb[] | null ?? []).map((inv) => {
     const inviter = agentByUser.get(inv.invited_by)
     const inviterName =
@@ -162,37 +136,20 @@ export default async function TeamSettingsPage() {
   // Own scroll container — dashboard <main> delegates scrolling per page (HOR-297).
   return (
     <div className="flex-1 overflow-y-auto pb-20 md:pb-0">
-      <div className="p-8 space-y-6 max-w-3xl">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Team</h1>
-          <p className="text-muted-foreground">
-            Invite teammates to your workspace, manage roles, and revoke access.
-          </p>
-        </div>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="w-4 h-4" />
-              Members &amp; invites
-            </CardTitle>
-            <CardDescription>
-              Owners can remove members and manage everything. Admins can invite
-              and revoke. Viewers see this page read-only.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <TeamManager
-              workspaceId={workspaceId}
-              callerRole={callerRole}
-              ownerCount={ownerCount}
-              workspacePlan={(workspaceRow?.plan as string | null) ?? null}
-              supportSeatsEnabled={SUPPORT_SEATS_ENABLED}
-              initialMembers={members}
-              initialInvites={invites}
-            />
-          </CardContent>
-        </Card>
+      <div className="p-4 md:p-8 max-w-[660px] space-y-5">
+        <SectionHeading
+          title="Team"
+          description="Invite teammates and manage who can act on your signals."
+        />
+        <TeamManager
+          workspaceId={workspaceId}
+          callerRole={callerRole}
+          ownerCount={ownerCount}
+          workspacePlan={(workspaceRow?.plan as string | null) ?? null}
+          supportSeatsEnabled={SUPPORT_SEATS_ENABLED}
+          initialMembers={members}
+          initialInvites={invites}
+        />
       </div>
     </div>
   )

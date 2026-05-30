@@ -1,10 +1,12 @@
 /**
  * /settings/api-and-data — "API & developer access" (HOR-329 unified surface).
  *
- * Consolidates the old API tokens (MCP) and API & data (REST keys + webhooks
- * + export) pages. Scope split preserved:
- *   - REST API keys + webhooks + export — workspace/admin (resolveAdminContext)
- *   - MCP tokens — user-scoped (every seat manages their own clients)
+ * Three subsections per the design handoff:
+ *   1. REST API keys  (admin only)
+ *   2. MCP — for Claude and other AI clients  (every seat)
+ *   3. Your data  (admin only, client-side downloads)
+ *
+ * Webhooks removed from this view (deferred to a dedicated surface).
  */
 
 import { createClient } from '@/lib/supabase/server'
@@ -13,11 +15,12 @@ import { createApiV1Db } from '@/lib/api-v1/db'
 import { resolveAdminContext } from '@/lib/api-v1/admin-guard'
 import { maskApiV1Key } from '@/lib/api-v1/keys'
 import { getAppUrl } from '@/lib/url'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { ShieldCheck } from 'lucide-react'
+import { SectionHeading } from '@/components/ui/section-heading'
 import { ApiAndDataManager, type ApiV1KeyRow } from '@/components/settings/api-and-data-manager'
-import { WebhooksManager } from '@/components/settings/webhooks-manager'
 import { ApiTokensManager } from '@/components/settings/api-tokens-manager'
+import { DataExportButtons } from '@/components/settings/data-export-buttons'
+
+export const dynamic = 'force-dynamic'
 
 interface McpTokenRow {
   id: string
@@ -27,24 +30,14 @@ interface McpTokenRow {
   created_at: string
 }
 
-const COMMITMENTS: Array<{ title: string; body: string }> = [
-  {
-    title: 'Never sold, never shared',
-    body: 'The intelligence Horace builds on your market is yours. It is never sold, shared, or traded — to anyone, for any reason.',
-  },
-  {
-    title: 'Invisible to other agents',
-    body: 'What Horace learns for you stays with you. No other agent on the platform can see it.',
-  },
-  {
-    title: 'Never used to train models',
-    body: "Your clients' behaviour informs your work and nothing else. It doesn't feed our product, or anyone's models.",
-  },
-  {
-    title: 'Yours to take',
-    body: 'Export everything below, any time, in one click. The day you leave, your data comes with you.',
-  },
-]
+/** Uppercase eyebrow used to separate the three subsections. */
+function SubHead({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="mt-6 text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--fg-secondary)]">
+      {children}
+    </div>
+  )
+}
 
 export default async function ApiAndDataPage() {
   const supabase = await createClient()
@@ -54,14 +47,15 @@ export default async function ApiAndDataPage() {
 
   // MCP tokens are user-scoped — every seat sees their own.
   const admin = createAdminClient()
-  const { data: mcpTokens } = await admin
+  const { data: mcpTokensRaw } = await admin
     .from('workspace_api_tokens')
     .select('id, name, last_used_at, revoked_at, created_at')
     .eq('user_id', user!.id)
     .eq('kind', 'mcp')
     .order('created_at', { ascending: false })
+  const mcpTokens = (mcpTokensRaw as McpTokenRow[]) ?? []
 
-  // REST keys + webhooks + export — workspace admin only.
+  // REST keys + export — workspace admin only.
   const db = createApiV1Db()
   const ctx = user ? await resolveAdminContext(db, user.id) : null
   const isAdmin = ctx?.isAdmin ?? false
@@ -91,71 +85,52 @@ export default async function ApiAndDataPage() {
 
   return (
     <div className="flex-1 overflow-y-auto pb-20 md:pb-0">
-      <div className="p-4 md:p-8 space-y-6 max-w-3xl">
-        <div>
-          <h1 className="font-serif text-[22px] font-semibold tracking-tight text-[var(--fg-primary)]">
-            API &amp; developer access
-          </h1>
-          <p className="mt-1 text-sm text-[var(--fg-secondary)]">
-            Programmatic access to your workspace — REST for your own integrations, MCP for AI
-            clients like Claude. Plus a one-click export of everything.
-          </p>
-        </div>
+      <div className="p-4 md:p-8 max-w-[660px] space-y-4">
+        <SectionHeading
+          title="API & developer access"
+          description="Programmatic access to your workspace — REST for your own integrations, MCP for AI clients like Claude."
+        />
 
-        {/* Sovereignty — "Your data. Full stop." */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4" />
-              Your data. Full stop.
-            </CardTitle>
-            <CardDescription>The promises behind everything on this page.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ul className="grid gap-4 sm:grid-cols-2">
-              {COMMITMENTS.map((c) => (
-                <li key={c.title} className="space-y-1">
-                  <p className="text-sm font-medium">{c.title}</p>
-                  <p className="text-sm text-muted-foreground">{c.body}</p>
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
-
-        {/* ── REST API keys + webhooks + export (admin) ──────────────── */}
+        {/* 1. REST API keys (admin only) */}
         {isAdmin ? (
           <>
-            <ApiAndDataManager initialKeys={initialKeys} baseUrl={baseUrl} />
-            <WebhooksManager />
+            <SubHead>REST API keys</SubHead>
+            <ApiAndDataManager
+              initialKeys={initialKeys}
+              baseUrl={baseUrl}
+              showExport={false}
+            />
           </>
         ) : (
-          <Card>
-            <CardHeader>
-              <CardTitle>API keys &amp; export</CardTitle>
-              <CardDescription>
-                Keys, webhooks, and the full data export are managed by your agency&apos;s admins.
-                Ask one of them if you need access.
-              </CardDescription>
-            </CardHeader>
-          </Card>
+          <p className="text-sm text-[var(--fg-secondary)]">
+            REST API keys and data export are managed by your workspace admins.
+          </p>
         )}
 
-        {/* ── MCP (every seat manages their own tokens) ──────────────── */}
-        <section className="space-y-3">
-          <div>
-            <h2 className="text-sm font-semibold text-[var(--fg-primary)]">
-              MCP — for Claude and other AI clients
-            </h2>
-            <p className="text-xs text-[var(--fg-secondary)]">
-              Paste the endpoint and a token into your client&apos;s connector settings. Tokens
-              authenticate as your agent identity — treat them like passwords.
-            </p>
-          </div>
-          <ApiTokensManager initialTokens={(mcpTokens as McpTokenRow[]) ?? []} mcpUrl={mcpUrl} />
-        </section>
+        {/* 2. MCP — every seat manages their own tokens */}
+        <SubHead>MCP — for Claude and other AI clients</SubHead>
+        <ApiTokensManager initialTokens={mcpTokens} mcpUrl={mcpUrl} />
 
-        <p className="text-sm text-muted-foreground pt-2">Seize the moment — Horace</p>
+        {/* 3. Your data (admin only) */}
+        {isAdmin && (
+          <>
+            <SubHead>Your data</SubHead>
+            <div className="rounded-md border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-[22px] shadow-[var(--shadow-sm)]">
+              <div className="mb-4 flex gap-3">
+                <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-[rgba(196,98,45,0.1)]">
+                  {/* Download icon rendered client-side via DataExportButtons */}
+                </div>
+                <div>
+                  <div className="text-sm font-semibold text-[var(--fg-primary)]">Take your data anywhere</div>
+                  <div className="mt-0.5 text-xs leading-snug text-[var(--fg-secondary)]">
+                    Your contacts, properties, and relationships — the whole agency dataset. No request, no wait.
+                  </div>
+                </div>
+              </div>
+              <DataExportButtons />
+            </div>
+          </>
+        )}
       </div>
     </div>
   )

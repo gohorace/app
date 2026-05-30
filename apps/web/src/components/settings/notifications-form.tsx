@@ -4,7 +4,6 @@ import { useState, useRef, useEffect, KeyboardEvent } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Card, CardContent } from '@/components/ui/card'
 import { RadioCard } from '@/components/ui/radio-card'
 import { Select } from '@/components/ui/select'
 import { CardLabel } from '@/components/ui/card-label'
@@ -125,9 +124,11 @@ function PushStatusCard() {
 
   const subscribed = (diag?.subscriptionCount ?? 0) > 0
 
+  const cardCls = 'rounded-md border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-[22px] shadow-[var(--shadow-sm)]'
+
   return (
-    <Card>
-      <CardContent className="pt-5 space-y-4">
+    <div className={cardCls}>
+      <div className="space-y-4">
 
         {/* Not yet subscribed — primary CTA */}
         {!subscribed && (
@@ -226,8 +227,8 @@ function PushStatusCard() {
           </div>
         )}
 
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   )
 }
 
@@ -310,8 +311,7 @@ export function NotificationsForm({ initial }: Props) {
       <PushStatusCard />
 
       {/* Push notifications */}
-      <Card>
-        <CardContent className="pt-5 space-y-4">
+      <div className="rounded-md border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-[22px] shadow-[var(--shadow-sm)] space-y-4">
           <CardLabel className="mb-0">Push notifications</CardLabel>
 
           <div className="space-y-2">
@@ -343,12 +343,10 @@ export function NotificationsForm({ initial }: Props) {
               <p className="text-xs text-[var(--fg-secondary)]">points or above</p>
             </div>
           )}
-        </CardContent>
-      </Card>
+      </div>
 
       {/* Daily email round-up */}
-      <Card>
-        <CardContent className="pt-5 space-y-4">
+      <div className="rounded-md border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-[22px] shadow-[var(--shadow-sm)] space-y-4">
           <CardLabel className="mb-0">Daily email round-up</CardLabel>
 
           <div className="space-y-1.5">
@@ -399,8 +397,7 @@ export function NotificationsForm({ initial }: Props) {
               />
             </div>
           </div>
-        </CardContent>
-      </Card>
+      </div>
 
       {error && <p className="text-sm text-destructive">{error}</p>}
 
