@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { NotificationsForm } from '@/components/settings/notifications-form'
+import { SectionHeading } from '@/components/ui/section-heading'
 
 export default async function NotificationsPage() {
   const supabase = await createClient()

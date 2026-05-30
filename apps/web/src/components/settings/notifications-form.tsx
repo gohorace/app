@@ -5,8 +5,11 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { CheckCircle2, X, Bell, Users, Clock, Loader2, Send, BellPlus } from 'lucide-react'
+import { RadioCard } from '@/components/ui/radio-card'
+import { Select } from '@/components/ui/select'
+import { CardLabel } from '@/components/ui/card-label'
+import { Chip } from '@/components/ui/chip'
+import { CheckCircle2, Bell, Users, Clock, Loader2, Send, BellPlus } from 'lucide-react'
 import { requestPushPermission, savePushSubscription } from '@/components/push-manager'
 import { cn } from '@/lib/utils'
 
@@ -309,54 +312,25 @@ export function NotificationsForm({ initial }: Props) {
       {/* Push notifications */}
       <Card>
         <CardContent className="pt-5 space-y-4">
-          <div>
-            <p className="text-sm font-semibold">Push notifications</p>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Alerts sent to your device when prospect activity is detected
-            </p>
-          </div>
+          <CardLabel className="mb-0">Push notifications</CardLabel>
 
           <div className="space-y-2">
             {ALERT_MODES.map(({ value, icon: Icon, label, description, note }) => (
-              <button
+              <RadioCard
                 key={value}
-                type="button"
-                onClick={() => setAlertMode(value)}
-                className={cn(
-                  'w-full text-left rounded-lg border px-4 py-3 transition-colors',
-                  alertMode === value
-                    ? 'border-primary bg-primary/5'
-                    : 'border-border hover:border-muted-foreground/40'
-                )}
-              >
-                <div className="flex items-start gap-3">
-                  <div className={cn(
-                    'mt-0.5 rounded-md p-1.5',
-                    alertMode === value ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'
-                  )}>
-                    <Icon className="w-3.5 h-3.5" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-medium">{label}</p>
-                      {note && (
-                        <Badge variant="outline" className="text-xs py-0 px-1.5">{note}</Badge>
-                      )}
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
-                  </div>
-                  <div className={cn(
-                    'mt-1 h-4 w-4 rounded-full border-2 shrink-0 transition-colors',
-                    alertMode === value ? 'border-primary bg-primary' : 'border-muted-foreground/40'
-                  )} />
-                </div>
-              </button>
+                selected={alertMode === value}
+                onSelect={() => setAlertMode(value)}
+                icon={<Icon />}
+                title={label}
+                description={description}
+                note={note}
+              />
             ))}
           </div>
 
           {alertMode === 'threshold' && (
             <div className="flex items-center gap-3 pt-1">
-              <Label htmlFor="threshold" className="text-xs shrink-0">Alert at score</Label>
+              <span className="shrink-0 text-xs text-[var(--fg-secondary)]">Alert at score</span>
               <Input
                 id="threshold"
                 type="number"
@@ -364,9 +338,9 @@ export function NotificationsForm({ initial }: Props) {
                 max={999}
                 value={threshold}
                 onChange={(e) => setThreshold(Number(e.target.value))}
-                className="w-20 h-8 text-sm"
+                className="h-8 w-20 text-sm"
               />
-              <p className="text-xs text-muted-foreground">points or above</p>
+              <p className="text-xs text-[var(--fg-secondary)]">points or above</p>
             </div>
           )}
         </CardContent>
@@ -375,33 +349,18 @@ export function NotificationsForm({ initial }: Props) {
       {/* Daily email round-up */}
       <Card>
         <CardContent className="pt-5 space-y-4">
-          <div>
-            <p className="text-sm font-semibold">Daily email round-up</p>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Sent every day with your top prospects and recommended actions
-            </p>
-          </div>
+          <CardLabel className="mb-0">Daily email round-up</CardLabel>
 
           <div className="space-y-1.5">
-            <Label className="text-xs">Recipients</Label>
+            <Label>Recipients</Label>
             <div
-              className="min-h-[2.5rem] flex flex-wrap gap-1.5 rounded-md border border-input bg-background px-3 py-2 cursor-text"
+              className="flex min-h-10 cursor-text flex-wrap items-center gap-1.5 rounded-md border border-[var(--border-default)] bg-[var(--bg-elevated)] px-2 py-1.5"
               onClick={() => inputRef.current?.focus()}
             >
               {emails.map((email) => (
-                <span
-                  key={email}
-                  className="inline-flex items-center gap-1 bg-muted rounded px-2 py-0.5 text-xs font-medium"
-                >
+                <Chip key={email} onRemove={() => removeEmail(email)}>
                   {email}
-                  <button
-                    type="button"
-                    onClick={(e) => { e.stopPropagation(); removeEmail(email) }}
-                    className="text-muted-foreground hover:text-foreground"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </span>
+                </Chip>
               ))}
               <input
                 ref={inputRef}
@@ -411,41 +370,33 @@ export function NotificationsForm({ initial }: Props) {
                 onKeyDown={handleEmailKey}
                 onBlur={() => addEmail(emailInput)}
                 placeholder={emails.length === 0 ? 'Add email address…' : ''}
-                className="flex-1 min-w-32 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                className="min-w-32 flex-1 bg-transparent text-sm outline-none placeholder:text-[var(--fg-tertiary)]"
               />
             </div>
-            <p className="text-xs text-muted-foreground">
-              Press Enter or comma to add. Add team members to copy them in.
+            <p className="text-xs text-[var(--fg-tertiary)]">
+              Press Enter to add. Copy in team members to share the briefing.
             </p>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label htmlFor="timezone" className="text-xs">Timezone</Label>
-              <select
+              <Label htmlFor="timezone">Time zone</Label>
+              <Select
                 id="timezone"
                 value={timezone}
                 onChange={(e) => setTimezone(e.target.value)}
-                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              >
-                {TIMEZONES.map((tz) => (
-                  <option key={tz.value} value={tz.value}>{tz.label}</option>
-                ))}
-              </select>
+                options={TIMEZONES}
+              />
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="hour" className="text-xs">Send at</Label>
-              <select
+              <Label htmlFor="hour">Send at</Label>
+              <Select
                 id="hour"
-                value={hour}
+                value={String(hour)}
                 onChange={(e) => setHour(Number(e.target.value))}
-                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              >
-                {HOURS.map((h) => (
-                  <option key={h.value} value={h.value}>{h.label}</option>
-                ))}
-              </select>
+                options={HOURS.map((h) => ({ value: String(h.value), label: h.label }))}
+              />
             </div>
           </div>
         </CardContent>
