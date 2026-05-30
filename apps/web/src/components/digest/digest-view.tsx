@@ -95,7 +95,7 @@ function ActivityHeader({
   attentionCount,
 }: {
   dateLabel: string
-  isDemo?: boolean
+  isDemo?: boolean | 'demo' | 'preview'
   attentionCount: number
 }) {
   const { openCompanion } = useCompanion()
