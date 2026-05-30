@@ -76,8 +76,13 @@ export default async function DigestPage({
   })
   const leads = rawLeads ?? []
 
+  // No signal yet → show the demo roster so new agents see a concrete
+  // preview of what the surface looks like with real data. websiteUrl and
+  // attentionCount are the real values; everything else is illustrative.
+  // isDemo:'preview' renders a "SAMPLE DATA" chip (vs "DEMO DATA" for ?demo=1)
+  // so agents understand this is showing them what's coming, not their real data.
   if (leads.length === 0) {
-    return <DigestView model={{ ...emptyModel(websiteUrl), attentionCount }} />
+    return <DigestView model={{ ...demoModel('live'), websiteUrl, attentionCount, isDemo: 'preview' }} />
   }
 
   // ── Enrich each lead in parallel: events + suburb + AI insight ───────────

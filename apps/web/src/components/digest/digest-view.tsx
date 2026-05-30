@@ -31,8 +31,14 @@ export interface DigestViewModel {
   rail: DigestRailData
   /** Workspace website URL — used by the empty-state ActivityPrompts. */
   websiteUrl: string | null
-  /** When true, a "DEMO DATA" chip renders so reviewers know this is mock. */
-  isDemo?: boolean
+  /**
+   * When true, a labelled chip renders to signal this is illustrative data.
+   * - `'demo'` — explicit `?demo=1` review mode: shows "DEMO DATA" (QA/design).
+   * - `'preview'` — no-signal-yet mode: shows "SAMPLE DATA" so new agents
+   *    understand the surface is previewing what their digest will look like.
+   * Passing `true` is treated the same as `'demo'` for backwards compatibility.
+   */
+  isDemo?: boolean | 'demo' | 'preview'
   /** Bell badge count — high-intent contacts + unread notifications. */
   attentionCount?: number
 }
@@ -132,7 +138,7 @@ function ActivityHeader({
                 borderRadius: 4,
               }}
             >
-              DEMO DATA
+              {isDemo === 'preview' ? 'SAMPLE DATA' : 'DEMO DATA'}
             </span>
           )}
         </div>
