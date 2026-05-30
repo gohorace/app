@@ -1,20 +1,16 @@
 /**
  * HOR-204 — CustomDomainManager client component.
  *
- * Renders the four states of a workspace custom domain:
- *   - empty:    no row → input + Add button
- *   - pending:  row exists but not yet verified → CNAME instructions +
- *               Check status button + Remove
- *   - verified: green tick + "You're set" + Remove
- *   - failed:   red flag + error message + Retry + Remove
+ * Renders four states of a workspace custom domain:
+ *   - empty:    no row → input + Add button + setup instructions
+ *   - pending:  CNAME instructions + Check status
+ *   - verified: domain card + DNS record card + Check status / Change domain
+ *   - failed:   error state + Retry + Change domain
  *
  * Wires to:
  *   POST   /api/domains
  *   POST   /api/domains/:id/verify
  *   DELETE /api/domains/:id
- *
- * No live polling — user clicks "Check status" once they've configured
- * DNS. The cron at /api/cron/check-domains catches changes between visits.
  */
 
 'use client'
@@ -24,7 +20,9 @@ import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { CheckCircle2, AlertCircle, Clock, Copy } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
+import { CardLabel } from '@/components/ui/card-label'
+import { RefreshCw, Copy, Check } from 'lucide-react'
 import { DnsProviderGuide, type DnsProvider } from './dns-provider-guide'
 
 export interface VerificationRecord {
@@ -51,6 +49,24 @@ interface Props {
   initialDomain: CustomDomainRow | null
 }
 
+const card = 'rounded-md border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-[22px] shadow-[var(--shadow-sm)]'
+
+function DnsTable({ rows }: { rows: [string, string][] }) {
+  return (
+    <div className="overflow-hidden rounded-md border border-[var(--border-subtle)] bg-[var(--bg-elevated)]">
+      {rows.map(([k, v], i) => (
+        <div
+          key={k}
+          className={`flex px-3.5 py-2.5${i < rows.length - 1 ? ' border-b border-[var(--border-subtle)]' : ''}`}
+        >
+          <span className="w-20 shrink-0 text-xs text-[var(--fg-secondary)]">{k}</span>
+          <span className="min-w-0 break-all font-mono text-xs text-[var(--fg-primary)]">{v}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export function CustomDomainManager({ initialDomain }: Props) {
   const router = useRouter()
   const [domain, setDomain] = useState<CustomDomainRow | null>(initialDomain)
@@ -70,28 +86,17 @@ export function CustomDomainManager({ initialDomain }: Props) {
         body: JSON.stringify({ hostname: hostname.trim() }),
       })
       const body = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        setError(body.error ?? `Failed (${res.status})`)
-        return
-      }
+      if (!res.ok) { setError(body.error ?? `Failed (${res.status})`); return }
       setDomain({
-        id: body.id,
-        hostname: body.hostname,
-        status: body.status,
-        sslStatus: body.ssl_status,
-        dnsTarget: body.dns_target,
-        verificationRecords: body.verification_records ?? [],
+        id: body.id, hostname: body.hostname, status: body.status, sslStatus: body.ssl_status,
+        dnsTarget: body.dns_target, verificationRecords: body.verification_records ?? [],
         dnsProvider: (body.dns_provider ?? 'unknown') as DnsProvider,
-        errorMessage: null,
-        createdAt: new Date().toISOString(),
-        verifiedAt: null,
+        errorMessage: null, createdAt: new Date().toISOString(), verifiedAt: null,
       })
       setHostname('')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Network error')
-    } finally {
-      setBusy(false)
-    }
+    } finally { setBusy(false) }
   }
 
   async function handleVerify() {
@@ -99,54 +104,34 @@ export function CustomDomainManager({ initialDomain }: Props) {
     setError(null)
     setBusy(true)
     try {
-      const res = await fetch(`/api/domains/${domain.id}/verify`, {
-        method: 'POST',
-      })
+      const res = await fetch(`/api/domains/${domain.id}/verify`, { method: 'POST' })
       const body = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        setError(body.error ?? `Failed (${res.status})`)
-      }
-      setDomain((d) =>
-        d
-          ? {
-              ...d,
-              status: body.status ?? d.status,
-              sslStatus: body.ssl_status ?? d.sslStatus,
-              verificationRecords: body.verification_records ?? d.verificationRecords,
-            }
-          : d,
-      )
+      if (!res.ok) { setError(body.error ?? `Failed (${res.status})`) }
+      setDomain((d) => d ? {
+        ...d,
+        status: body.status ?? d.status,
+        sslStatus: body.ssl_status ?? d.sslStatus,
+        verificationRecords: body.verification_records ?? d.verificationRecords,
+      } : d)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Network error')
-    } finally {
-      setBusy(false)
-    }
+    } finally { setBusy(false) }
   }
 
   async function handleRemove() {
     if (!domain) return
-    if (
-      !confirm(
-        `Remove ${domain.hostname}? Doorstep capture will pause until you restore a custom domain. Your existing inspection data is preserved.`,
-      )
-    )
-      return
+    if (!confirm(`Remove ${domain.hostname}? Doorstep capture will pause until you restore a custom domain.`)) return
     setError(null)
     setBusy(true)
     try {
       const res = await fetch(`/api/domains/${domain.id}`, { method: 'DELETE' })
       const body = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        setError(body.error ?? `Failed (${res.status})`)
-        return
-      }
+      if (!res.ok) { setError(body.error ?? `Failed (${res.status})`); return }
       setDomain(null)
       router.refresh()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Network error')
-    } finally {
-      setBusy(false)
-    }
+    } finally { setBusy(false) }
   }
 
   function copyDnsTarget() {
@@ -157,240 +142,144 @@ export function CustomDomainManager({ initialDomain }: Props) {
     })
   }
 
-  // ── Empty state ─────────────────────────────────────────────────────
-  if (!domain) {
-    return (
-      <div className="space-y-5">
-        <div className="space-y-3 rounded-md border bg-muted/40 p-4 text-xs text-muted-foreground">
-          <div className="font-medium text-foreground">Two-step setup</div>
-          <ol className="ml-4 list-decimal space-y-1.5">
-            <li>Pick a subdomain you control (e.g. <code className="font-mono">inspections.agentname.com.au</code>) and add it here.</li>
-            <li>
-              We&apos;ll give you a <strong>CNAME record</strong> to add at your DNS host
-              (Cloudflare / Namecheap / Route&nbsp;53 / wherever). Doorstep goes live once
-              that record resolves — usually a minute or two.
-            </li>
-          </ol>
-          <p>
-            You&apos;ll need access to your DNS provider. If you&apos;re unsure where that is,
-            email <a className="text-foreground underline" href="mailto:team@gohorace.com">team@gohorace.com</a> and we&apos;ll point you to the right place.
-          </p>
-          <p className="text-amber-900">
-            <strong>If your DNS is on Cloudflare:</strong> when you add the record, set the
-            Proxy column to <strong>DNS only</strong> (grey cloud), not Proxied (orange cloud).
-            We&apos;ll remind you again at the next step.
-          </p>
-        </div>
+  // ── Domain status card (shown when a domain exists) ──────────────────
+  const DomainStatusCard = () => {
+    if (!domain) return null
+    const isVerified = domain.status === 'verified'
+    const isFailed = domain.status === 'failed'
+    const statusVariant = isVerified ? 'moss' : isFailed ? 'accent' : 'amber'
+    const statusLabel = isVerified && domain.sslStatus === 'active'
+      ? 'Verified & live'
+      : isVerified
+      ? 'Verifying SSL'
+      : isFailed
+      ? 'Failed'
+      : 'Pending DNS'
 
-        <form onSubmit={handleAdd} className="space-y-3">
-          <div className="space-y-1">
-            <Label htmlFor="domain-hostname">Your inspection subdomain</Label>
-            <Input
-              id="domain-hostname"
-              type="text"
-              placeholder="inspections.agentname.com.au"
-              value={hostname}
-              onChange={(e) => setHostname(e.target.value)}
-              autoComplete="off"
-              required
-              disabled={busy}
-            />
+    return (
+      <div className={card}>
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--fg-secondary)]">
+              Doorstep domain
+            </div>
+            <div className="font-mono text-[15px] text-[var(--fg-primary)]">{domain.hostname}</div>
           </div>
-          <Button type="submit" disabled={busy || !hostname.trim()}>
-            {busy ? 'Adding…' : 'Add domain'}
-          </Button>
-        </form>
-        {error && <p className="text-sm text-destructive">{error}</p>}
+          <Badge variant={statusVariant} dot>{statusLabel}</Badge>
+        </div>
       </div>
     )
   }
 
-  // ── Verified state ──────────────────────────────────────────────────
-  if (domain.status === 'verified') {
-    const sslLive = domain.sslStatus === 'active'
+  // ── DNS record card ──────────────────────────────────────────────────
+  const DnsRecordCard = () => {
+    if (!domain) return null
+    const subLabel = labelOf(domain.hostname)
+    const dnsRows: [string, string][] = [
+      ['Type', 'CNAME'],
+      ['Name', subLabel],
+      ['Value', domain.dnsTarget],
+    ]
+
     return (
-      <div className="space-y-4">
-        <div
-          className={
-            sslLive
-              ? 'flex items-start gap-3 rounded-md border border-green-200 bg-green-50 p-4'
-              : 'flex items-start gap-3 rounded-md border border-amber-200 bg-amber-50 p-4'
-          }
-        >
-          {sslLive ? (
-            <CheckCircle2 className="w-5 h-5 text-green-700 flex-shrink-0 mt-0.5" />
-          ) : (
-            <Clock className="w-5 h-5 text-amber-700 flex-shrink-0 mt-0.5" />
-          )}
-          <div className="flex-1 space-y-1">
-            <div className={sslLive ? 'font-medium text-green-900' : 'font-medium text-amber-900'}>
-              {sslLive
-                ? `You're set. Doorstep is live on ${domain.hostname}.`
-                : `DNS resolved. Certificate provisioning for ${domain.hostname}.`}
-            </div>
-            <div className={sslLive ? 'text-xs text-green-800' : 'text-xs text-amber-800'}>
-              {sslLive
-                ? 'Certificate active.'
-                : 'Usually about a minute. Refresh this page to see the live state.'}
-            </div>
-          </div>
-        </div>
-
-        <div className="flex gap-2">
-          {!sslLive && (
-            <Button onClick={handleVerify} disabled={busy}>
-              {busy ? 'Refreshing…' : 'Refresh'}
-            </Button>
-          )}
-          <Button variant="outline" onClick={handleRemove} disabled={busy}>
-            Remove
-          </Button>
-        </div>
-
-        {error && <p className="text-sm text-destructive">{error}</p>}
-      </div>
-    )
-  }
-
-  // ── Failed state ────────────────────────────────────────────────────
-  if (domain.status === 'failed') {
-    return (
-      <div className="space-y-4">
-        <div className="flex items-start gap-3 rounded-md border border-destructive/30 bg-destructive/10 p-4">
-          <AlertCircle className="w-5 h-5 text-destructive flex-shrink-0 mt-0.5" />
-          <div className="flex-1 space-y-1">
-            <div className="font-medium">Something&apos;s off with {domain.hostname}.</div>
-            <div className="text-xs">
-              {domain.errorMessage ?? 'Vercel rejected the verification check.'}
-            </div>
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <Button onClick={handleVerify} disabled={busy}>
-            {busy ? 'Retrying…' : 'Retry'}
-          </Button>
-          <Button variant="outline" onClick={handleRemove} disabled={busy}>
-            Remove
-          </Button>
-        </div>
-        <p className="text-xs text-muted-foreground">
-          Stuck? Email <a className="text-foreground underline" href="mailto:team@gohorace.com">team@gohorace.com</a>.
+      <div className={card}>
+        <CardLabel>DNS record</CardLabel>
+        <p className="mb-3 text-xs leading-relaxed text-[var(--fg-secondary)]">
+          Add this CNAME at your domain registrar. Horace checks for it automatically.
         </p>
-      </div>
-    )
-  }
-
-  // ── Pending / verifying state ───────────────────────────────────────
-  // The subdomain label is what most DNS hosts want in the "Name" field.
-  // Hosts vary: some accept the full FQDN, some only the label, some
-  // either. We show the label as the default and surface the full host
-  // for clarity.
-  const subdomainLabel = labelOf(domain.hostname)
-
-  return (
-    <div className="space-y-5">
-      <div className="flex items-start gap-3 rounded-md border border-amber-200 bg-amber-50 p-4">
-        <Clock className="w-5 h-5 text-amber-700 flex-shrink-0 mt-0.5" />
-        <div className="flex-1 space-y-1">
-          <div className="font-medium text-amber-900">
-            Action required — add this CNAME at your DNS host.
-          </div>
-          <div className="text-xs text-amber-800">
-            Doorstep capture stays paused until {domain.hostname} resolves. Usually a
-            minute or two after you save the record.
-          </div>
-        </div>
-      </div>
-
-      <div className="space-y-4 rounded-md border p-4">
-        <div className="text-sm font-medium">Add this record at your DNS host</div>
-
-        <div className="rounded-md border bg-muted/40 p-3">
-          <div className="grid grid-cols-[80px,1fr] gap-x-3 gap-y-2 text-xs">
-            <div className="text-muted-foreground">Type</div>
-            <div className="font-mono">CNAME</div>
-
-            <div className="text-muted-foreground">Name</div>
-            <div className="flex items-center gap-2">
-              <code className="font-mono">{subdomainLabel}</code>
-              <span className="text-muted-foreground">
-                (some hosts ask for the full <span className="font-mono">{domain.hostname}</span>)
-              </span>
-            </div>
-
-            <div className="text-muted-foreground">Value</div>
-            <div className="flex items-center gap-2">
-              <code className="flex-1 font-mono break-all">{domain.dnsTarget}</code>
-              <Button variant="outline" size="sm" onClick={copyDnsTarget}>
-                <Copy className="w-3 h-3 mr-1" />
-                {copied ? 'Copied' : 'Copy'}
-              </Button>
-            </div>
-
-            <div className="text-muted-foreground">TTL</div>
-            <div className="text-muted-foreground">Auto / 300 seconds</div>
-          </div>
-        </div>
+        <DnsTable rows={dnsRows} />
 
         <DnsProviderGuide
           provider={domain.dnsProvider}
           hostname={domain.hostname}
           apex={apexOf(domain.hostname)}
-          subdomainLabel={subdomainLabel}
+          subdomainLabel={subLabel}
         />
 
-        <p className="text-xs text-muted-foreground">
-          Once saved, wait 30–120 seconds for propagation and click <strong>Check status</strong>.
-        </p>
+        <div className="mt-4 flex items-center gap-2.5">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={handleVerify}
+            disabled={busy}
+          >
+            <RefreshCw className="size-3.5" />
+            {busy ? 'Checking…' : 'Check status'}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleRemove}
+            disabled={busy}
+          >
+            Change domain
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={copyDnsTarget}
+          >
+            {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+            {copied ? 'Copied' : 'Copy value'}
+          </Button>
+        </div>
 
-        <details className="text-xs text-muted-foreground">
-          <summary className="cursor-pointer text-foreground">Verify from your terminal (optional)</summary>
-          <div className="mt-2 rounded-md border bg-background px-3 py-2 font-mono">
-            dig +short {domain.hostname} CNAME
-          </div>
-          <p className="mt-1.5">
-            Expected output: <code className="font-mono">{domain.dnsTarget}.</code>
-            {' '}Anything else (including no output) means the record hasn&apos;t
-            propagated yet.
+        {domain.status === 'failed' && domain.errorMessage && (
+          <p className="mt-3 text-xs text-[var(--color-terracotta)]">{domain.errorMessage}</p>
+        )}
+
+        {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
+      </div>
+    )
+  }
+
+  // ── Empty state ──────────────────────────────────────────────────────
+  if (!domain) {
+    return (
+      <div className="space-y-4">
+        <div className={card}>
+          <CardLabel>Add your domain</CardLabel>
+          <p className="mb-4 text-xs leading-relaxed text-[var(--fg-secondary)]">
+            Pick a subdomain you control (e.g.{' '}
+            <code className="font-mono">inspections.agentname.com.au</code>) and add it here.
+            We&apos;ll give you a CNAME record to add at your DNS host — Doorstep goes live once
+            that record resolves.
           </p>
-        </details>
-
-        {domain.verificationRecords.length > 0 &&
-          domain.verificationRecords.some((r) => r.type !== 'CNAME') && (
-            <details className="text-xs text-muted-foreground">
-              <summary className="cursor-pointer text-foreground">Other records Vercel may ask for</summary>
-              <ul className="mt-2 space-y-1 font-mono">
-                {domain.verificationRecords.map((r, i) => (
-                  <li key={i}>
-                    <strong>{r.type}</strong> {r.domain} → {r.value}
-                  </li>
-                ))}
-              </ul>
-            </details>
-          )}
+          <form onSubmit={handleAdd} className="space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="domain-hostname">Inspection subdomain</Label>
+              <Input
+                id="domain-hostname"
+                type="text"
+                placeholder="inspections.agentname.com.au"
+                value={hostname}
+                onChange={(e) => setHostname(e.target.value)}
+                autoComplete="off"
+                required
+                disabled={busy}
+              />
+            </div>
+            <Button type="submit" disabled={busy || !hostname.trim()}>
+              {busy ? 'Adding…' : 'Add domain'}
+            </Button>
+          </form>
+          {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
+        </div>
       </div>
+    )
+  }
 
-      <div className="flex gap-2">
-        <Button onClick={handleVerify} disabled={busy}>
-          {busy ? 'Checking…' : 'Check status'}
-        </Button>
-        <Button variant="outline" onClick={handleRemove} disabled={busy}>
-          Remove
-        </Button>
-      </div>
-
-      <p className="text-xs text-muted-foreground">
-        Stuck? Email <a className="text-foreground underline" href="mailto:team@gohorace.com">team@gohorace.com</a>.
-      </p>
-
-      {error && <p className="text-sm text-destructive">{error}</p>}
+  // ── Verified or pending or failed ────────────────────────────────────
+  return (
+    <div className="space-y-4">
+      <DomainStatusCard />
+      <DnsRecordCard />
     </div>
   )
 }
 
-// Mirrors the multi-label-TLD logic in lib/dns/detect.ts. Kept duplicated
-// here (client-side) rather than importing the server module — the
-// detect helper depends on node:dns which isn't available in the browser.
+// ── Helpers ─────────────────────────────────────────────────────────────────
+
 const MULTI_LABEL_TLDS = new Set([
   'com.au', 'net.au', 'org.au', 'co.uk', 'co.nz', 'com.nz',
 ])
@@ -399,9 +288,7 @@ function apexOf(hostname: string): string {
   const parts = hostname.toLowerCase().split('.')
   if (parts.length < 2) return hostname
   const lastTwo = parts.slice(-2).join('.')
-  if (MULTI_LABEL_TLDS.has(lastTwo) && parts.length >= 3) {
-    return parts.slice(-3).join('.')
-  }
+  if (MULTI_LABEL_TLDS.has(lastTwo) && parts.length >= 3) return parts.slice(-3).join('.')
   return lastTwo
 }
 

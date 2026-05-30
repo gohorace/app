@@ -20,25 +20,19 @@ export default async function NotificationsPage() {
     .eq('agent_id', agent!.id)
     .single()
 
-  // Default briefing recipients: stored list, or fall back to agent email
   const defaultEmails: string[] =
     settings?.briefing_emails?.length
       ? settings.briefing_emails
       : [agent?.email ?? settings?.agent_email ?? ''].filter(Boolean)
 
-  // The dashboard <main> is `overflow-hidden h-full` and delegates scrolling
-  // to each page (see (dashboard)/layout.tsx). Without an own scroll container
-  // the form is clipped and "Save settings" is unreachable (HOR-297). Mirror
-  // the profile settings page's `flex-1 overflow-y-auto` wrapper.
+  // Own scroll container — dashboard <main> delegates scrolling per page (HOR-297).
   return (
     <div className="flex-1 overflow-y-auto pb-20 md:pb-0">
-      <div className="p-6 md:p-8 max-w-lg space-y-6">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight">Alerts & briefing</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Configure push notifications and your daily email round-up
-          </p>
-        </div>
+      <div className="p-4 md:p-8 max-w-[660px] space-y-5">
+        <SectionHeading
+          title="Alerts & briefing"
+          description="When Horace pings your phone, and the daily email round-up."
+        />
         <NotificationsForm
           initial={{
             push_alert_mode:     (settings?.push_alert_mode as 'threshold' | 'all' | 'hourly_digest') ?? 'threshold',
