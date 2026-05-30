@@ -189,12 +189,14 @@ export function CustomDomainManager({ initialDomain }: Props) {
         </p>
         <DnsTable rows={dnsRows} />
 
-        <DnsProviderGuide
-          provider={domain.dnsProvider}
-          hostname={domain.hostname}
-          apex={apexOf(domain.hostname)}
-          subdomainLabel={subLabel}
-        />
+        <div className="mt-5 border-t border-[var(--border-subtle)] pt-5">
+          <DnsProviderGuide
+            provider={domain.dnsProvider}
+            hostname={domain.hostname}
+            apex={apexOf(domain.hostname)}
+            subdomainLabel={subLabel}
+          />
+        </div>
 
         <div className="mt-4 flex items-center gap-2.5">
           <Button

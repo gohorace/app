@@ -150,7 +150,7 @@ function Walkthrough({
   return (
     <div className="space-y-3">
       <div className="flex items-baseline justify-between gap-2">
-        <div className="text-xs font-medium text-foreground">
+        <div className="text-xs font-medium text-[var(--fg-primary)]">
           Setup steps for {providerName}
         </div>
         {zoneLink && (
@@ -158,7 +158,7 @@ function Walkthrough({
             href={zoneLink}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+            className="inline-flex items-center gap-1 text-xs text-[var(--fg-secondary)] hover:text-[var(--fg-primary)]"
           >
             Open in {providerName}
             <ExternalLink className="w-3 h-3" />
@@ -166,18 +166,18 @@ function Walkthrough({
         )}
       </div>
 
-      <ol className="ml-4 list-decimal space-y-1.5 text-xs text-muted-foreground">
+      <ol className="ml-4 list-decimal space-y-1.5 text-xs leading-relaxed text-[var(--fg-secondary)]">
         {steps.map((step, i) => (
-          <li key={i}>{step}</li>
+          <li key={i} className="pl-1">{step}</li>
         ))}
       </ol>
 
       {warning && (
-        <div className="flex items-start gap-3 rounded-md border border-amber-200 bg-amber-50 p-3">
-          <AlertCircle className="w-4 h-4 text-amber-700 flex-shrink-0 mt-0.5" />
-          <div className="space-y-1 text-xs text-amber-900">
+        <div className="flex items-start gap-3 rounded-md border border-[rgba(181,146,42,0.3)] bg-[rgba(181,146,42,0.08)] p-3">
+          <AlertCircle className="mt-0.5 size-4 flex-shrink-0 text-[var(--color-signal-mid)]" />
+          <div className="space-y-1 text-xs text-[var(--fg-primary)]">
             <div className="font-medium">{warning.title}</div>
-            <p className="text-amber-800">{warning.body}</p>
+            <p className="text-[var(--fg-secondary)]">{warning.body}</p>
           </div>
         </div>
       )}
