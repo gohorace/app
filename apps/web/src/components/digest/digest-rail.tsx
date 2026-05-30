@@ -1,329 +1,245 @@
 'use client'
 
-import { Archive, List, Plus } from 'lucide-react'
+/**
+ * Horace — Digest V2 right rail: "Your rhythm" intensity strips.
+ *
+ * Replaces the old passive "This week so far" + "Your lists" panels. Teaches
+ * the product's core lesson at a glance — YOUR ACTION GENERATES SIGNAL.
+ *
+ *  - Activity (coral) — signal-generating actions you took: tracked sends,
+ *    shared listing links, contacts added to watch. Never logins/opens.
+ *  - Signal (teal/moss) — signal that came back.
+ *  - One cell per day, columns aligned between strips, so signal visibly
+ *    trails activity by ~a day. Shaded by OPACITY of one colour (not a hex
+ *    ramp) so it reads on cream and inverts correctly in dark mode.
+ *  - Today is the OPEN cell on the Activity strip — a dashed "+". Clicking
+ *    it opens Ask Horace to start a real action. The cell only fills once a
+ *    real tracked send is recorded (wired from email_sends in Phase 2).
+ *
+ * Live (non-demo) data series — tracked sends from `email_sends`, returning
+ * signal from `events` — wires in Phases 2–4. Phase 0 renders the demo series
+ * and an empty placeholder in live mode.
+ */
+
+import { useEffect, useState } from 'react'
 import { useCompanion } from '@/components/companion/companion-context'
-import { QuillIcon } from '@/components/ui/quill-icon'
-
-export interface DigestList {
-  name: string
-  count: number
-  /** Accent dot colour. Maps to intent palette. */
-  accent: 'high' | 'low' | 'none'
-}
-
-export interface DigestWeekCell {
-  day: 'MON' | 'TUE' | 'WED' | 'THU' | 'FRI'
-  /** Count of signals on this day. Null = future / no data yet. */
-  count: number | null
-  isToday: boolean
-}
 
 export interface DigestRailData {
-  lists: DigestList[]
-  weekSoFar: DigestWeekCell[]
-  weekNote: string
+  /** Activity strip colour (coral). */
+  activityColor: string
+  /** Signal strip colour (teal/moss). */
+  signalColor: string
+  /** 14 day labels, oldest → newest. e.g. "Fri 29". */
+  days: string[]
+  /** Per-day action counts. `null` = the open "today" cell (last entry). */
+  activity: Array<number | null>
+  /** Per-day returning-signal counts. `null` = no data. */
+  signal: Array<number | null>
+  /** Warm closing note under the strips. */
+  note: string
 }
 
 interface DigestRailProps {
   data: DigestRailData
 }
 
-const ACCENT_COLOR: Record<DigestList['accent'], string> = {
-  high: '#C4622D',
-  low:  '#3D5246',
-  none: '#8C7B6B',
+type Hover = { strip: 'activity' | 'signal'; i: number } | null
+
+/** Cell opacity for a count. `null` → open cell (handled by caller). */
+function shade(count: number | null | undefined, max: number): number | null {
+  if (count === null || count === undefined) return null
+  if (count === 0) return 0.07
+  return 0.22 + 0.78 * (count / max)
 }
 
-/**
- * Right rail of the Digest desktop layout. Two stacked cards:
- *  - **Your Lists** — quick filter destinations (Lists feature deferred;
- *    rail renders for layout fidelity, content can be canonical or stub).
- *  - **This Week So Far** — five-day strip with today highlighted, plus
- *    a quiet-day note.
- *
- * Hidden below 1024px; the main column takes the full width on smaller
- * screens (the design treats the rail as a desktop affordance).
- */
+/** rgba-hex suffix for an opacity, e.g. 0.6 → "99". */
+function alphaHex(op: number): string {
+  return Math.round(op * 255).toString(16).padStart(2, '0')
+}
+
 export function DigestRail({ data }: DigestRailProps) {
+  const { openCompanion } = useCompanion()
+  const [hovered, setHovered] = useState<Hover>(null)
+
+  const ctxKey = data.days.join('|')
+  useEffect(() => { setHovered(null) }, [ctxKey])
+
+  const aMax = Math.max(1, ...data.activity.filter((n): n is number => n !== null))
+  const sMax = Math.max(1, ...data.signal.filter((n): n is number => n !== null))
+
+  let readout = 'Last 14 days · hover any day'
+  if (hovered) {
+    const arr = hovered.strip === 'activity' ? data.activity : data.signal
+    const c = arr[hovered.i]
+    const day = data.days[hovered.i]
+    if (c === null || c === undefined) readout = `${day} · today — send something to fill it`
+    else if (c === 0) readout = `${day} · ${hovered.strip === 'activity' ? 'no actions' : 'no signal'} — that's alright`
+    else {
+      const noun = hovered.strip === 'activity' ? (c === 1 ? 'action' : 'actions') : c === 1 ? 'signal' : 'signals'
+      readout = `${day} · ${c} ${noun}`
+    }
+  }
+
+  // The "+" opens Ask Horace prompting a real tracked send. The cell itself
+  // fills only once a real action is recorded — never from a UI tap.
+  function onTodayOpen() {
+    openCompanion({
+      prompt: 'Who should I send a tracked note to today?',
+      contextLabel: 'Digest',
+    })
+  }
+
   return (
-    <aside
-      className="hidden lg:flex"
-      style={{
-        flexDirection: 'column',
-        gap: 14,
-        width: 280,
-        flexShrink: 0,
-        paddingTop: 4,
-      }}
-    >
-      <YourListsCard lists={data.lists} />
-      <ThisWeekSoFarCard week={data.weekSoFar} note={data.weekNote} />
-      {/* HOR-244 — v2 Ask Horace tease. Charcoal card at the bottom of
-        * the rail; click opens the companion drawer with Digest context. */}
-      <AskHoraceTease />
+    <aside className="hidden lg:flex" style={railStyles.aside}>
+      <div style={railStyles.card}>
+        <div style={railStyles.eyebrow}>Your rhythm</div>
+        <p style={railStyles.lede}>Your action is what makes the signal. Watch it trail by a day.</p>
+
+        <div style={railStyles.readout}>{readout}</div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 4 }}>
+          <Strip
+            label="Activity"
+            sub="you took"
+            color={data.activityColor}
+            counts={data.activity}
+            max={aMax}
+            stripKey="activity"
+            hovered={hovered}
+            setHovered={setHovered}
+            onTodayOpen={onTodayOpen}
+          />
+          <Strip
+            label="Signal"
+            sub="came back"
+            color={data.signalColor}
+            counts={data.signal}
+            max={sMax}
+            stripKey="signal"
+            hovered={hovered}
+            setHovered={setHovered}
+          />
+        </div>
+
+        <div style={railStyles.legend}>
+          <span style={railStyles.legendTxt}>Less</span>
+          <div style={{ display: 'flex', gap: 3 }}>
+            {[0.07, 0.3, 0.5, 0.72, 0.95].map((o, i) => (
+              <span key={i} style={{ width: 12, height: 12, borderRadius: 3, background: `rgba(140,123,107,${o})` }} />
+            ))}
+          </div>
+          <span style={railStyles.legendTxt}>More</span>
+        </div>
+
+        <p style={railStyles.railNote}>{data.note}</p>
+      </div>
     </aside>
   )
 }
 
-// ── Ask Horace tease ─────────────────────────────────────────────────────────
+// ── Single intensity strip ────────────────────────────────────────────────────
 
-function AskHoraceTease() {
-  const { openCompanion } = useCompanion()
-  return (
-    <button
-      type="button"
-      onClick={() => openCompanion({ contextLabel: 'Digest' })}
-      style={{
-        textAlign: 'left',
-        background: '#2E2823',
-        border: 'none',
-        borderRadius: 12,
-        padding: '16px 18px',
-        color: '#F5F0E8',
-        cursor: 'pointer',
-        fontFamily: 'var(--font-body)',
-        transition: 'background 180ms var(--ease-out)',
-      }}
-      aria-label="Ask Horace — opens the companion drawer"
-    >
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          fontSize: 10,
-          fontWeight: 600,
-          letterSpacing: '0.1em',
-          textTransform: 'uppercase',
-          color: 'rgba(245,240,232,0.55)',
-          marginBottom: 8,
-        }}
-      >
-        <QuillIcon size={12} color="#E8956D" strokeWidth={1.75} aria-hidden />
-        Ask Horace
-      </div>
-      <p
-        className="font-display"
-        style={{
-          margin: 0,
-          fontStyle: 'italic',
-          fontSize: 14,
-          lineHeight: 1.55,
-          color: 'rgba(245,240,232,0.92)',
-        }}
-      >
-        Need to know more? Tap the quill, anywhere.
-      </p>
-    </button>
-  )
-}
-
-// ── Your Lists ───────────────────────────────────────────────────────────────
-
-function YourListsCard({ lists }: { lists: DigestList[] }) {
-  return (
-    <div
-      style={{
-        background: '#FAF7F2',
-        border: '1px solid rgba(140,123,107,0.2)',
-        borderRadius: 12,
-        padding: '14px 16px',
-      }}
-    >
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          fontSize: 10,
-          fontWeight: 600,
-          letterSpacing: '0.1em',
-          textTransform: 'uppercase',
-          color: '#8C7B6B',
-          marginBottom: 10,
-        }}
-      >
-        <List style={{ width: 12, height: 12 }} aria-hidden />
-        Your Lists
-      </div>
-
-      {lists.length === 0 ? (
-        <p
-          style={{
-            margin: 0,
-            fontSize: 12,
-            color: '#8C7B6B',
-            fontStyle: 'italic',
-            lineHeight: 1.5,
-          }}
-        >
-          Lists coming soon — Horace will let you save signals into named groups.
-        </p>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          {lists.map((l) => (
-            <div
-              key={l.name}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                padding: '6px 4px',
-                fontSize: 12,
-                color: '#2E2823',
-              }}
-            >
-              <span
-                style={{
-                  width: 7,
-                  height: 7,
-                  borderRadius: '50%',
-                  background: ACCENT_COLOR[l.accent],
-                  flexShrink: 0,
-                }}
-              />
-              <span style={{ flex: 1, minWidth: 0 }}>{l.name}</span>
-              <span
-                style={{
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: 11,
-                  color: '#8C7B6B',
-                }}
-              >
-                {l.count}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <button
-        type="button"
-        disabled
-        title="Lists coming soon"
-        style={{
-          marginTop: 8,
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 5,
-          padding: '6px 4px',
-          fontSize: 12,
-          fontWeight: 500,
-          color: '#C4622D',
-          background: 'transparent',
-          border: 'none',
-          cursor: 'not-allowed',
-          opacity: 0.55,
-          fontFamily: 'var(--font-body)',
-        }}
-      >
-        <Plus style={{ width: 12, height: 12 }} />
-        New list
-      </button>
-    </div>
-  )
-}
-
-// ── This Week So Far ─────────────────────────────────────────────────────────
-
-function ThisWeekSoFarCard({
-  week,
-  note,
+function Strip({
+  label,
+  sub,
+  color,
+  counts,
+  max,
+  stripKey,
+  hovered,
+  setHovered,
+  onTodayOpen,
 }: {
-  week: DigestWeekCell[]
-  note: string
+  label: string
+  sub: string
+  color: string
+  counts: Array<number | null>
+  max: number
+  stripKey: 'activity' | 'signal'
+  hovered: Hover
+  setHovered: (h: Hover) => void
+  onTodayOpen?: () => void
 }) {
   return (
-    <div
-      style={{
-        background: '#FAF7F2',
-        border: '1px solid rgba(140,123,107,0.2)',
-        borderRadius: 12,
-        padding: '14px 16px',
-      }}
-    >
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          fontSize: 10,
-          fontWeight: 600,
-          letterSpacing: '0.1em',
-          textTransform: 'uppercase',
-          color: '#8C7B6B',
-          marginBottom: 12,
-        }}
-      >
-        <Archive style={{ width: 12, height: 12 }} aria-hidden />
-        This Week So Far
+    <div>
+      <div style={railStyles.stripHead}>
+        <span style={{ width: 8, height: 8, borderRadius: 2, background: color, flexShrink: 0 }} />
+        <span style={railStyles.stripLabel}>{label}</span>
+        <span style={railStyles.stripSub}>{sub}</span>
       </div>
+      <div style={railStyles.grid}>
+        {counts.map((c, i) => {
+          const isToday = i === counts.length - 1 && stripKey === 'activity'
+          const open = c === null && isToday
+          const op = shade(c, max)
+          const isHov = hovered?.strip === stripKey && hovered?.i === i
 
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(5, 1fr)',
-          gap: 4,
-          marginBottom: 12,
-        }}
-      >
-        {week.map((cell) => {
-          const isFuture = cell.count === null
+          if (open) {
+            return (
+              <button
+                key={i}
+                type="button"
+                onClick={onTodayOpen}
+                onMouseEnter={() => setHovered({ strip: stripKey, i })}
+                onMouseLeave={() => setHovered(null)}
+                title="Send a tracked note to fill today"
+                aria-label="Send a tracked note to fill today"
+                style={{
+                  ...railStyles.cell,
+                  ...railStyles.openCell,
+                  outline: isHov ? '1px solid rgba(196,98,45,0.5)' : 'none',
+                }}
+              >
+                <span style={{ fontSize: 13, color: '#C4622D', lineHeight: 1, marginTop: -1 }}>+</span>
+              </button>
+            )
+          }
           return (
             <div
-              key={cell.day}
+              key={i}
+              onMouseEnter={() => setHovered({ strip: stripKey, i })}
+              onMouseLeave={() => setHovered(null)}
               style={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: 6,
-                padding: '10px 4px',
-                background: cell.isToday ? 'rgba(196,98,45,0.12)' : 'transparent',
-                borderRadius: 8,
-                border: cell.isToday ? '1px solid rgba(196,98,45,0.22)' : '1px solid transparent',
+                ...railStyles.cell,
+                background: op === null ? 'transparent' : `${color}${alphaHex(op)}`,
+                boxShadow: isHov ? '0 0 0 1.5px rgba(26,22,18,0.45)' : 'none',
               }}
-            >
-              <span
-                style={{
-                  fontSize: 9,
-                  fontWeight: 600,
-                  letterSpacing: '0.06em',
-                  color: cell.isToday ? '#C4622D' : '#8C7B6B',
-                }}
-              >
-                {cell.day}
-              </span>
-              <span
-                style={{
-                  fontFamily: 'var(--font-display)',
-                  fontSize: 18,
-                  fontWeight: 500,
-                  color: cell.isToday
-                    ? '#C4622D'
-                    : isFuture
-                      ? 'rgba(140,123,107,0.45)'
-                      : '#1A1612',
-                  lineHeight: 1,
-                }}
-              >
-                {isFuture ? '·' : cell.count}
-              </span>
-            </div>
+            />
           )
         })}
       </div>
-
-      <p
-        style={{
-          margin: 0,
-          fontSize: 11,
-          color: '#8C7B6B',
-          fontStyle: 'italic',
-          lineHeight: 1.5,
-        }}
-      >
-        {note}
-      </p>
     </div>
   )
 }
+
+const railStyles = {
+  aside: { flexDirection: 'column', gap: 14, width: 288, flexShrink: 0, paddingTop: 4 },
+  card: { background: '#FAF7F2', border: '1px solid rgba(140,123,107,0.2)', borderRadius: 12, padding: '16px 18px' },
+  eyebrow: { fontSize: 11, fontWeight: 600, letterSpacing: '0.04em', color: '#5E5246', marginBottom: 4 },
+  lede: { margin: '0 0 12px', fontSize: 12, lineHeight: 1.45, color: '#8C7B6B' },
+  readout: { fontSize: 11, color: '#9C4A1F', fontFamily: 'var(--font-mono)', minHeight: 16, marginBottom: 10 },
+  grid: { display: 'grid', gridTemplateColumns: 'repeat(14, 1fr)', gap: 3 },
+  cell: { height: 18, borderRadius: 3, border: 'none', padding: 0, transition: 'box-shadow 140ms' },
+  openCell: {
+    background: 'transparent',
+    border: '1.5px dashed rgba(196,98,45,0.6)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+  },
+  stripHead: { display: 'flex', alignItems: 'baseline', gap: 7, marginBottom: 7 },
+  stripLabel: { fontSize: 12, fontWeight: 600, color: '#2E2823' },
+  stripSub: { fontSize: 11, color: '#8C7B6B' },
+  legend: { display: 'flex', alignItems: 'center', gap: 8, marginTop: 14 },
+  legendTxt: { fontSize: 10.5, color: '#8C7B6B' },
+  railNote: {
+    margin: '13px 0 0',
+    paddingTop: 12,
+    borderTop: '1px solid rgba(140,123,107,0.16)',
+    fontSize: 12,
+    fontStyle: 'italic',
+    lineHeight: 1.5,
+    color: '#8C7B6B',
+  },
+} satisfies Record<string, React.CSSProperties>
