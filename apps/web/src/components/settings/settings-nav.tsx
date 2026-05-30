@@ -67,7 +67,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: '/settings/integrations', label: 'Integrations', icon: Plug },
       { href: '/settings/api-and-data', label: 'API & developer', icon: Database },
-      { href: '/import', label: 'Import contacts', icon: Upload },
+      { href: '/settings/import', label: 'Import contacts', icon: Upload },
     ],
   },
   // Help removed from nav (HOR-329)

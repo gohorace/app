@@ -4,15 +4,10 @@
  * Server-rendered custom-domain management page. Owner/admin only.
  * Hands the fetched row off to the client CustomDomainManager for
  * polling + mutations.
- *
- * `workspace_custom_domains` isn't in database.types.ts yet — local row
- * interface + as-any cast. Regenerate types post-merge to clean this up.
  */
 
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Globe } from 'lucide-react'
 import { SectionHeading } from '@/components/ui/section-heading'
 import { CustomDomainManager, type CustomDomainRow } from '@/components/settings/custom-domain-manager'
 
@@ -47,11 +42,9 @@ export default async function CustomDomainSettingsPage() {
   if (!membership) {
     return (
       <div className="flex-1 overflow-y-auto pb-20 md:pb-0">
-        <div className="p-8 max-w-3xl">
-          <h1 className="text-2xl font-bold tracking-tight">Custom domain</h1>
-          <p className="text-muted-foreground mt-2">
-            You don&apos;t belong to a workspace yet.
-          </p>
+        <div className="p-4 md:p-8 max-w-[660px] space-y-5">
+          <SectionHeading title="Custom domain" description="Run Doorstep on your own branded URL." />
+          <p className="text-sm text-[var(--fg-secondary)]">You don&apos;t belong to a workspace yet.</p>
         </div>
       </div>
     )
@@ -60,11 +53,9 @@ export default async function CustomDomainSettingsPage() {
   if (membership.role !== 'owner' && membership.role !== 'admin') {
     return (
       <div className="flex-1 overflow-y-auto pb-20 md:pb-0">
-        <div className="p-8 max-w-3xl">
-          <h1 className="text-2xl font-bold tracking-tight">Custom domain</h1>
-          <p className="text-muted-foreground mt-2">
-            Custom domains are managed by the workspace owner.
-          </p>
+        <div className="p-4 md:p-8 max-w-[660px] space-y-5">
+          <SectionHeading title="Custom domain" description="Run Doorstep on your own branded URL." />
+          <p className="text-sm text-[var(--fg-secondary)]">Custom domains are managed by the workspace owner.</p>
         </div>
       </div>
     )
@@ -72,8 +63,6 @@ export default async function CustomDomainSettingsPage() {
 
   const workspaceId = membership.workspace_id
 
-  // Most recent row that isn't 'removed' — that's the active row to
-  // render. If only removed rows exist, show the empty state.
   const { data: rowsRaw } = await admin
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .from('workspace_custom_domains' as any)
@@ -92,9 +81,7 @@ export default async function CustomDomainSettingsPage() {
         status: row.status,
         sslStatus: row.ssl_status,
         dnsTarget: row.dns_target,
-        verificationRecords: Array.isArray(row.verification_records)
-          ? row.verification_records
-          : [],
+        verificationRecords: Array.isArray(row.verification_records) ? row.verification_records : [],
         dnsProvider: row.dns_provider ?? 'unknown',
         errorMessage: row.error_message,
         createdAt: row.created_at,
@@ -105,27 +92,12 @@ export default async function CustomDomainSettingsPage() {
   // Own scroll container — dashboard <main> delegates scrolling per page (HOR-297).
   return (
     <div className="flex-1 overflow-y-auto pb-20 md:pb-0">
-      <div className="p-4 md:p-8 space-y-6 max-w-3xl">
+      <div className="p-4 md:p-8 max-w-[660px] space-y-5">
         <SectionHeading
           title="Custom domain"
-          description="Doorstep is the public sign-in surface visitors land on after scanning your inspection QR. Run it on your own branded URL — add a subdomain like inspections.agentname.com.au and we'll handle the certificate."
+          description="Doorstep is the public sign-in surface visitors land on after scanning your inspection QR. Run it on your own branded URL."
         />
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Globe className="w-4 h-4" />
-              Doorstep domain
-            </CardTitle>
-            <CardDescription>
-              One verified domain per workspace. Add a CNAME with your DNS host;
-              we provision the certificate automatically.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <CustomDomainManager initialDomain={initialDomain} />
-          </CardContent>
-        </Card>
+        <CustomDomainManager initialDomain={initialDomain} />
       </div>
     </div>
   )
