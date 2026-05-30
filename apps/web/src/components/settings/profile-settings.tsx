@@ -2,8 +2,14 @@
 
 import { useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { LogOut, Building2, Camera, Loader2 } from 'lucide-react'
+import { LogOut, Building2, Camera, Loader2, Check } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Badge } from '@/components/ui/badge'
+import { Select } from '@/components/ui/select'
+import { SectionHeading } from '@/components/ui/section-heading'
 import { InstallPrompt } from './install-prompt'
 
 interface ProfileSettingsProps {
@@ -12,35 +18,123 @@ interface ProfileSettingsProps {
   lastName: string | null
   email: string | null
   avatarUrl: string | null
+  phone: string | null
+  timezone: string | null
   workspaceName: string
-  /** Accepted for call-site compatibility; nav gating now lives in the shell. */
+  /** HOR-203: support seats see a Support badge; agent seats see Agent. */
   seatType?: 'agent' | 'support'
 }
 
-// HOR-329: the grouped settings nav moved to the persistent shell
+// AU timezones — stored as IANA strings in agents.timezone.
+const TIMEZONES = [
+  { value: 'Australia/Sydney', label: 'Sydney / Melbourne (AEDT/AEST)' },
+  { value: 'Australia/Brisbane', label: 'Brisbane (AEST, no DST)' },
+  { value: 'Australia/Adelaide', label: 'Adelaide (ACDT/ACST)' },
+  { value: 'Australia/Perth', label: 'Perth (AWST)' },
+  { value: 'Australia/Darwin', label: 'Darwin (ACST, no DST)' },
+  { value: 'Australia/Hobart', label: 'Hobart (AEDT/AEST)' },
+]
+
+// HOR-329: the grouped settings nav lives in the persistent shell
 // (components/settings/settings-nav.tsx + the /settings layout). This
-// component is now just the Profile section content.
+// component is the Profile section content — an editable identity form
+// (name / mobile / time zone) plus the avatar, sovereignty strip, and
+// install prompt. Email is read-only (it's the auth identity).
 export function ProfileSettings({
   agentId,
   firstName,
   lastName,
   email,
   avatarUrl,
+  phone,
+  timezone,
   workspaceName,
+  seatType = 'agent',
 }: ProfileSettingsProps) {
   const router = useRouter()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
 
-  const initials = [firstName?.[0], lastName?.[0]].filter(Boolean).join('').toUpperCase() || '?'
-  const fullName = [firstName, lastName].filter(Boolean).join(' ') || 'Your profile'
+  // Editable identity fields.
+  const [first, setFirst] = useState(firstName ?? '')
+  const [last, setLast] = useState(lastName ?? '')
+  const [mobile, setMobile] = useState(phone ?? '')
+  const [tz, setTz] = useState(timezone ?? '')
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+
+  const dirty =
+    first !== (firstName ?? '') ||
+    last !== (lastName ?? '') ||
+    mobile !== (phone ?? '') ||
+    tz !== (timezone ?? '')
+
+  const initials = [first?.[0], last?.[0]].filter(Boolean).join('').toUpperCase() || '?'
+  const fullName = [first, last].filter(Boolean).join(' ') || 'Your profile'
 
   async function signOut() {
     const supabase = createClient()
     await supabase.auth.signOut()
     router.push('/login')
     router.refresh()
+  }
+
+  function reset() {
+    setFirst(firstName ?? '')
+    setLast(lastName ?? '')
+    setMobile(phone ?? '')
+    setTz(timezone ?? '')
+    setSaveError(null)
+  }
+
+  async function save() {
+    if (!agentId || !dirty) return
+    setSaving(true)
+    setSaveError(null)
+    setSaved(false)
+    try {
+      // Identity fields live on agents (client update — same RLS path the
+      // avatar upload uses). Time zone is canonical on agent_settings, so it
+      // goes through the notifications endpoint that already owns that column.
+      const identityChanged =
+        first !== (firstName ?? '') || last !== (lastName ?? '') || mobile !== (phone ?? '')
+      const tzChanged = tz !== (timezone ?? '')
+
+      if (identityChanged) {
+        const supabase = createClient()
+        const { error } = await supabase
+          .from('agents')
+          .update({
+            first_name: first.trim() || null,
+            last_name: last.trim() || null,
+            phone: mobile.trim() || null,
+          })
+          .eq('id', agentId)
+        if (error) throw error
+      }
+
+      if (tzChanged && tz) {
+        const res = await fetch('/api/settings/notifications', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ timezone: tz }),
+        })
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}))
+          throw new Error(data.error ?? 'Failed to save time zone')
+        }
+      }
+
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2500)
+      router.refresh()
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Failed to save')
+    } finally {
+      setSaving(false)
+    }
   }
 
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -95,162 +189,136 @@ export function ProfileSettings({
   }
 
   return (
-    <div className="p-4 md:p-8 space-y-5 max-w-lg">
-      {/* Profile card */}
-      <div
-        style={{
-          background: '#FAF7F2',
-          border: '1px solid rgba(140,123,107,0.2)',
-          borderRadius: '12px',
-          padding: '20px 18px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '14px',
-        }}
-      >
-        {/* Avatar (click to upload) */}
-        <button
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={uploading || !agentId}
-          aria-label="Change profile photo"
-          style={{
-            position: 'relative',
-            width: '52px',
-            height: '52px',
-            borderRadius: '50%',
-            background: avatarUrl ? '#FAF7F2' : '#C4622D',
-            backgroundImage: avatarUrl ? `url(${avatarUrl})` : undefined,
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            flexShrink: 0,
-            border: 'none',
-            padding: 0,
-            cursor: agentId && !uploading ? 'pointer' : 'default',
-          }}
-        >
-          {!avatarUrl && !uploading && (
-            <span
-              style={{
-                fontSize: '18px',
-                fontWeight: 600,
-                color: '#FAF7F2',
-                fontFamily: 'var(--font-display)',
-                letterSpacing: '-0.01em',
-              }}
-            >
-              {initials}
+    <div className="p-4 md:p-8 space-y-5 max-w-[660px]">
+      <SectionHeading
+        title="Your profile"
+        description="How you appear to your team and how Horace reaches you."
+      />
+
+      {/* Identity card */}
+      <div className="rounded-md border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-[22px] shadow-[var(--shadow-sm)]">
+        <div className="mb-[22px] flex items-center gap-4">
+          {/* Avatar (click to upload) */}
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading || !agentId}
+            aria-label="Change profile photo"
+            className="relative size-[52px] shrink-0 rounded-full"
+            style={{
+              background: avatarUrl ? 'var(--bg-surface)' : 'var(--color-terracotta)',
+              backgroundImage: avatarUrl ? `url(${avatarUrl})` : undefined,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              cursor: agentId && !uploading ? 'pointer' : 'default',
+            }}
+          >
+            {!avatarUrl && !uploading && (
+              <span className="absolute inset-0 flex items-center justify-center font-serif text-lg font-semibold text-[var(--color-cream)]">
+                {initials}
+              </span>
+            )}
+            {uploading ? (
+              <span className="absolute inset-0 flex items-center justify-center rounded-full bg-black/50">
+                <Loader2 className="size-[18px] animate-spin text-[var(--color-cream)]" />
+              </span>
+            ) : (
+              <span className="absolute -bottom-0.5 -right-0.5 flex size-5 items-center justify-center rounded-full border-2 border-[var(--bg-surface)] bg-[var(--color-ink)]">
+                <Camera className="size-2.5 text-[var(--color-cream)]" />
+              </span>
+            )}
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handleFile}
+            className="hidden"
+          />
+
+          <div className="min-w-0 flex-1">
+            <div className="text-base font-semibold text-[var(--fg-primary)]">{fullName}</div>
+            <div className="mt-0.5 flex items-center gap-1.5 text-xs text-[var(--fg-secondary)]">
+              <Building2 className="size-3" />
+              {workspaceName}
+            </div>
+            {uploadError && (
+              <p className="mt-1 text-xs text-[var(--color-terracotta)]">{uploadError}</p>
+            )}
+          </div>
+          <Badge variant={seatType === 'agent' ? 'accent' : 'moss'} dot>
+            {seatType === 'agent' ? 'Agent' : 'Support'}
+          </Badge>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="first-name">First name</Label>
+            <Input id="first-name" value={first} onChange={(e) => setFirst(e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="last-name">Last name</Label>
+            <Input id="last-name" value={last} onChange={(e) => setLast(e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="email">Email</Label>
+            <Input id="email" value={email ?? ''} disabled />
+            <p className="text-xs text-[var(--fg-tertiary)]">
+              Your sign-in email — contact support to change it.
+            </p>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="mobile">Mobile</Label>
+            <Input
+              id="mobile"
+              type="tel"
+              inputMode="tel"
+              placeholder="0412 345 678"
+              value={mobile}
+              onChange={(e) => setMobile(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="timezone">Time zone</Label>
+            <Select
+              id="timezone"
+              value={tz}
+              onChange={(e) => setTz(e.target.value)}
+              options={[{ value: '', label: 'Select…' }, ...TIMEZONES]}
+            />
+          </div>
+        </div>
+
+        {saveError && <p className="mt-3 text-sm text-[var(--color-terracotta)]">{saveError}</p>}
+
+        <div className="mt-5 flex items-center justify-end gap-2.5">
+          {saved && (
+            <span className="inline-flex items-center gap-1 text-xs text-[var(--color-moss)]">
+              <Check className="size-3.5" />
+              Saved
             </span>
           )}
-          {uploading ? (
-            <div
-              style={{
-                position: 'absolute',
-                inset: 0,
-                borderRadius: '50%',
-                background: 'rgba(26,22,18,0.5)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <Loader2
-                style={{ width: '18px', height: '18px', color: '#FAF7F2' }}
-                className="animate-spin"
-              />
-            </div>
-          ) : (
-            <div
-              style={{
-                position: 'absolute',
-                right: '-2px',
-                bottom: '-2px',
-                width: '20px',
-                height: '20px',
-                borderRadius: '50%',
-                background: '#1A1612',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                border: '2px solid #FAF7F2',
-              }}
-            >
-              <Camera style={{ width: '10px', height: '10px', color: '#FAF7F2' }} />
-            </div>
+          {dirty && (
+            <Button variant="ghost" onClick={reset} disabled={saving}>
+              Cancel
+            </Button>
           )}
-        </button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          onChange={handleFile}
-          style={{ display: 'none' }}
-        />
-
-        <div style={{ minWidth: 0 }}>
-          <p style={{ fontSize: '16px', fontWeight: 600, color: '#1A1612', lineHeight: 1.2 }}>
-            {fullName}
-          </p>
-          {email && <p style={{ fontSize: '12px', color: '#8C7B6B', marginTop: '2px' }}>{email}</p>}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginTop: '5px' }}>
-            <Building2 style={{ width: '11px', height: '11px', color: '#8C7B6B' }} />
-            <span style={{ fontSize: '11px', color: '#8C7B6B' }}>{workspaceName}</span>
-          </div>
-          {uploadError && (
-            <p style={{ fontSize: '11px', color: '#C4622D', marginTop: '4px' }}>{uploadError}</p>
-          )}
+          <Button onClick={save} disabled={!dirty || saving || !agentId}>
+            {saving ? 'Saving…' : 'Save changes'}
+          </Button>
         </div>
       </div>
 
       {/* HOR-250: data-sovereignty strip — trust commitment, verbatim. */}
-      <div
-        style={{
-          padding: '20px 22px',
-          background: '#2E2823',
-          color: '#F5F0E8',
-          borderRadius: '12px',
-        }}
-      >
-        <div
-          style={{
-            fontSize: '10px',
-            fontWeight: 600,
-            letterSpacing: '0.1em',
-            textTransform: 'uppercase',
-            color: 'rgba(245,240,232,0.55)',
-            marginBottom: '10px',
-          }}
-        >
+      <div className="rounded-lg bg-[var(--color-charcoal)] p-[22px] text-[var(--color-cream)]">
+        <div className="mb-2.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-[rgba(245,240,232,0.55)]">
           Your data
         </div>
-        <p
-          className="font-display"
-          style={{
-            margin: 0,
-            fontStyle: 'italic',
-            fontSize: '18px',
-            lineHeight: 1.55,
-            color: 'rgba(245,240,232,0.95)',
-            letterSpacing: '-0.005em',
-            maxWidth: 660,
-          }}
-        >
+        <p className="m-0 max-w-[600px] font-serif text-lg italic leading-relaxed text-[rgba(245,240,232,0.95)]">
           Your relationships, your history. The signal is shared with Horace — your view of it is
           sovereign.
         </p>
-        <div
-          style={{
-            marginTop: '14px',
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: '16px',
-            fontSize: '12px',
-            color: 'rgba(245,240,232,0.75)',
-          }}
-        >
+        <div className="mt-3.5 flex flex-wrap gap-4 text-xs text-[rgba(245,240,232,0.75)]">
           <span>· Export everything as CSV, anytime.</span>
           <span>· Australian-hosted infrastructure.</span>
           <span>· Your book leaves with you if you ever go.</span>
@@ -261,28 +329,14 @@ export function ProfileSettings({
       <InstallPrompt />
 
       {/* Sign out (mobile path — desktop rail has its own) */}
-      <button
+      <Button
+        variant="secondary"
         onClick={signOut}
-        className="md:hidden"
-        style={{
-          width: '100%',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '10px',
-          padding: '14px 18px',
-          background: '#FAF7F2',
-          border: '1px solid rgba(140,123,107,0.2)',
-          borderRadius: '12px',
-          cursor: 'pointer',
-          color: '#8C7B6B',
-          fontSize: '13px',
-          fontWeight: 500,
-          textAlign: 'left',
-        }}
+        className="w-full justify-start gap-2.5 md:hidden"
       >
-        <LogOut style={{ width: '15px', height: '15px' }} />
+        <LogOut className="size-[15px]" />
         Sign out
-      </button>
+      </Button>
     </div>
   )
 }

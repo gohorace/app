@@ -10,9 +10,19 @@ export default async function SettingsPage() {
   // Typed query for the columns in database.types.ts.
   const { data: agent } = await admin
     .from('agents')
-    .select('id, first_name, last_name, workspace_id, avatar_url')
+    .select('id, first_name, last_name, workspace_id, avatar_url, phone')
     .eq('user_id', user!.id)
     .maybeSingle()
+
+  // Time zone is canonical on agent_settings (it also drives the daily
+  // briefing); the Profile form edits the same value the Alerts page does.
+  const { data: settings } = agent
+    ? await admin
+        .from('agent_settings')
+        .select('timezone')
+        .eq('agent_id', agent.id)
+        .maybeSingle()
+    : { data: null }
 
   // HOR-203: seat_type isn't in generated types yet — fetch it separately.
   const { data: seatRow } = agent
@@ -44,6 +54,8 @@ export default async function SettingsPage() {
         lastName={agent?.last_name ?? null}
         email={user?.email ?? null}
         avatarUrl={agent?.avatar_url ?? null}
+        phone={agent?.phone ?? null}
+        timezone={settings?.timezone ?? null}
         workspaceName={workspace?.name ?? 'My Agency'}
         seatType={seatType}
       />
