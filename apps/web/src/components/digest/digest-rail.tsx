@@ -12,7 +12,9 @@
  *  - One cell per day, columns aligned between strips, so signal visibly
  *    trails activity by ~a day. Shaded by OPACITY of one colour (not a hex
  *    ramp) so it reads on cream and inverts correctly in dark mode.
- *  - Today is the OPEN cell on the Activity strip — a dashed "+". Acting fills it.
+ *  - Today is the OPEN cell on the Activity strip — a dashed "+". Clicking
+ *    it opens Ask Horace to start a real action. The cell only fills once a
+ *    real tracked send is recorded (wired from email_sends in Phase 2).
  *
  * Live (non-demo) data series — tracked sends from `email_sends`, returning
  * signal from `events` — wires in Phases 2–4. Phase 0 renders the demo series
@@ -20,6 +22,7 @@
  */
 
 import { useEffect, useState } from 'react'
+import { useCompanion } from '@/components/companion/companion-context'
 
 export interface DigestRailData {
   /** Activity strip colour (coral). */
@@ -55,15 +58,11 @@ function alphaHex(op: number): string {
 }
 
 export function DigestRail({ data }: DigestRailProps) {
+  const { openCompanion } = useCompanion()
   const [hovered, setHovered] = useState<Hover>(null)
-  const [seeded, setSeeded] = useState(false)
 
-  // Reset the seeded "today" cell when the data context changes.
   const ctxKey = data.days.join('|')
-  useEffect(() => {
-    setSeeded(false)
-    setHovered(null)
-  }, [ctxKey])
+  useEffect(() => { setHovered(null) }, [ctxKey])
 
   const aMax = Math.max(1, ...data.activity.filter((n): n is number => n !== null))
   const sMax = Math.max(1, ...data.signal.filter((n): n is number => n !== null))
@@ -73,12 +72,21 @@ export function DigestRail({ data }: DigestRailProps) {
     const arr = hovered.strip === 'activity' ? data.activity : data.signal
     const c = arr[hovered.i]
     const day = data.days[hovered.i]
-    if (c === null || c === undefined) readout = `${day} · today’s still open`
-    else if (c === 0) readout = `${day} · ${hovered.strip === 'activity' ? 'no actions' : 'no signal'} — that’s alright`
+    if (c === null || c === undefined) readout = `${day} · today — send something to fill it`
+    else if (c === 0) readout = `${day} · ${hovered.strip === 'activity' ? 'no actions' : 'no signal'} — that's alright`
     else {
       const noun = hovered.strip === 'activity' ? (c === 1 ? 'action' : 'actions') : c === 1 ? 'signal' : 'signals'
       readout = `${day} · ${c} ${noun}`
     }
+  }
+
+  // The "+" opens Ask Horace prompting a real tracked send. The cell itself
+  // fills only once a real action is recorded — never from a UI tap.
+  function onTodayOpen() {
+    openCompanion({
+      prompt: 'Who should I send a tracked note to today?',
+      contextLabel: 'Digest',
+    })
   }
 
   return (
@@ -99,8 +107,7 @@ export function DigestRail({ data }: DigestRailProps) {
             stripKey="activity"
             hovered={hovered}
             setHovered={setHovered}
-            seeded={seeded}
-            onSeed={() => setSeeded(true)}
+            onTodayOpen={onTodayOpen}
           />
           <Strip
             label="Signal"
@@ -124,9 +131,7 @@ export function DigestRail({ data }: DigestRailProps) {
           <span style={railStyles.legendTxt}>More</span>
         </div>
 
-        <p style={railStyles.railNote}>
-          {seeded ? 'That’s one away — nice. Signal usually answers within a day or two.' : data.note}
-        </p>
+        <p style={railStyles.railNote}>{data.note}</p>
       </div>
     </aside>
   )
@@ -143,8 +148,7 @@ function Strip({
   stripKey,
   hovered,
   setHovered,
-  seeded = false,
-  onSeed,
+  onTodayOpen,
 }: {
   label: string
   sub: string
@@ -154,8 +158,7 @@ function Strip({
   stripKey: 'activity' | 'signal'
   hovered: Hover
   setHovered: (h: Hover) => void
-  seeded?: boolean
-  onSeed?: () => void
+  onTodayOpen?: () => void
 }) {
   return (
     <div>
@@ -168,21 +171,24 @@ function Strip({
         {counts.map((c, i) => {
           const isToday = i === counts.length - 1 && stripKey === 'activity'
           const open = c === null && isToday
-          const filledToday = open && seeded
-          const op = filledToday ? 0.6 : shade(c, max)
+          const op = shade(c, max)
           const isHov = hovered?.strip === stripKey && hovered?.i === i
 
-          if (open && !seeded) {
+          if (open) {
             return (
               <button
                 key={i}
                 type="button"
-                onClick={onSeed}
+                onClick={onTodayOpen}
                 onMouseEnter={() => setHovered({ strip: stripKey, i })}
                 onMouseLeave={() => setHovered(null)}
-                title="Seed today’s signal — send a tracked note"
-                aria-label="Seed today’s signal"
-                style={{ ...railStyles.cell, ...railStyles.openCell, outline: isHov ? '1px solid rgba(196,98,45,0.5)' : 'none' }}
+                title="Send a tracked note to fill today"
+                aria-label="Send a tracked note to fill today"
+                style={{
+                  ...railStyles.cell,
+                  ...railStyles.openCell,
+                  outline: isHov ? '1px solid rgba(196,98,45,0.5)' : 'none',
+                }}
               >
                 <span style={{ fontSize: 13, color: '#C4622D', lineHeight: 1, marginTop: -1 }}>+</span>
               </button>
