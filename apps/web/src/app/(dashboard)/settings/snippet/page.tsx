@@ -1,12 +1,17 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Check } from 'lucide-react'
+import { getAppUrl } from '@/lib/url'
+import { SectionHeading } from '@/components/ui/section-heading'
+import { CardLabel } from '@/components/ui/card-label'
 import { Badge } from '@/components/ui/badge'
-import { CopyButton } from '@/components/ui/copy-button'
+import { CodeBlock } from '@/components/ui/code-block'
 
 export default async function SnippetPage() {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
 
   const admin = createAdminClient()
   const { data: agent } = await admin
@@ -24,9 +29,7 @@ export default async function SnippetPage() {
     : { data: null }
 
   const snippetKey = workspace?.snippet_key ?? 'your-snippet-key'
-
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://your-domain.com'
-  const cdnUrl = `${appUrl}/tracker.min.js`
+  const appUrl = getAppUrl() || 'https://your-domain.com'
 
   const snippetCode = `<!-- Horace Tracker -->
 <script>
@@ -36,82 +39,86 @@ export default async function SnippetPage() {
     propertyPattern: '/property/' // adjust to match your property URLs
   };
 </script>
-<script src="${cdnUrl}" defer></script>`
+<script src="${appUrl}/tracker.min.js" defer></script>`
+
+  const points = [
+    'Tracks page views, property views, scroll depth and form submissions.',
+    'Intercepts email form submissions to link anonymous visitors to contacts.',
+    'Fires a return-visit event when a known visitor comes back.',
+  ]
 
   // Own scroll container — dashboard <main> delegates scrolling per page (HOR-297).
   return (
     <div className="flex-1 overflow-y-auto pb-20 md:pb-0">
-      <div className="p-8 space-y-6 max-w-3xl">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Snippet installation</h1>
-          <p className="text-muted-foreground">Add the tracking snippet to your website</p>
-        </div>
+      <div className="p-4 md:p-8">
+        <div className="max-w-[660px] space-y-4">
+          <SectionHeading
+            title="Install snippet"
+            description="The tracking code that lets Horace read your website's signals."
+          />
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Your tracking snippet</CardTitle>
-            <CardDescription>
-              Paste this code before the closing{' '}
-              <code className="text-xs bg-muted px-1 py-0.5 rounded">&lt;/body&gt;</code> tag on
-              every page of your website.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="relative">
-              <pre className="bg-muted rounded-lg p-4 text-xs overflow-x-auto whitespace-pre-wrap break-all pr-12">
-                <code>{snippetCode}</code>
-              </pre>
-              <div className="absolute top-2 right-2">
-                <CopyButton text={snippetCode} />
-              </div>
+          <div className="rounded-md border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-[22px] shadow-[var(--shadow-sm)]">
+            <div className="mb-3 flex items-center justify-between">
+              <CardLabel className="mb-0">Your tracking snippet</CardLabel>
+              <Badge variant="stone">Snippet key {snippetKey}</Badge>
             </div>
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Badge variant="outline">Snippet key</Badge>
-              <code className="text-xs bg-muted px-2 py-1 rounded font-mono">{snippetKey}</code>
+            <CodeBlock code={snippetCode} />
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-[var(--fg-secondary)]">
+              <span>Paste before the closing</span>
+              <code className="rounded bg-[rgba(140,123,107,0.12)] px-1.5 py-0.5 font-mono">
+                &lt;/body&gt;
+              </code>
+              <span>tag on every page.</span>
             </div>
-          </CardContent>
-        </Card>
+          </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>How it works</CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm text-muted-foreground space-y-2">
-            <p>The snippet is <strong className="text-foreground">1.5 KB gzipped</strong> and loads asynchronously — no impact on page speed.</p>
-            <ul className="space-y-1.5 list-disc list-inside">
-              <li>Tracks page views, property views, scroll depth, form submissions</li>
-              <li>Intercepts email form submissions to link anonymous visitors to contacts</li>
-              <li>Fires a return visit event when a known visitor comes back</li>
+          <div className="rounded-md border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-[22px] shadow-[var(--shadow-sm)]">
+            <CardLabel>How it works</CardLabel>
+            <p className="mb-2.5 text-sm text-[var(--fg-primary)]">
+              The snippet is <strong>1.5 KB gzipped</strong> and loads asynchronously — no impact on
+              page speed.
+            </p>
+            <ul className="flex flex-col gap-2">
+              {points.map((t) => (
+                <li
+                  key={t}
+                  className="flex gap-2 text-xs leading-relaxed text-[var(--fg-secondary)]"
+                >
+                  <Check className="mt-0.5 size-3.5 shrink-0 text-[var(--color-moss)]" />
+                  {t}
+                </li>
+              ))}
             </ul>
-          </CardContent>
-        </Card>
+          </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>WordPress installation</CardTitle>
-            <CardDescription>
-              If your site runs on WordPress, follow these steps instead.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ol className="text-sm space-y-2 list-decimal list-inside text-muted-foreground">
-              <li>Download the Horace WordPress plugin</li>
-              <li>Install and activate it from your WordPress admin panel</li>
+          {/* Retained from the prior page (not in the prototype): WordPress
+              install path is real and useful for agents on WP sites. */}
+          <div className="rounded-md border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-[22px] shadow-[var(--shadow-sm)]">
+            <CardLabel>WordPress installation</CardLabel>
+            <ol className="flex list-inside list-decimal flex-col gap-2 text-sm text-[var(--fg-secondary)]">
+              <li>Download the Horace WordPress plugin.</li>
+              <li>Install and activate it from your WordPress admin panel.</li>
               <li>
-                Go to <strong className="text-foreground">Settings → Horace</strong>
+                Go to <strong className="text-[var(--fg-primary)]">Settings → Horace</strong>.
               </li>
               <li>
                 Paste your snippet key:{' '}
-                <code className="text-xs bg-muted px-1 py-0.5 rounded font-mono">{snippetKey}</code>
+                <code className="rounded bg-[rgba(140,123,107,0.12)] px-1 py-0.5 font-mono text-xs">
+                  {snippetKey}
+                </code>
+                .
               </li>
               <li>
                 Set your property URL pattern (e.g.{' '}
-                <code className="text-xs bg-muted px-1 rounded">/property/</code>)
+                <code className="rounded bg-[rgba(140,123,107,0.12)] px-1 font-mono text-xs">
+                  /property/
+                </code>
+                ).
               </li>
-              <li>Save settings — the snippet will be injected automatically</li>
+              <li>Save settings — the snippet will be injected automatically.</li>
             </ol>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
     </div>
   )
