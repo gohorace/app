@@ -17,6 +17,7 @@ import { useCallback, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { MapPin, Plus, X, Check, AlertCircle, Loader2 } from 'lucide-react'
 import { SuburbPicker, type SelectedLocality } from '@/components/core-markets/suburb-picker'
+import { SectionHeading } from '@/components/ui/section-heading'
 
 export interface CoreMarketRow {
   id:            string
@@ -69,16 +70,10 @@ export function CoreMarketsSettings({ markets }: Props) {
 
   return (
     <div className="p-4 md:p-8 space-y-5 max-w-2xl">
-      <div>
-        <h1 className="font-display font-semibold tracking-tight" style={{ fontSize: '24px', color: '#1A1612' }}>
-          Core markets
-        </h1>
-        <p className="text-sm text-muted-foreground mt-0.5">
-          The suburbs you cover. Horace pulls every address inside them and
-          tells you the moment a contact you know moves on one. Pick up to
-          three.
-        </p>
-      </div>
+      <SectionHeading
+        title="Core markets"
+        description="The suburbs you cover. Horace pulls every address inside them and tells you the moment a contact you know moves on one. Pick up to three."
+      />
 
       {markets.length === 0 ? (
         <EmptyCard onAdd={() => setModalOpen(true)} />

@@ -5,6 +5,7 @@ import { Link as LinkIcon, CheckCircle2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { SectionHeading } from '@/components/ui/section-heading'
 
 interface Props {
   defaultUrl: string | null
@@ -42,35 +43,19 @@ export function TrackedLinksSettings({ defaultUrl }: Props) {
 
   return (
     <div className="p-4 md:p-8 space-y-5 max-w-lg">
-      <div>
-        <h1 className="font-display font-semibold tracking-tight" style={{ fontSize: '24px', color: '#1A1612' }}>
-          Tracked links
-        </h1>
-        <p className="text-sm text-muted-foreground mt-0.5">
-          Every contact gets a tracked link you can paste into 1:1 emails. When the
-          recipient clicks, Horace stitches their browser to the contact and
-          identifies all future visits to your site.
-        </p>
-      </div>
+      <SectionHeading
+        title="Tracked links"
+        description="Every contact gets a tracked link you can paste into 1:1 emails. When the recipient clicks, Horace stitches their browser to the contact and identifies all future visits to your site."
+      />
 
-      <div style={{
-        background: '#FAF7F2',
-        border: '1px solid rgba(140,123,107,0.2)',
-        borderRadius: '12px',
-        padding: '20px',
-      }}>
+      <div className="rounded-md border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-[22px] shadow-[var(--shadow-sm)]">
         <div className="flex items-start gap-3 mb-4">
-          <div style={{
-            width: '32px', height: '32px', borderRadius: '8px',
-            background: 'rgba(196,98,45,0.1)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            flexShrink: 0,
-          }}>
-            <LinkIcon style={{ width: '15px', height: '15px', color: '#C4622D' }} />
+          <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-[rgba(196,98,45,0.1)]">
+            <LinkIcon className="size-[15px] text-[var(--color-terracotta)]" />
           </div>
           <div>
-            <p className="text-sm font-semibold" style={{ color: '#1A1612' }}>Default destination</p>
-            <p className="text-xs mt-0.5" style={{ color: '#8C7B6B' }}>
+            <p className="text-sm font-semibold text-[var(--fg-primary)]">Default destination</p>
+            <p className="mt-0.5 text-xs text-[var(--fg-secondary)]">
               Where every tracked link sends people unless overridden on the contact.
               For stitching to work, this must be a page on your tracked website.
             </p>
@@ -78,9 +63,7 @@ export function TrackedLinksSettings({ defaultUrl }: Props) {
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="default-link-url" className="text-xs font-medium" style={{ color: '#5A4D40' }}>
-            Default site URL
-          </Label>
+          <Label htmlFor="default-link-url">Default site URL</Label>
           <Input
             id="default-link-url"
             type="url"
@@ -95,15 +78,15 @@ export function TrackedLinksSettings({ defaultUrl }: Props) {
         </div>
 
         {error && (
-          <p className="text-xs mt-2" style={{ color: '#A5511E' }}>{error}</p>
+          <p className="mt-2 text-xs text-[var(--color-terracotta)]">{error}</p>
         )}
 
-        <div className="flex items-center gap-3 mt-4">
+        <div className="mt-4 flex items-center gap-3">
           <Button onClick={save} disabled={saving}>
             {saving ? 'Saving…' : 'Save'}
           </Button>
           {saved && (
-            <span className="inline-flex items-center gap-1 text-xs" style={{ color: '#3D5246' }}>
+            <span className="inline-flex items-center gap-1 text-xs text-[var(--color-moss)]">
               <CheckCircle2 className="w-3.5 h-3.5" />
               Saved
             </span>

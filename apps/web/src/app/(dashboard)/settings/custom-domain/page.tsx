@@ -13,6 +13,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Globe } from 'lucide-react'
+import { SectionHeading } from '@/components/ui/section-heading'
 import { CustomDomainManager, type CustomDomainRow } from '@/components/settings/custom-domain-manager'
 
 export const dynamic = 'force-dynamic'
@@ -104,15 +105,11 @@ export default async function CustomDomainSettingsPage() {
   // Own scroll container — dashboard <main> delegates scrolling per page (HOR-297).
   return (
     <div className="flex-1 overflow-y-auto pb-20 md:pb-0">
-      <div className="p-8 space-y-6 max-w-3xl">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Custom domain</h1>
-          <p className="text-muted-foreground">
-            Doorstep runs on a domain your attendees recognise. Add a subdomain
-            like <code className="font-mono text-xs">inspections.agentname.com.au</code>
-            {' '}and we&apos;ll handle the certificate.
-          </p>
-        </div>
+      <div className="p-4 md:p-8 space-y-6 max-w-3xl">
+        <SectionHeading
+          title="Custom domain"
+          description="Doorstep is the public sign-in surface visitors land on after scanning your inspection QR. Run it on your own branded URL — add a subdomain like inspections.agentname.com.au and we'll handle the certificate."
+        />
 
         <Card>
           <CardHeader>
