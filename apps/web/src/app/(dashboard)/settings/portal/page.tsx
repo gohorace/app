@@ -77,7 +77,7 @@ export default async function PortalAddressPage() {
               <div className="mb-3 text-xs text-[var(--fg-secondary)]">
                 Example enquiry-email field for an REA listing:
               </div>
-              <CodeBlock code={example} />
+              <CodeBlock code={example} copyValue={fullAddress} />
               <ul className="mt-3.5 flex flex-col gap-2">
                 {points.map((t) => (
                   <li

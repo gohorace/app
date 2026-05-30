@@ -16,7 +16,6 @@ import {
   Plug,
   Database,
   Upload,
-  LifeBuoy,
   LogOut,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
@@ -36,8 +35,6 @@ interface NavGroup {
   items: NavItem[]
 }
 
-// PR2 mirrors the existing routes 1:1 (pre-merge). PR3 collapses
-// Connections+Integrations and API tokens+API & data.
 const NAV_GROUPS: NavGroup[] = [
   { label: 'Account', items: [{ href: '/settings', label: 'Profile', icon: User }] },
   {
@@ -69,11 +66,11 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'Data & integrations',
     items: [
       { href: '/settings/integrations', label: 'Integrations', icon: Plug },
-      { href: '/settings/api-and-data', label: 'API & developer access', icon: Database },
+      { href: '/settings/api-and-data', label: 'API & developer', icon: Database },
       { href: '/import', label: 'Import contacts', icon: Upload },
     ],
   },
-  { label: 'Help', items: [{ href: '/help', label: 'Help & guides', icon: LifeBuoy }] },
+  // Help removed from nav (HOR-329)
 ]
 
 const EMBED_ENABLED = process.env.NEXT_PUBLIC_EMBED_ENABLED === 'true'
@@ -104,8 +101,8 @@ export function SettingsNav({ seatType = 'agent' }: { seatType?: 'agent' | 'supp
 
   return (
     <>
-      {/* Desktop rail */}
-      <nav className="hidden w-56 shrink-0 flex-col border-r border-[var(--border-subtle)] md:flex">
+      {/* Desktop rail — w-60 (240px) gives enough room for all labels at 13px */}
+      <nav className="hidden w-60 shrink-0 flex-col border-r border-[var(--border-subtle)] md:flex">
         <div className="flex-1 overflow-y-auto px-4 py-2">
           {groups.map((group) => (
             <div key={group.label} className="mb-3.5">
@@ -119,7 +116,7 @@ export function SettingsNav({ seatType = 'agent' }: { seatType?: 'agent' | 'supp
                     key={href}
                     href={href}
                     className={cn(
-                      'mb-px flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors',
+                      'mb-px flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] transition-colors',
                       active
                         ? 'bg-[var(--bg-selected)] font-medium text-[var(--fg-primary)]'
                         : 'text-[var(--fg-secondary)] hover:bg-[var(--bg-hover)]',
@@ -142,7 +139,7 @@ export function SettingsNav({ seatType = 'agent' }: { seatType?: 'agent' | 'supp
           <button
             type="button"
             onClick={signOut}
-            className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium text-[var(--fg-secondary)] transition-colors hover:bg-[var(--bg-hover)]"
+            className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] font-medium text-[var(--fg-secondary)] transition-colors hover:bg-[var(--bg-hover)]"
           >
             <LogOut className="size-4" />
             Sign out
@@ -159,7 +156,7 @@ export function SettingsNav({ seatType = 'agent' }: { seatType?: 'agent' | 'supp
               key={href}
               href={href}
               className={cn(
-                '-mb-px inline-flex items-center gap-1.5 whitespace-nowrap border-b-2 px-2.5 py-3 text-sm transition-colors',
+                '-mb-px inline-flex items-center gap-1.5 whitespace-nowrap border-b-2 px-2.5 py-3 text-[13px] transition-colors',
                 active
                   ? 'border-[var(--color-terracotta)] font-medium text-[var(--fg-primary)]'
                   : 'border-transparent text-[var(--fg-secondary)]',

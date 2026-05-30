@@ -7,20 +7,6 @@
  *   - POST   /api/workspaces/:id/invites?resend=true (HOR-99)
  *   - DELETE /api/workspaces/:id/invites/:inviteId   (HOR-101)
  *   - DELETE /api/workspaces/:id/members/:userId     (HOR-101)
- *
- * Permission model:
- *   - viewer: read-only (no invite form, no destructive actions).
- *   - admin:  can invite, revoke, resend. Cannot remove members.
- *   - owner:  can do everything. Sole-owner guard prevents removing self
- *             when ownerCount === 1.
- *
- * Support seats (HOR-203):
- *   - `seatType` discriminates agent vs support on each row.
- *   - Pro plan: invite picker offers only "Support" (the single agent
- *     slot belongs to the workspace owner).
- *   - Office/Enterprise: picker offers Agent / Manager / Support.
- *   - Feature-flagged via NEXT_PUBLIC_SUPPORT_SEATS_ENABLED; off-state
- *     restores the legacy Agent/Manager-only picker.
  */
 
 'use client'
@@ -30,6 +16,11 @@ import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Badge } from '@/components/ui/badge'
+import { CardLabel } from '@/components/ui/card-label'
+import { EmptyState } from '@/components/ui/empty-state'
+import { Select } from '@/components/ui/select'
+import { UserPlus, Mail, Send } from 'lucide-react'
 
 const SUPPORT_SEAT_MONTHLY_AUD = 39
 
@@ -72,19 +63,49 @@ const ROLE_DISPLAY: Record<MemberRow['agentRole'], string> = {
 
 function inviteRoleDisplay(role: PendingInviteRow['role']): string {
   switch (role) {
-    case 'manager':
-      return 'Manager'
-    case 'support':
-      return 'Support'
+    case 'manager': return 'Manager'
+    case 'support': return 'Support'
     case 'agent':
-    default:
-      return 'Agent'
+    default: return 'Agent'
   }
 }
 
 function isProPlan(plan: string | null): boolean {
   return !!plan && plan.startsWith('pro')
 }
+
+function displayName(m: MemberRow): string {
+  return [m.firstName, m.lastName].filter(Boolean).join(' ') || m.email || 'Unknown'
+}
+
+function initials(m: MemberRow): string {
+  const parts = [m.firstName, m.lastName].filter(Boolean)
+  if (parts.length >= 2) return (parts[0]![0] + parts[1]![0]).toUpperCase()
+  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase()
+  return (m.email ?? '?').slice(0, 2).toUpperCase()
+}
+
+function formatExpiry(iso: string): string {
+  const ms = new Date(iso).getTime() - Date.now()
+  if (ms <= 0) return 'expired'
+  const days = Math.floor(ms / (24 * 60 * 60 * 1000))
+  if (days >= 1) return `in ${days} day${days === 1 ? '' : 's'}`
+  const hours = Math.floor(ms / (60 * 60 * 1000))
+  if (hours >= 1) return `in ${hours} hour${hours === 1 ? '' : 's'}`
+  return 'soon'
+}
+
+function formatJoined(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-AU', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  })
+}
+
+const listShell = 'overflow-hidden rounded-md border border-[var(--border-subtle)] bg-[var(--bg-surface)] shadow-[var(--shadow-sm)]'
+const rowBase = 'flex items-center gap-3.5 px-4 py-3.5'
+const divider = 'border-b border-[var(--border-subtle)]'
 
 export function TeamManager({
   workspaceId,
@@ -104,12 +125,8 @@ export function TeamManager({
   const canRemove = callerRole === 'owner'
   const proPlan = isProPlan(workspacePlan)
 
-  // Pro plan with the support-seats flag on: only support seats are
-  // invitable (the single agent slot is the account owner).
   const inviteOptions: PendingInviteRow['role'][] = supportSeatsEnabled
-    ? proPlan
-      ? ['support']
-      : ['agent', 'manager', 'support']
+    ? proPlan ? ['support'] : ['agent', 'manager', 'support']
     : ['agent', 'manager']
 
   function flash(kind: 'success' | 'error', text: string) {
@@ -117,11 +134,8 @@ export function TeamManager({
     setTimeout(() => setToast(null), 4000)
   }
 
-  // -- Invite form ----------------------------------------------------------
   const [inviteEmail, setInviteEmail] = useState('')
-  const [inviteRole, setInviteRole] = useState<PendingInviteRow['role']>(
-    inviteOptions[0] ?? 'agent',
-  )
+  const [inviteRole, setInviteRole] = useState<PendingInviteRow['role']>(inviteOptions[0] ?? 'agent')
   const [inviteBusy, setInviteBusy] = useState(false)
 
   async function handleInvite(e: React.FormEvent) {
@@ -135,38 +149,22 @@ export function TeamManager({
         body: JSON.stringify({ email: inviteEmail.trim(), role: inviteRole }),
       })
       const body = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        flash('error', body?.error ?? `Failed (${res.status})`)
-        return
-      }
+      if (!res.ok) { flash('error', body?.error ?? `Failed (${res.status})`); return }
       const newRow: PendingInviteRow = {
-        id: body.id,
-        email: body.email,
-        role: body.role,
-        inviterName: 'You',
-        expiresAt: body.expires_at,
-        createdAt: body.created_at,
+        id: body.id, email: body.email, role: body.role,
+        inviterName: 'You', expiresAt: body.expires_at, createdAt: body.created_at,
       }
       const isExisting = body.resent === false && res.status === 200
-      setInvites((prev) => {
-        const filtered = prev.filter((p) => p.id !== newRow.id)
-        return [newRow, ...filtered]
-      })
+      setInvites((prev) => [newRow, ...prev.filter((p) => p.id !== newRow.id)])
       setInviteEmail('')
-      const wasSupport = newRow.role === 'support'
-      flash(
-        'success',
-        isExisting
-          ? `Invite already pending for ${newRow.email}.`
-          : wasSupport
-            ? `Support seat added. $${SUPPORT_SEAT_MONTHLY_AUD}/mo, billed with your plan.`
-            : `Invite sent to ${newRow.email}.`,
-      )
+      flash('success', isExisting
+        ? `Invite already pending for ${newRow.email}.`
+        : newRow.role === 'support'
+          ? `Support seat added. $${SUPPORT_SEAT_MONTHLY_AUD}/mo, billed with your plan.`
+          : `Invite sent to ${newRow.email}.`)
     } catch (err) {
       flash('error', err instanceof Error ? err.message : 'Network error')
-    } finally {
-      setInviteBusy(false)
-    }
+    } finally { setInviteBusy(false) }
   }
 
   async function handleRevoke(invite: PendingInviteRow) {
@@ -174,255 +172,191 @@ export function TeamManager({
     const prev = invites
     setInvites((p) => p.filter((i) => i.id !== invite.id))
     try {
-      const res = await fetch(
-        `/api/workspaces/${workspaceId}/invites/${invite.id}`,
-        { method: 'DELETE' },
-      )
+      const res = await fetch(`/api/workspaces/${workspaceId}/invites/${invite.id}`, { method: 'DELETE' })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
         setInvites(prev)
         flash('error', body?.error ?? `Failed (${res.status})`)
-        return
+      } else {
+        flash('success', `Revoked invite for ${invite.email}.`)
       }
-      flash('success', `Revoked invite for ${invite.email}.`)
-    } catch (err) {
-      setInvites(prev)
-      flash('error', err instanceof Error ? err.message : 'Network error')
-    }
+    } catch (err) { setInvites(prev); flash('error', err instanceof Error ? err.message : 'Network error') }
   }
 
   async function handleResend(invite: PendingInviteRow) {
     if (!canInvite) return
     try {
-      const res = await fetch(
-        `/api/workspaces/${workspaceId}/invites?resend=true`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: invite.email, role: invite.role }),
-        },
-      )
+      const res = await fetch(`/api/workspaces/${workspaceId}/invites?resend=true`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: invite.email, role: invite.role }),
+      })
       const body = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        flash('error', body?.error ?? `Failed (${res.status})`)
-        return
-      }
-      setInvites((p) =>
-        p.map((i) => (i.id === body.id ? { ...i, expiresAt: body.expires_at } : i)),
-      )
+      if (!res.ok) { flash('error', body?.error ?? `Failed (${res.status})`); return }
+      setInvites((p) => p.map((i) => i.id === body.id ? { ...i, expiresAt: body.expires_at } : i))
       flash('success', `Resent invite to ${invite.email}.`)
-    } catch (err) {
-      flash('error', err instanceof Error ? err.message : 'Network error')
-    }
+    } catch (err) { flash('error', err instanceof Error ? err.message : 'Network error') }
   }
 
   async function handleRemove(member: MemberRow) {
     if (!canRemove) return
     if (!confirm(`Remove ${displayName(member)} from this workspace?`)) return
-
     const prev = members
     setMembers((m) => m.filter((x) => x.userId !== member.userId))
     try {
-      const res = await fetch(
-        `/api/workspaces/${workspaceId}/members/${member.userId}`,
-        { method: 'DELETE' },
-      )
+      const res = await fetch(`/api/workspaces/${workspaceId}/members/${member.userId}`, { method: 'DELETE' })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
         setMembers(prev)
         flash('error', body?.error ?? `Failed (${res.status})`)
-        return
+      } else {
+        flash('success', `Removed ${displayName(member)}.`)
+        if (member.authRole === 'owner') router.refresh()
       }
-      flash('success', `Removed ${displayName(member)}.`)
-      if (member.authRole === 'owner') {
-        router.refresh()
-      }
-    } catch (err) {
-      setMembers(prev)
-      flash('error', err instanceof Error ? err.message : 'Network error')
-    }
+    } catch (err) { setMembers(prev); flash('error', err instanceof Error ? err.message : 'Network error') }
   }
 
-  // -- Split by seat type ---------------------------------------------------
   const agentMembers = members.filter((m) => m.seatType === 'agent')
   const supportMembers = members.filter((m) => m.seatType === 'support')
   const agentInvites = invites.filter((i) => i.role !== 'support')
   const supportInvites = invites.filter((i) => i.role === 'support')
-
-  const supportMonthlyCost =
-    (supportMembers.length + supportInvites.length) * SUPPORT_SEAT_MONTHLY_AUD
+  const supportMonthlyCost = (supportMembers.length + supportInvites.length) * SUPPORT_SEAT_MONTHLY_AUD
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       {toast && (
-        <div
-          className={
-            toast.kind === 'success'
-              ? 'rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-900'
-              : 'rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive'
-          }
-        >
+        <div className={toast.kind === 'success'
+          ? 'rounded-md border border-[rgba(61,82,70,0.2)] bg-[rgba(61,82,70,0.08)] px-3 py-2 text-sm text-[var(--fg-primary)]'
+          : 'rounded-md border border-[rgba(196,98,45,0.3)] bg-[rgba(196,98,45,0.06)] px-3 py-2 text-sm text-[var(--color-terracotta)]'
+        }>
           {toast.text}
         </div>
       )}
 
       {/* Invite form */}
       {canInvite ? (
-        <form onSubmit={handleInvite} className="space-y-3">
-          <div className="text-sm font-medium">Invite a teammate</div>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-            <div className="flex-1 space-y-1">
-              <Label htmlFor="invite-email">Email</Label>
-              <Input
-                id="invite-email"
-                type="email"
-                placeholder="teammate@example.com"
-                value={inviteEmail}
-                onChange={(e) => setInviteEmail(e.target.value)}
-                required
-                autoComplete="off"
-              />
+        <div className="rounded-md border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-[22px] shadow-[var(--shadow-sm)]">
+          <CardLabel>Invite a teammate</CardLabel>
+          <form onSubmit={handleInvite}>
+            <div className="flex gap-2.5 items-end">
+              <div className="flex-1 space-y-1.5">
+                <Label htmlFor="invite-email">Email</Label>
+                <Input
+                  id="invite-email"
+                  type="email"
+                  placeholder="teammate@example.com"
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                  required
+                  autoComplete="off"
+                />
+              </div>
+              <div className="w-[120px] space-y-1.5">
+                <Label htmlFor="invite-role">{supportSeatsEnabled && proPlan ? 'Type' : 'Role'}</Label>
+                <Select
+                  id="invite-role"
+                  value={inviteRole}
+                  onChange={(e) => setInviteRole(e.target.value as PendingInviteRow['role'])}
+                  disabled={inviteOptions.length <= 1}
+                  options={inviteOptions.map((opt) => ({ value: opt, label: inviteRoleDisplay(opt) }))}
+                />
+              </div>
+              <Button type="submit" disabled={inviteBusy || !inviteEmail.trim()}>
+                <Send className="size-3.5" />
+                {inviteBusy ? 'Sending…' : 'Send invite'}
+              </Button>
             </div>
-            <div className="space-y-1">
-              <Label htmlFor="invite-role">
-                {supportSeatsEnabled && proPlan ? 'Type' : 'Role'}
-              </Label>
-              <select
-                id="invite-role"
-                value={inviteRole}
-                onChange={(e) => setInviteRole(e.target.value as PendingInviteRow['role'])}
-                className="h-9 rounded-md border border-input bg-background px-3 text-sm"
-                disabled={inviteOptions.length <= 1}
-              >
-                {inviteOptions.map((opt) => (
-                  <option key={opt} value={opt}>
-                    {inviteRoleDisplay(opt)}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <Button type="submit" disabled={inviteBusy || !inviteEmail.trim()}>
-              {inviteBusy ? 'Sending…' : 'Send invite'}
-            </Button>
-          </div>
-          {supportSeatsEnabled && proPlan && (
-            <p className="text-xs text-muted-foreground">
-              On Pro, your agent slot is the account owner. Support seats are
-              for admins, PAs, or sales support who action signals on your behalf.
-            </p>
-          )}
-        </form>
+            {supportSeatsEnabled && (
+              <p className="mt-2.5 text-[11px] leading-relaxed text-[var(--fg-tertiary)]">
+                Support seats are for admins, PAs, or sales support who action signals on your behalf — ${SUPPORT_SEAT_MONTHLY_AUD}/mo, billed with your plan.
+              </p>
+            )}
+          </form>
+        </div>
       ) : (
-        <p className="text-sm text-muted-foreground">
+        <p className="text-sm text-[var(--fg-secondary)]">
           You don&apos;t have permission to invite teammates. Ask the workspace owner.
         </p>
       )}
 
-      {/* Agents section */}
-      <section className="space-y-3">
+      {/* Agents */}
+      <section className="space-y-2">
         <div className="flex items-baseline justify-between">
-          <div className="text-sm font-medium">Agents</div>
-          <div className="text-xs text-muted-foreground">
+          <div className="text-[13px] font-semibold text-[var(--fg-primary)]">Agents</div>
+          <div className="text-xs text-[var(--fg-secondary)]">
             {agentMembers.length} {agentMembers.length === 1 ? 'agent' : 'agents'}
           </div>
         </div>
 
-        {agentInvites.length > 0 && (
-          <ul className="divide-y divide-border rounded-md border">
-            {agentInvites.map((inv) => (
-              <li key={inv.id} className="flex items-center justify-between gap-3 p-3">
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-medium">{inv.email}</div>
-                  <div className="text-xs text-muted-foreground">
-                    Pending · {inviteRoleDisplay(inv.role)} · invited by {inv.inviterName} · expires {formatExpiry(inv.expiresAt)}
-                  </div>
-                </div>
-                {canInvite && (
-                  <div className="flex gap-2">
-                    <Button variant="outline" size="sm" onClick={() => handleResend(inv)}>
-                      Resend
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={() => handleRevoke(inv)}>
-                      Revoke
-                    </Button>
-                  </div>
-                )}
-              </li>
+        {(agentInvites.length > 0 || agentMembers.length > 0) ? (
+          <div className={listShell}>
+            {agentInvites.map((inv, i) => (
+              <InviteRow
+                key={inv.id}
+                invite={inv}
+                canInvite={canInvite}
+                last={i === agentInvites.length - 1 && agentMembers.length === 0}
+                onResend={handleResend}
+                onRevoke={handleRevoke}
+              />
             ))}
-          </ul>
-        )}
-
-        {agentMembers.length === 0 && agentInvites.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No agents yet.</p>
-        ) : (
-          <ul className="divide-y divide-border rounded-md border">
-            {agentMembers.map((m) => (
-              <MemberLi
+            {agentMembers.map((m, i) => (
+              <MemberRow
                 key={m.userId}
                 member={m}
                 canRemove={canRemove}
                 ownerCount={ownerCount}
+                last={i === agentMembers.length - 1}
                 onRemove={handleRemove}
               />
             ))}
-          </ul>
+          </div>
+        ) : (
+          <p className="text-sm text-[var(--fg-secondary)]">No agents yet.</p>
         )}
       </section>
 
-      {/* Support section (gated behind the feature flag) */}
+      {/* Support */}
       {supportSeatsEnabled && (
-        <section className="space-y-3">
+        <section className="space-y-2">
           <div className="flex items-baseline justify-between">
-            <div className="text-sm font-medium">Support</div>
-            <div className="text-xs text-muted-foreground">
+            <div className="text-[13px] font-semibold text-[var(--fg-primary)]">Support</div>
+            <div className="text-xs text-[var(--fg-secondary)]">
               {supportMembers.length + supportInvites.length}{' '}
               {supportMembers.length + supportInvites.length === 1 ? 'seat' : 'seats'}
               {supportMonthlyCost > 0 && ` · $${supportMonthlyCost}/mo`}
             </div>
           </div>
 
-          {supportInvites.length > 0 && (
-            <ul className="divide-y divide-border rounded-md border">
-              {supportInvites.map((inv) => (
-                <li key={inv.id} className="flex items-center justify-between gap-3 p-3">
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-medium">{inv.email}</div>
-                    <div className="text-xs text-muted-foreground">
-                      Pending · Support · invited by {inv.inviterName} · expires {formatExpiry(inv.expiresAt)}
-                    </div>
-                  </div>
-                  {canInvite && (
-                    <div className="flex gap-2">
-                      <Button variant="outline" size="sm" onClick={() => handleResend(inv)}>
-                        Resend
-                      </Button>
-                      <Button variant="outline" size="sm" onClick={() => handleRevoke(inv)}>
-                        Revoke
-                      </Button>
-                    </div>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-
           {supportMembers.length === 0 && supportInvites.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No support seats yet. Add one when you&apos;ve got an admin or PA
-              who&apos;d help action signals.
-            </p>
+            <div className={listShell}>
+              <EmptyState icon={<UserPlus />}>
+                No support seats yet. Add one when you&apos;ve got an admin or PA who&apos;d help action signals.
+              </EmptyState>
+            </div>
           ) : (
-            <ul className="divide-y divide-border rounded-md border">
-              {supportMembers.map((m) => (
-                <MemberLi
+            <div className={listShell}>
+              {supportInvites.map((inv, i) => (
+                <InviteRow
+                  key={inv.id}
+                  invite={inv}
+                  canInvite={canInvite}
+                  last={i === supportInvites.length - 1 && supportMembers.length === 0}
+                  onResend={handleResend}
+                  onRevoke={handleRevoke}
+                />
+              ))}
+              {supportMembers.map((m, i) => (
+                <MemberRow
                   key={m.userId}
                   member={m}
                   canRemove={canRemove}
                   ownerCount={ownerCount}
+                  last={i === supportMembers.length - 1}
                   onRemove={handleRemove}
                 />
               ))}
-            </ul>
+            </div>
           )}
         </section>
       )}
@@ -430,37 +364,37 @@ export function TeamManager({
   )
 }
 
-function MemberLi({
-  member: m,
-  canRemove,
-  ownerCount,
-  onRemove,
+// ── Row components ─────────────────────────────────────────────────────────
+
+function MemberRow({
+  member: m, canRemove, ownerCount, last, onRemove,
 }: {
   member: MemberRow
   canRemove: boolean
   ownerCount: number
+  last: boolean
   onRemove: (m: MemberRow) => void
 }) {
   const disableRemove = m.isSelf && m.authRole === 'owner' && ownerCount <= 1
+  const ini = initials(m)
   return (
-    <li className="flex items-center justify-between gap-3 p-3">
+    <div className={`${rowBase}${last ? '' : ' ' + divider}`}>
+      {/* Initials avatar */}
+      <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-[rgba(140,123,107,0.12)] text-[11px] font-semibold text-[var(--fg-secondary)]">
+        {ini}
+      </div>
       <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-medium">
+        <div className="flex items-center gap-1.5 text-[13px] font-semibold text-[var(--fg-primary)]">
           {displayName(m)}
-          {m.isSelf && <span className="ml-2 text-xs text-muted-foreground">(you)</span>}
+          {m.isSelf && <span className="text-[10px] font-medium text-[var(--fg-tertiary)]">(you)</span>}
         </div>
-        <div className="text-xs text-muted-foreground">
+        <div className="truncate text-xs text-[var(--fg-secondary)]">
           {m.seatType === 'support' ? 'Support' : ROLE_DISPLAY[m.agentRole]} · {m.email ?? '—'} · joined {formatJoined(m.joinedAt)}
         </div>
       </div>
-      {canRemove && !m.isSelf && (
-        <Button variant="outline" size="sm" onClick={() => onRemove(m)}>
-          Remove
-        </Button>
-      )}
-      {canRemove && m.isSelf && (
+      {canRemove && (
         <Button
-          variant="outline"
+          variant="secondary"
           size="sm"
           onClick={() => onRemove(m)}
           disabled={disableRemove}
@@ -469,32 +403,38 @@ function MemberLi({
           Remove
         </Button>
       )}
-    </li>
+    </div>
   )
 }
 
-function displayName(m: MemberRow): string {
+function InviteRow({
+  invite: inv, canInvite, last, onResend, onRevoke,
+}: {
+  invite: PendingInviteRow
+  canInvite: boolean
+  last: boolean
+  onResend: (inv: PendingInviteRow) => void
+  onRevoke: (inv: PendingInviteRow) => void
+}) {
   return (
-    [m.firstName, m.lastName].filter(Boolean).join(' ') ||
-    m.email ||
-    'Unknown'
+    <div className={`${rowBase}${last ? '' : ' ' + divider}`}>
+      {/* Mail icon circle */}
+      <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-[rgba(181,146,42,0.12)]">
+        <Mail className="size-[15px] text-[var(--color-signal-mid)]" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="text-[13px] font-semibold text-[var(--fg-primary)]">{inv.email}</div>
+        <div className="text-xs text-[var(--fg-secondary)]">
+          Pending · {inviteRoleDisplay(inv.role)} · invited by {inv.inviterName} · expires {formatExpiry(inv.expiresAt)}
+        </div>
+      </div>
+      <Badge variant="amber" dot>Pending</Badge>
+      {canInvite && (
+        <>
+          <Button variant="ghost" size="sm" onClick={() => onResend(inv)}>Resend</Button>
+          <Button variant="ghost" size="sm" onClick={() => onRevoke(inv)}>Revoke</Button>
+        </>
+      )}
+    </div>
   )
-}
-
-function formatExpiry(iso: string): string {
-  const ms = new Date(iso).getTime() - Date.now()
-  if (ms <= 0) return 'expired'
-  const days = Math.floor(ms / (24 * 60 * 60 * 1000))
-  if (days >= 1) return `in ${days} day${days === 1 ? '' : 's'}`
-  const hours = Math.floor(ms / (60 * 60 * 1000))
-  if (hours >= 1) return `in ${hours} hour${hours === 1 ? '' : 's'}`
-  return 'soon'
-}
-
-function formatJoined(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-AU', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  })
 }

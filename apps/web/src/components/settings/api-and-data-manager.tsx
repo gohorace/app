@@ -23,9 +23,12 @@ export interface ApiV1KeyRow {
 interface Props {
   initialKeys: ApiV1KeyRow[]
   baseUrl: string
+  /** When false, the data-export card is hidden. Use when the page renders
+   *  its own "Your data" section at the correct position. Default: true. */
+  showExport?: boolean
 }
 
-export function ApiAndDataManager({ initialKeys, baseUrl }: Props) {
+export function ApiAndDataManager({ initialKeys, baseUrl, showExport = true }: Props) {
   const [keys, setKeys] = useState<ApiV1KeyRow[]>(initialKeys)
   const [name, setName] = useState('')
   const [creating, setCreating] = useState(false)
@@ -189,8 +192,8 @@ export function ApiAndDataManager({ initialKeys, baseUrl }: Props) {
         </CardContent>
       </Card>
 
-      {/* Export */}
-      <Card>
+      {/* Export — hidden when the page renders its own Your data section */}
+      {showExport && <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Download className="w-4 h-4" />
@@ -230,7 +233,7 @@ export function ApiAndDataManager({ initialKeys, baseUrl }: Props) {
             </Button>
           </div>
         </CardContent>
-      </Card>
+      </Card>}
     </div>
   )
 }
