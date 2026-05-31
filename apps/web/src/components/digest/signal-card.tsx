@@ -355,13 +355,27 @@ export function SignalCard({ signal, onClear }: SignalCardProps) {
   const onDecline = () => { setDeclined(true); persistDismiss('digest-decline'); clear() }
   const onWatch = () => { setWatching(true); persistDismiss('digest-watch'); clear() }
 
+  // Focused-on-a-signal entry (§Phase 1): hand the companion the structured
+  // signal so its opener carries this read and the chips turn contextual. The
+  // label degrades with identity — a name when we have one, the suburb for a
+  // suburb signal, else a neutral "this signal".
   function askAbout() {
     const named = signal.identity === 'known' || signal.identity === 'probable'
-    if (named) {
-      openCompanion({ prompt: `Why is ${signal.name} on my digest today?`, contextLabel: `Contact: ${signal.name}` })
-    } else {
-      openCompanion({ prompt: `What's behind the ${signal.suburb ?? 'this'} signal?`, contextLabel: 'Digest' })
-    }
+    const contextLabel = named
+      ? `On ${signal.name}`
+      : signal.suburb
+        ? `On ${signal.suburb}`
+        : 'On this signal'
+    openCompanion({
+      contextLabel,
+      signal: {
+        contactId: signal.contactId,
+        name: signal.name,
+        read: signal.read,
+        identity: signal.identity,
+        suburb: signal.suburb,
+      },
+    })
   }
 
   // Effective identity: a confirmed probable becomes known; a declined one is
