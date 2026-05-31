@@ -71,8 +71,6 @@ function editIntro(edit: EditIdentityContext): string {
       return "Happy to put a name to this — who am I looking at? I’ll keep the email locked; it’s how I recognised them."
     case 'phone':
       return `Sure — what’s the best number for ${name}? It saves as your annotation; the observed trail stays as-is.`
-    case 'suburb':
-      return `Where is ${name} based? I’ll note it against them. Anything I observed stays locked.`
     default:
       return `Let’s tidy up who ${name} is. I’ll only change what you tell me — observed facts stay locked.`
   }

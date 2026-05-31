@@ -149,11 +149,10 @@ export interface CompanionSignalContext {
 export interface EditIdentityContext {
   contactId: string
   /** The field the agent arrived from — gets the focus ring. */
-  focusField?: 'name' | 'phone' | 'suburb'
+  focusField?: 'name' | 'phone'
   /** Current agent-supplied values (prefill). */
   displayName: string | null
   phone: string | null
-  suburb: string | null
   /** Observed email + its provenance ("seen via …") — shown locked. */
   email: string | null
   seenLabel: string

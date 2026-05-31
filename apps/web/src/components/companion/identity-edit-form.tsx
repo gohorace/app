@@ -16,8 +16,6 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Lock, MessageSquare, ArrowRight, User, Phone, Anchor } from 'lucide-react'
-import { AddressAutocomplete } from '@/components/address/address-autocomplete'
-import type { SelectedAddress } from '@/components/address/types'
 import type { EditIdentityContext } from '@/lib/companion/types'
 
 const TERRA = '#C4622D'
@@ -46,11 +44,6 @@ export function IdentityEditForm({ context, onSaved, onCancel, onSpoken }: Ident
   const router = useRouter()
   const [displayName, setDisplayName] = useState(context.displayName ?? '')
   const [phone, setPhone] = useState(context.phone ?? '')
-  // Suburb is edited as an address (→ residence). `touched` distinguishes
-  // "left alone" from "explicitly changed/cleared" so we only PATCH residence
-  // when the agent actually edited it.
-  const [residence, setResidence] = useState<SelectedAddress | null>(null)
-  const [residenceTouched, setResidenceTouched] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -66,10 +59,6 @@ export function IdentityEditForm({ context, onSaved, onCancel, onSpoken }: Ident
     // Phone (only when changed).
     if (phone.trim() !== (context.phone ?? '').trim()) {
       body.phone = phone.trim() || null
-    }
-    // Suburb → residence address (only when the field was touched).
-    if (residenceTouched) {
-      body.residence = residence
     }
 
     if (Object.keys(body).length === 0) {
@@ -140,19 +129,6 @@ export function IdentityEditForm({ context, onSaved, onCancel, onSpoken }: Ident
         focused={context.focusField === 'phone'}
         autoFocus={context.focusField === 'phone'}
       />
-
-      {/* Suburb → address (sets residence; contacts.suburb is trigger-maintained).
-          Reuses AddressAutocomplete, which renders its own label. */}
-      <div style={{ marginBottom: 10 }}>
-        <AddressAutocomplete
-          label="Suburb · agent-supplied"
-          placeholder={context.suburb ? `Current: ${context.suburb}` : 'Where are they?'}
-          onChange={(addr) => {
-            setResidence(addr)
-            setResidenceTouched(true)
-          }}
-        />
-      </div>
 
       {/* Locked observed fact — visible, never editable */}
       {context.email && (

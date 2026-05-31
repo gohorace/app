@@ -259,7 +259,7 @@ export function ContactDetailView({
   // the Companion drawer rendering the structured IdentityEditForm — the
   // decided edit surface. The observed email is carried for display only and
   // stays locked; the form writes the agent-supplied fields via PATCH.
-  function openEdit(field?: 'name' | 'phone' | 'suburb') {
+  function openEdit(field?: 'name' | 'phone') {
     openCompanion({
       contextLabel: `Contact: ${companionName}`,
       edit: {
@@ -267,7 +267,6 @@ export function ContactDetailView({
         focusField:  field,
         displayName: hasName ? displayName : null,
         phone:       contact.phone,
-        suburb:      contact.suburb,
         email:       contact.email,
         seenLabel,
       },
@@ -418,19 +417,30 @@ export function ContactDetailView({
               </>
             )}
 
-            {/* FACTS — suburb + phone (agent-supplied: editable, or an invite
-                when unset). Hidden for anonymous — nothing to annotate yet. */}
+            {/* FACTS — phone (agent-supplied: editable, or an invite when
+                unset) + suburb as a quiet read-only locality tag. Suburb isn't
+                editable here: "Properties they're circling" below carries the
+                meaningful location signal. Hidden for anonymous. */}
             {!isAnon && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
-                {contact.suburb ? (
-                  <EditableFact icon={MapPin} value={contact.suburb} onClick={() => openEdit('suburb')} />
-                ) : (
-                  <InviteChip icon={MapPin} label="Tell Horace where they are" onClick={() => openEdit('suburb')} />
-                )}
                 {contact.phone ? (
                   <EditableFact icon={Phone} value={contact.phone} onClick={() => openEdit('phone')} />
                 ) : (
                   <InviteChip icon={Phone} label="Add a phone" onClick={() => openEdit('phone')} />
+                )}
+                {contact.suburb && (
+                  <span
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      fontSize: 12.5,
+                      color: '#8C7B6B',
+                    }}
+                  >
+                    <MapPin style={{ width: 12, height: 12 }} />
+                    {contact.suburb}
+                  </span>
                 )}
               </div>
             )}
