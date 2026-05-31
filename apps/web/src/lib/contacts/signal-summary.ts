@@ -87,6 +87,40 @@ function pageCategory(e: MergedEvent): 'appraisal' | 'sold' | null {
   return null
 }
 
+// ── Read provenance ──────────────────────────────────────────────────────────
+// The "Built from N sessions + …" line under Horace's read — the same merged
+// events the chips derive from, summarised as a one-line source attribution.
+// Honest: only names what the events actually contain. Null when there's
+// nothing in the trailing week to attribute the read to.
+
+export function readProvenance(events: MergedEvent[], now: number = Date.now()): string | null {
+  const sessions = sessionsThisWeek(events, now)
+  if (sessions === 0) return null
+
+  const since = now - WEEK_MS
+  let formStarts = 0
+  let soldViews = 0
+  let appraisalViews = 0
+  for (const e of events) {
+    const t = new Date(e.occurred_at).getTime()
+    if (Number.isNaN(t) || t < since) continue
+    if (e.event_type === 'form_submit' || e.event_type === 'form_start') formStarts += 1
+    const cat = pageCategory(e)
+    if (cat === 'sold') soldViews += 1
+    if (cat === 'appraisal') appraisalViews += 1
+  }
+
+  const sessionPart = sessions === 1 ? '1 session' : `${sessions} sessions`
+  let extra: string | null = null
+  if (formStarts > 0) extra = 'an appraisal form'
+  else if (appraisalViews > 0) extra = 'the appraisal page'
+  else if (soldViews > 0) extra = soldViews === 1 ? 'a sold result' : 'sold results'
+
+  return extra
+    ? `Built from ${sessionPart} + ${extra} this week`
+    : `Built from ${sessionPart} this week`
+}
+
 export function whatChanged(events: MergedEvent[], now: number = Date.now()): ChangeChip[] {
   const chips: ChangeChip[] = []
 

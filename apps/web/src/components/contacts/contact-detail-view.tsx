@@ -7,25 +7,23 @@ import {
   ArrowLeft,
   ArrowRight,
   ArrowUp,
-  ArrowUpRight,
   Anchor,
   Bell,
-  Clock,
   Eye,
   Flame,
   Home,
   KeyRound,
   Loader2,
+  Lock,
   Mail,
   MapPin,
   MoreHorizontal,
   Pencil,
   Phone,
   Plus,
-  Repeat,
-  Sun,
   X,
   Zap,
+  type LucideIcon,
 } from 'lucide-react'
 import {
   IdentityGradient,
@@ -36,7 +34,8 @@ import {
 } from '@/lib/design/badges'
 import type { IdentityState } from '@/lib/design/badges'
 import { eventKind, eventLabel, eventUrl, formatEventUrl, type MergedEvent } from '@/lib/contacts/events'
-import { tierForScore, weeklyDelta, whatChanged, type ChipIcon } from '@/lib/contacts/signal-summary'
+import { tierForScore, weeklyDelta, whatChanged, readProvenance } from '@/lib/contacts/signal-summary'
+import { HoraceReadCard } from '@/components/shared/horace-read-card'
 import { AttachRoleDialog } from './attach-role-dialog'
 import { NotesThread } from '@/components/notes/notes-thread'
 import { SendTrackedEmailButton } from '@/components/email/email-composer-trigger'
@@ -107,14 +106,6 @@ function useIsMobile(): boolean {
   return isMobile
 }
 
-const CHIP_ICON: Record<ChipIcon, typeof Repeat> = {
-  repeat: Repeat,
-  eye:    Eye,
-  pen:    Pencil,
-  mail:   Mail,
-  clock:  Clock,
-}
-
 export function ContactDetailView({
   contact,
   identity,
@@ -141,8 +132,11 @@ export function ContactDetailView({
     [contact.firstName, contact.lastName].filter(Boolean).join(' ') ||
     contact.email ||
     `Visitor · ${contact.id.slice(0, 4)}`
-  // When the "name" is really an email, the hero shrinks + breaks the string.
-  const nameIsEmail = !contact.firstName && !contact.lastName && Boolean(contact.email)
+  // ── Identity provenance (HOR-246 amendment) ──────────────────────────────
+  // Agent-supplied name leads; the observed email is the locked anchor. When
+  // no name is set, the email itself is the hero (the "email-only" state).
+  const hasName = Boolean(contact.firstName || contact.lastName)
+  const seenLabel = `seen via ${contact.source}`
   const companionName =
     [contact.firstName, contact.lastName].filter(Boolean).join(' ') || contact.email || 'this contact'
 
@@ -150,6 +144,7 @@ export function ContactDetailView({
   const tier = useMemo(() => tierForScore(contact.score), [contact.score])
   const delta = useMemo(() => weeklyDelta(events), [events])
   const changes = useMemo(() => whatChanged(events), [events])
+  const builtFrom = useMemo(() => readProvenance(events), [events])
 
   const lastSeenLabel = useMemo(() => {
     if (!contact.lastSeenAt) return '—'
@@ -252,23 +247,34 @@ export function ContactDetailView({
     })
   }
 
+  // "Ask a follow-up" on the read card → Companion in *read* context.
+  function openAsk() {
+    openCompanion({
+      prompt: `Tell me more about why ${companionName} matters right now`,
+      contextLabel: `Contact: ${companionName}`,
+    })
+  }
+
+  // HOR-246 amendment (Phase 1): "Edit details" + the field invitations open
+  // the Companion drawer — the decided edit surface. Phase 2 turns this into a
+  // real writer (IdentityEditForm + parse-confirm + PATCH). For now it opens
+  // the drawer with an edit-framed prompt; observed facts stay read-only.
+  const FIELD_PHRASE: Record<'name' | 'phone' | 'suburb', string> = {
+    name:   'put a name to',
+    phone:  'add a phone number for',
+    suburb: 'set the suburb for',
+  }
+  function openEdit(field?: 'name' | 'phone' | 'suburb') {
+    openCompanion({
+      prompt: field
+        ? `Help me ${FIELD_PHRASE[field]} ${companionName}`
+        : `Help me tidy up who ${companionName} is`,
+      contextLabel: `Contact: ${companionName}`,
+    })
+  }
+
   // Roles the contact currently holds, for the RoleControl pill "active" state.
   const heldRoles = useMemo(() => new Set(roleAttached.map((r) => r.role)), [roleAttached])
-
-  const ChangeChips =
-    changes.length > 0 ? (
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
-        {changes.map((c, i) => {
-          const Icon = CHIP_ICON[c.icon]
-          return (
-            <span key={i} style={changeChipStyle}>
-              <Icon style={{ width: 12, height: 12, color: tier.color }} />
-              {c.label}
-            </span>
-          )
-        })}
-      </div>
-    ) : null
 
   return (
     <div style={{ flex: 1, overflowY: 'auto', position: 'relative', paddingBottom: isMobile ? 132 : 80 }}>
@@ -297,7 +303,7 @@ export function ContactDetailView({
                 whiteSpace: 'nowrap',
               }}
             >
-              {nameIsEmail ? 'Email-only visitor' : displayName}
+              {!hasName && contact.email ? 'Email-only visitor' : displayName}
             </span>
             <Link href="#notifications" aria-label="Notifications" style={iconBtnStyle}>
               <Bell style={{ width: 17, height: 17, color: '#8C7B6B' }} />
@@ -352,6 +358,7 @@ export function ContactDetailView({
             stroke={isMobile ? 11 : 13}
           />
           <div style={{ flex: 1, minWidth: 0, paddingTop: isMobile ? 6 : 4 }}>
+            {/* identity meta row */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
               <IdentityGradient state={identity} size="lg" />
               <span style={metaPillStyle}>
@@ -363,73 +370,91 @@ export function ContactDetailView({
                   Active <strong style={{ color: '#1A1612', fontWeight: 500 }}>{lastSeenLabel}</strong>
                 </span>
               )}
-            </div>
-            <h1
-              className="font-display"
-              style={{
-                fontWeight: 600,
-                color: '#1A1612',
-                letterSpacing: '-0.02em',
-                lineHeight: 1.08,
-                margin: '0 0 4px',
-                fontSize: nameIsEmail ? (isMobile ? 20 : 25) : (isMobile ? 28 : 34),
-                wordBreak: nameIsEmail ? 'break-all' : 'normal',
-              }}
-            >
-              {displayName}
-            </h1>
-            <div
-              style={{
-                fontSize: 13.5,
-                color: '#8C7B6B',
-                marginBottom: 14,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-              }}
-            >
-              <MapPin style={{ width: 13, height: 13 }} />
-              {contact.suburb ?? 'Unknown suburb'}
+              {!isAnon && !isMobile && <EditDetailsBtn onClick={() => openEdit()} />}
             </div>
 
-            {/* Why now · Horace's read — omitted when no nudge */}
-            {contact.nudge && contact.nudge.trim().length > 0 && (
+            {/* NAME cluster — provenance: agent-supplied name leads; the observed
+                email is demoted to a locked line beneath. Email-only/unnamed →
+                the email is the hero + a "tell Horace who this is" invitation. */}
+            {isAnon ? (
+              <h1 className="font-display" style={{ ...nameH1Style, fontSize: isMobile ? 28 : 34 }}>
+                {displayName}
+              </h1>
+            ) : hasName ? (
               <>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 7, margin: '0 0 7px' }}>
-                  <Zap style={{ width: 12, height: 12, color: '#C4622D' }} />
-                  <span style={uppercaseTerracottaLabel}>Why now · Horace&rsquo;s read</span>
-                </div>
-                <p
-                  style={{
-                    fontSize: isMobile ? 14 : 15.5,
-                    lineHeight: 1.55,
-                    color: '#2E2823',
-                    margin: '0 0 14px',
-                    textWrap: 'pretty',
-                  }}
+                <h1 className="font-display" style={{ ...nameH1Style, fontSize: isMobile ? 28 : 34 }}>
+                  {displayName}
+                </h1>
+                {contact.email && (
+                  <div style={{ marginBottom: 10 }}>
+                    <LockedLine icon={Mail} value={contact.email} seen={seenLabel} compact={isMobile} />
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                <h1
+                  className="font-display"
+                  style={{ ...nameH1Style, fontSize: isMobile ? 20 : 25, wordBreak: 'break-all' }}
                 >
-                  {contact.nudge}
-                </p>
+                  {contact.email ?? displayName}
+                </h1>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap', margin: '4px 0 12px' }}>
+                  <span
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      fontSize: 12,
+                      color: '#8C7B6B',
+                      fontStyle: 'italic',
+                    }}
+                  >
+                    <Lock style={{ width: 11, height: 11 }} /> {seenLabel} — locked
+                  </span>
+                  <InviteChip icon={Plus} label="Tell Horace who this is" onClick={() => openEdit('name')} />
+                </div>
               </>
             )}
 
-            {ChangeChips}
-
-            {/* Surfaced in your Stream — opens the notifications slide-over.
-                Not yet a per-moment deep link (props carry no Stream moment
-                id); when broadens once that lands. */}
-            {!isAnon && contact.lastSeenAt && (
-              <Link href="#notifications" style={streamLinkStyle}>
-                <Sun style={{ width: 13, height: 13, color: '#C4622D' }} />
-                Surfaced in your Stream · {lastSeenLabel}
-                <ArrowUpRight style={{ width: 12, height: 12, color: '#8C7B6B' }} />
-              </Link>
+            {/* FACTS — suburb + phone (agent-supplied: editable, or an invite
+                when unset). Hidden for anonymous — nothing to annotate yet. */}
+            {!isAnon && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
+                {contact.suburb ? (
+                  <EditableFact icon={MapPin} value={contact.suburb} onClick={() => openEdit('suburb')} />
+                ) : (
+                  <InviteChip icon={MapPin} label="Tell Horace where they are" onClick={() => openEdit('suburb')} />
+                )}
+                {contact.phone ? (
+                  <EditableFact icon={Phone} value={contact.phone} onClick={() => openEdit('phone')} />
+                ) : (
+                  <InviteChip icon={Phone} label="Add a phone" onClick={() => openEdit('phone')} />
+                )}
+              </div>
             )}
           </div>
         </div>
 
+        {/* ── WHY NOW — Horace's read (authored, sourced card) ─────────────── */}
+        {contact.nudge && contact.nudge.trim().length > 0 && (
+          <div style={{ marginTop: isMobile ? 20 : 24 }}>
+            <HoraceReadCard
+              read={contact.nudge}
+              updated={contact.lastSeenAt ? lastSeenLabel : null}
+              builtFrom={builtFrom}
+              changes={changes}
+              chipColor={tier.color}
+              streamHref={!isAnon && contact.lastSeenAt ? '#notifications' : null}
+              streamWhen={!isAnon && contact.lastSeenAt ? lastSeenLabel : null}
+              onAsk={openAsk}
+              compact={isMobile}
+            />
+          </div>
+        )}
+
         {/* ── ACTION ─────────────────────────────────────────────────────── */}
-        <div style={{ marginTop: 26 }}>
+        <div style={{ marginTop: 28 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 10 }}>
             <Zap style={{ width: 13, height: 13, color: '#C4622D' }} />
             <span style={{ ...uppercaseTerracottaLabel, letterSpacing: '0.1em', fontSize: 11 }}>
@@ -708,6 +733,14 @@ export function ContactDetailView({
         <>
           {overflowOpen && (
             <div style={overflowSheetStyle}>
+              {!isAnon && (
+                <SheetRow
+                  Icon={Pencil}
+                  label="Edit details"
+                  accent
+                  onClick={() => { openEdit(); setOverflowOpen(false) }}
+                />
+              )}
               <ContactSheetRow phone={contact.phone} email={contact.email} />
               {contact.email && (
                 <SendTrackedEmailButton
@@ -858,6 +891,69 @@ function primaryTitleForTier(word: string): string {
   return 'Keep this one warm'
 }
 
+// ── Identity provenance atoms (HOR-246 amendment) ────────────────────────────
+
+const nameH1Style: React.CSSProperties = {
+  fontWeight: 600,
+  color: '#1A1612',
+  letterSpacing: '-0.02em',
+  lineHeight: 1.08,
+  margin: '0 0 4px',
+}
+
+/** Observed fact — locked. Lock glyph + value + light "seen via …" provenance. */
+function LockedLine({
+  icon: Icon,
+  value,
+  seen,
+  compact,
+}: {
+  icon: LucideIcon
+  value: string
+  seen: string
+  compact?: boolean
+}) {
+  return (
+    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: compact ? 12 : 12.5 }}>
+      <Lock style={{ width: 11, height: 11, color: '#8C7B6B' }} />
+      <span style={{ color: '#5E5246', wordBreak: 'break-all', fontWeight: 500 }}>{value}</span>
+      <Icon style={{ width: 11, height: 11, color: '#8C7B6B' }} aria-hidden />
+      <span style={{ color: '#8C7B6B', fontStyle: 'italic' }}>· {seen}</span>
+    </div>
+  )
+}
+
+/** Agent-supplied fact that's set — a quiet pill carrying a faint edit cue. */
+function EditableFact({ icon: Icon, value, onClick }: { icon: LucideIcon; value: string; onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick} title="Edit — agent-supplied" style={editableFactStyle}>
+      <Icon style={{ width: 12, height: 12, color: '#8C7B6B' }} />
+      {value}
+      <Pencil style={{ width: 10, height: 10, color: 'rgba(140,123,107,0.65)', marginLeft: 1 }} />
+    </button>
+  )
+}
+
+/** Unset agent field — an invitation, never a mandatory blank. Terracotta dashed. */
+function InviteChip({ icon: Icon, label, onClick }: { icon: LucideIcon; label: string; onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick} style={inviteChipStyle}>
+      <Icon style={{ width: 12, height: 12, color: '#C4622D' }} />
+      {label}
+    </button>
+  )
+}
+
+/** The single, quiet entry point into the edit flow (opens the Companion). */
+function EditDetailsBtn({ onClick }: { onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick} style={editDetailsBtnStyle}>
+      <Pencil style={{ width: 12, height: 12, color: '#8C7B6B' }} />
+      Edit details
+    </button>
+  )
+}
+
 // ── Role control — light "who is this to you?" ───────────────────────────────
 
 const ROLE_PILLS: Array<{ role: ContactRole; label: string; Icon: typeof Home }> = [
@@ -951,12 +1047,15 @@ function SheetRow({
   label,
   last,
   disabled,
+  accent,
   onClick,
 }: {
   Icon: typeof Phone
   label: string
   last?: boolean
   disabled?: boolean
+  /** Terracotta-tinted — the new "Edit details" affordance (HOR-246). */
+  accent?: boolean
   onClick?: () => void
 }) {
   return (
@@ -969,14 +1068,14 @@ function SheetRow({
         gap: 12,
         padding: '12px 12px',
         fontSize: 14,
-        color: '#1A1612',
+        color: accent ? '#C4622D' : '#1A1612',
         fontWeight: 500,
         borderBottom: last ? 'none' : '1px solid rgba(140,123,107,0.14)',
         cursor: disabled ? 'not-allowed' : 'pointer',
         opacity: disabled ? 0.5 : 1,
       }}
     >
-      <Icon style={{ width: 17, height: 17, color: '#8C7B6B' }} />
+      <Icon style={{ width: 17, height: 17, color: accent ? '#C4622D' : '#8C7B6B' }} />
       {label}
     </div>
   )
@@ -1213,27 +1312,50 @@ const uppercaseTerracottaLabel: React.CSSProperties = {
   color: '#C4622D',
 }
 
-const changeChipStyle: React.CSSProperties = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: 5,
-  fontSize: 11.5,
-  fontWeight: 500,
-  padding: '4px 10px',
-  borderRadius: 9999,
-  background: '#FAF7F2',
-  border: '1px solid rgba(140,123,107,0.2)',
-  color: '#5E5246',
-}
-
-const streamLinkStyle: React.CSSProperties = {
+const editableFactStyle: React.CSSProperties = {
   display: 'inline-flex',
   alignItems: 'center',
   gap: 6,
+  padding: '4px 9px',
+  borderRadius: 9999,
+  background: 'transparent',
+  border: '1px solid rgba(140,123,107,0.2)',
+  color: '#5E5246',
+  fontSize: 12.5,
+  fontWeight: 500,
+  cursor: 'pointer',
+  fontFamily: 'var(--font-body)',
+}
+
+const inviteChipStyle: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 6,
+  padding: '4px 11px',
+  borderRadius: 9999,
+  background: 'rgba(196,98,45,0.06)',
+  border: '1px dashed rgba(196,98,45,0.45)',
+  color: '#C4622D',
+  fontSize: 12.5,
+  fontWeight: 500,
+  cursor: 'pointer',
+  fontFamily: 'var(--font-body)',
+}
+
+const editDetailsBtnStyle: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 6,
+  padding: '5px 11px',
+  borderRadius: 8,
+  background: 'transparent',
+  border: '1px solid rgba(140,123,107,0.2)',
+  color: '#8C7B6B',
   fontSize: 12,
   fontWeight: 500,
-  color: '#8C7B6B',
-  textDecoration: 'none',
+  cursor: 'pointer',
+  fontFamily: 'var(--font-body)',
+  marginLeft: 'auto',
 }
 
 const contextDividerLabel: React.CSSProperties = {

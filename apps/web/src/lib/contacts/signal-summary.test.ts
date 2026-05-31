@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { tierForScore, weeklyDelta, whatChanged } from './signal-summary'
+import { tierForScore, weeklyDelta, whatChanged, readProvenance } from './signal-summary'
 import type { MergedEvent } from './events'
 
 // Fixed clock so the 7-day window is deterministic.
@@ -97,5 +97,30 @@ describe('whatChanged', () => {
       ev({ event_type: 'email_opened', occurred_at: HOURS(4) }),
     ]
     expect(whatChanged(events, NOW).length).toBeLessThanOrEqual(3)
+  })
+})
+
+describe('readProvenance', () => {
+  it('attributes the read to sessions + the strongest signal', () => {
+    const events = [
+      ev({ event_type: 'page_view', occurred_at: HOURS(2) }),
+      ev({ event_type: 'page_view', occurred_at: DAYS(1) }),
+      ev({ event_type: 'page_view', occurred_at: DAYS(2) }),
+      ev({ event_type: 'form_start', occurred_at: HOURS(3) }),
+    ]
+    expect(readProvenance(events, NOW)).toBe('Built from 3 sessions + an appraisal form this week')
+  })
+
+  it('falls back to sessions-only when there is no standout signal', () => {
+    const events = [
+      ev({ event_type: 'page_view', occurred_at: HOURS(2) }),
+      ev({ event_type: 'page_view', occurred_at: DAYS(1) }),
+    ]
+    expect(readProvenance(events, NOW)).toBe('Built from 2 sessions this week')
+  })
+
+  it('returns null when nothing happened in the trailing week', () => {
+    expect(readProvenance([ev({ event_type: 'page_view', occurred_at: DAYS(12) })], NOW)).toBeNull()
+    expect(readProvenance([], NOW)).toBeNull()
   })
 })
