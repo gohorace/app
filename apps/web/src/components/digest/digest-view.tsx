@@ -95,7 +95,9 @@ function ActivityHeader({
   attentionCount,
 }: {
   dateLabel: string
-  isDemo?: boolean
+  // Mirrors DigestViewModel.isDemo — the body uses `isDemo === 'preview'`
+  // so the union must be preserved here, not narrowed to boolean.
+  isDemo?: boolean | 'demo' | 'preview'
   attentionCount: number
 }) {
   const { openCompanion } = useCompanion()
