@@ -117,6 +117,26 @@ export interface CompanionSignalContext {
   suburb?: string | null
 }
 
+/**
+ * Identity-edit context (HOR-246 amendment, Phase 2a). When the companion is
+ * opened with this, the drawer renders the structured `IdentityEditForm`
+ * instead of the conversation — the decided edit surface for agent-supplied
+ * identity. Observed facts (the email) are carried for display only and stay
+ * read-only; the form writes the agent-supplied fields via PATCH.
+ */
+export interface EditIdentityContext {
+  contactId: string
+  /** The field the agent arrived from — gets the focus ring. */
+  focusField?: 'name' | 'phone' | 'suburb'
+  /** Current agent-supplied values (prefill). */
+  displayName: string | null
+  phone: string | null
+  suburb: string | null
+  /** Observed email + its provenance ("seen via …") — shown locked. */
+  email: string | null
+  seenLabel: string
+}
+
 export interface OpenCompanionOptions {
   /** Initial prompt to render as the agent's first message. Triggers an
    *  auto-response from Horace 600ms later. Omit to open with just the
@@ -132,6 +152,9 @@ export interface OpenCompanionOptions {
    *  No auto-reply fires; the read is already computed, so the opener is
    *  Horace-led and the agent drives from there. */
   signal?: CompanionSignalContext
+  /** When set, the drawer opens the identity-edit form (HOR-246 Phase 2a)
+   *  instead of the conversation. */
+  edit?: EditIdentityContext
 }
 
 export interface CompanionContextValue {

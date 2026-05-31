@@ -255,21 +255,22 @@ export function ContactDetailView({
     })
   }
 
-  // HOR-246 amendment (Phase 1): "Edit details" + the field invitations open
-  // the Companion drawer — the decided edit surface. Phase 2 turns this into a
-  // real writer (IdentityEditForm + parse-confirm + PATCH). For now it opens
-  // the drawer with an edit-framed prompt; observed facts stay read-only.
-  const FIELD_PHRASE: Record<'name' | 'phone' | 'suburb', string> = {
-    name:   'put a name to',
-    phone:  'add a phone number for',
-    suburb: 'set the suburb for',
-  }
+  // HOR-246 amendment (Phase 2a): "Edit details" + the field invitations open
+  // the Companion drawer rendering the structured IdentityEditForm — the
+  // decided edit surface. The observed email is carried for display only and
+  // stays locked; the form writes the agent-supplied fields via PATCH.
   function openEdit(field?: 'name' | 'phone' | 'suburb') {
     openCompanion({
-      prompt: field
-        ? `Help me ${FIELD_PHRASE[field]} ${companionName}`
-        : `Help me tidy up who ${companionName} is`,
       contextLabel: `Contact: ${companionName}`,
+      edit: {
+        contactId:   contact.id,
+        focusField:  field,
+        displayName: hasName ? displayName : null,
+        phone:       contact.phone,
+        suburb:      contact.suburb,
+        email:       contact.email,
+        seenLabel,
+      },
     })
   }
 

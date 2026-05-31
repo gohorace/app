@@ -9,6 +9,7 @@ import type {
   CompanionMessage,
   CompanionSignalContext,
   ConversationTurn,
+  EditIdentityContext,
   HoraceMessage,
 } from '@/lib/companion/types'
 import {
@@ -19,6 +20,7 @@ import {
   suggestedPrompts,
 } from '@/lib/companion/respond'
 import { ActionConfirm } from './action-confirm'
+import { IdentityEditForm } from './identity-edit-form'
 
 /**
  * CompanionDrawer — the right-anchored 460px panel that hosts the
@@ -53,9 +55,27 @@ interface CompanionDrawerProps {
   /** Focused-signal context (the card's "Ask"). When set, the opener is
    *  Horace-led — it carries the signal's `read` and no auto-reply fires. */
   signal: CompanionSignalContext | undefined
+  /** Identity-edit context (HOR-246 Phase 2a). When set, the drawer renders
+   *  the structured edit form instead of the conversation. */
+  edit: EditIdentityContext | undefined
   openToken: number
   onClose: () => void
   onAction: (action: CompanionAction) => Promise<ActionAck>
+}
+
+/** Field-aware opener for the identity-edit view. */
+function editIntro(edit: EditIdentityContext): string {
+  const name = edit.displayName || 'this contact'
+  switch (edit.focusField) {
+    case 'name':
+      return "Happy to put a name to this — who am I looking at? I’ll keep the email locked; it’s how I recognised them."
+    case 'phone':
+      return `Sure — what’s the best number for ${name}? It saves as your annotation; the observed trail stays as-is.`
+    case 'suburb':
+      return `Where is ${name} based? I’ll note it against them. Anything I observed stays locked.`
+    default:
+      return `Let’s tidy up who ${name} is. I’ll only change what you tell me — observed facts stay locked.`
+  }
 }
 
 /** Map the drawer thread to the compact history the brain consumes:
@@ -73,19 +93,26 @@ export function CompanionDrawer({
   contextLabel,
   prompt,
   signal,
+  edit,
   openToken,
   onClose,
   onAction,
 }: CompanionDrawerProps) {
   const [messages, setMessages] = useState<CompanionMessage[]>(() =>
-    signal
-      ? focusedConversation(signal, contextLabel)
-      : prompt
-        ? initialMessages(prompt, contextLabel)
-        : emptyConversation(contextLabel),
+    edit
+      ? [{ kind: 'horace', text: editIntro(edit) }]
+      : signal
+        ? focusedConversation(signal, contextLabel)
+        : prompt
+          ? initialMessages(prompt, contextLabel)
+          : emptyConversation(contextLabel),
   )
   const [input, setInput] = useState('')
   const [pendingAction, setPendingAction] = useState<CompanionAction | null>(null)
+  // HOR-246 Phase 2a: when true the edit form is dismissed (saved/cancelled)
+  // but the thread (incl. the ack pill) stays. `edit` present + !editDone ⇒
+  // render the form.
+  const [editDone, setEditDone] = useState(false)
   const [typing, setTyping] = useState(false)
   const scrollRef = useRef<HTMLDivElement | null>(null)
   // Monotonic request id. Each ask increments it; a resolved reply is only
@@ -112,9 +139,14 @@ export function CompanionDrawer({
   useEffect(() => {
     if (!open) return
     setPendingAction(null)
+    setEditDone(false)
     setTyping(false)
     reqIdRef.current++ // cancel any reply still in flight from a previous open
-    if (signal) {
+    if (edit) {
+      // Identity-edit entry — a field-aware opener + the structured form.
+      // No auto-reply; the form is the interaction.
+      setMessages([{ kind: 'horace', text: editIntro(edit) }])
+    } else if (signal) {
       // Focused entry — Horace-led opener carrying the read. No auto-reply:
       // the read is already computed, so we wait for the agent to drive.
       setMessages(focusedConversation(signal, contextLabel))
@@ -124,7 +156,7 @@ export function CompanionDrawer({
     } else {
       setMessages(emptyConversation(contextLabel))
     }
-  }, [open, openToken, prompt, signal, contextLabel, runReply])
+  }, [open, openToken, prompt, signal, edit, contextLabel, runReply])
 
   // Scroll to bottom whenever messages change or the action card appears.
   useEffect(() => {
@@ -161,7 +193,15 @@ export function CompanionDrawer({
 
   if (!open) return null
 
-  const conversationIsEmpty = messages.length <= 2 && !pendingAction && !typing
+  const editMode = Boolean(edit)
+  const showEditForm = editMode && !editDone
+  // Suggested prompts + composer belong to the conversation, not the edit form.
+  const conversationIsEmpty = !editMode && messages.length <= 2 && !pendingAction && !typing
+
+  function handleEditSaved(ack: { text: string; ok: boolean }) {
+    setMessages((m) => [...m, { kind: 'system', text: ack.text }])
+    setEditDone(true)
+  }
 
   return (
     <div
@@ -298,6 +338,9 @@ export function CompanionDrawer({
               onCancel={() => setPendingAction(null)}
             />
           )}
+          {showEditForm && edit && (
+            <IdentityEditForm context={edit} onSaved={handleEditSaved} onCancel={onClose} />
+          )}
         </div>
 
         {/* Suggested prompts — visible when conversation is essentially empty */}
@@ -334,7 +377,8 @@ export function CompanionDrawer({
           </div>
         )}
 
-        {/* Composer */}
+        {/* Composer — hidden in identity-edit mode; the form is the interaction. */}
+        {!editMode && (
         <div
           style={{
             padding: '12px 18px 16px',
@@ -418,6 +462,7 @@ export function CompanionDrawer({
             <span>esc to close</span>
           </div>
         </div>
+        )}
       </aside>
     </div>
   )
