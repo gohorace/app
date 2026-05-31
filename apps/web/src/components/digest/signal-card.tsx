@@ -265,12 +265,20 @@ function Bar({ dim }: { dim?: boolean }) {
 function DraftBlock({
   signal,
   accent,
+  sending,
+  error,
   onSend,
   onSkip,
 }: {
   signal: DigestSignal
   accent: string
-  onSend: () => void
+  /** When true, the Send button shows a sending state and is disabled. */
+  sending: boolean
+  /** When set, a soft inline error is rendered below the trust line. */
+  error: string | null
+  /** Receives the agent-edited body (Phase 2 — Send wires through to
+   *  /api/email/send, so the most-recent body must travel with it). */
+  onSend: (body: string) => void
   onSkip: () => void
 }) {
   const [editing, setEditing] = useState(false)
@@ -303,14 +311,37 @@ function DraftBlock({
         <ShieldCheck style={{ width: 12, height: 12, color: '#3D5246', flexShrink: 0 }} aria-hidden />
         Reasoned from {pretext} — not from anything {first} did on your site.
       </div>
+      {error && <div style={s.draftError}>{error}</div>}
       <div style={s.acts}>
-        <button type="button" style={{ ...s.btn, ...s.btnPrimary, background: accent, borderColor: accent }} onClick={onSend}>
-          <Send style={{ width: 14, height: 14 }} aria-hidden /> Send
+        <button
+          type="button"
+          style={{
+            ...s.btn,
+            ...s.btnPrimary,
+            background: accent,
+            borderColor: accent,
+            opacity: sending ? 0.7 : 1,
+            cursor: sending ? 'progress' : 'pointer',
+          }}
+          disabled={sending}
+          onClick={() => onSend(body)}
+        >
+          <Send style={{ width: 14, height: 14 }} aria-hidden /> {sending ? 'Sending…' : 'Send'}
         </button>
-        <button type="button" style={{ ...s.btn, ...s.btnGhost }} onClick={() => setEditing((e) => !e)}>
+        <button
+          type="button"
+          style={{ ...s.btn, ...s.btnGhost }}
+          disabled={sending}
+          onClick={() => setEditing((e) => !e)}
+        >
           <PenLine style={{ width: 13, height: 13 }} aria-hidden /> {editing ? 'Done' : 'Edit'}
         </button>
-        <button type="button" style={{ ...s.btn, ...s.btnGhost, color: '#8C7B6B' }} onClick={onSkip}>
+        <button
+          type="button"
+          style={{ ...s.btn, ...s.btnGhost, color: '#8C7B6B' }}
+          disabled={sending}
+          onClick={onSkip}
+        >
           Skip
         </button>
       </div>
@@ -325,6 +356,8 @@ export function SignalCard({ signal, onClear }: SignalCardProps) {
   const [confirmed, setConfirmed] = useState(false)
   const [declined, setDeclined] = useState(false)
   const [sent, setSent] = useState(false)
+  const [sending, setSending] = useState(false)
+  const [sendError, setSendError] = useState<string | null>(null)
   const [skipped, setSkipped] = useState(false)
   const [watching, setWatching] = useState(false)
 
@@ -332,8 +365,7 @@ export function SignalCard({ signal, onClear }: SignalCardProps) {
   const first = signal.name.split(' ')[0]
 
   // Persist a decision to the dismiss API for real (non-demo) signals. The
-  // counter clears locally regardless. Send wiring to /api/email/send lands
-  // in Phase 2 — for now Send is an optimistic justSent transition.
+  // counter clears locally regardless.
   const persistDismiss = useCallback(
     (reason: string) => {
       if (isDemo) return
@@ -350,18 +382,78 @@ export function SignalCard({ signal, onClear }: SignalCardProps) {
   // or a choice to watch. Confirming a probable only REVEALS the draft (not
   // terminal) — it doesn't clear until that draft is acted on (§3).
   const clear = useCallback(() => onClear?.(signal.contactId), [onClear, signal.contactId])
-  const onSend = () => { setSent(true); clear() }
+
+  /**
+   * Send wire (HOR-338): POST the agent-edited draft to /api/email/send with
+   * `source: 'digest_prompt'`. On success, optimistically flip into the
+   * outcome loop's "Sent just now" state; on failure, keep the draft on-card
+   * and show a soft inline error (the agent can retry without retyping).
+   * Demo signals bypass the network call so the prototype keeps working.
+   */
+  async function onSend(body: string) {
+    if (sending) return
+    setSendError(null)
+    if (isDemo) {
+      setSent(true)
+      clear()
+      return
+    }
+    if (!signal.draft) return
+    setSending(true)
+    try {
+      const res = await fetch('/api/email/send', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          contact_id: signal.contactId,
+          subject: signal.draft.subject,
+          body_html: plainTextToHtml(body),
+          body_text: body,
+          tracked: true,
+          source: 'digest_prompt',
+        }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        const code = typeof data.code === 'string' ? data.code : ''
+        setSendError(messageForSendError(code))
+        setSending(false)
+        return
+      }
+      setSent(true)
+      clear()
+    } catch (err) {
+      console.error('[signal-card] send failed:', err)
+      setSendError('That send didn’t go through — try again in a moment.')
+      setSending(false)
+    }
+  }
+
   const onSkip = () => { setSkipped(true); persistDismiss('digest-skip'); clear() }
   const onDecline = () => { setDeclined(true); persistDismiss('digest-decline'); clear() }
   const onWatch = () => { setWatching(true); persistDismiss('digest-watch'); clear() }
 
+  // Focused-on-a-signal entry (§Phase 1): hand the companion the structured
+  // signal so its opener carries this read and the chips turn contextual. The
+  // label degrades with identity — a name when we have one, the suburb for a
+  // suburb signal, else a neutral "this signal".
   function askAbout() {
     const named = signal.identity === 'known' || signal.identity === 'probable'
-    if (named) {
-      openCompanion({ prompt: `Why is ${signal.name} on my digest today?`, contextLabel: `Contact: ${signal.name}` })
-    } else {
-      openCompanion({ prompt: `What's behind the ${signal.suburb ?? 'this'} signal?`, contextLabel: 'Digest' })
-    }
+    const contextLabel = named
+      ? `On ${signal.name}`
+      : signal.suburb
+        ? `On ${signal.suburb}`
+        : 'On this signal'
+    openCompanion({
+      contextLabel,
+      signal: {
+        contactId: signal.contactId,
+        name: signal.name,
+        read: signal.read,
+        identity: signal.identity,
+        suburb: signal.suburb,
+      },
+    })
   }
 
   // Effective identity: a confirmed probable becomes known; a declined one is
@@ -422,7 +514,14 @@ export function SignalCard({ signal, onClear }: SignalCardProps) {
 
       {/* 5. Action — degrades with identity */}
       {isKnown && signal.draft && !sent && !skipped && (
-        <DraftBlock signal={signal} accent={accent} onSend={onSend} onSkip={onSkip} />
+        <DraftBlock
+          signal={signal}
+          accent={accent}
+          sending={sending}
+          error={sendError}
+          onSend={onSend}
+          onSkip={onSkip}
+        />
       )}
       {isKnown && skipped && (
         <div style={s.watchState}>
@@ -550,6 +649,10 @@ const s = {
     background: '#FAF7F2', border: '1px solid rgba(140,123,107,0.3)', borderRadius: 6, padding: '8px 10px', resize: 'vertical',
   },
   pretext: { display: 'flex', alignItems: 'center', gap: 6, marginTop: 10, fontSize: 11, color: '#3D5246', lineHeight: 1.4 },
+  draftError: {
+    marginTop: 10, fontSize: 11.5, color: '#9C4A1F', background: 'rgba(196,98,45,0.08)',
+    border: '1px solid rgba(196,98,45,0.22)', borderRadius: 6, padding: '7px 10px', lineHeight: 1.4,
+  },
   acts: { display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, flexWrap: 'wrap' },
 
   btn: {
@@ -578,3 +681,32 @@ const s = {
   bar: { width: 22, height: 1.5, margin: '0 8px', flexShrink: 0 },
   outNote: { margin: 0, fontSize: 11.5, color: '#8C7B6B', fontStyle: 'italic', lineHeight: 1.45 },
 } satisfies Record<string, React.CSSProperties>
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
+
+/**
+ * Convert the plain-text draft body (newline-delimited) to the simple HTML
+ * the send pipeline expects. The composer's TipTap output is richer, but
+ * /api/email/send sanitises server-side so a paragraph wrap is sufficient
+ * — every blank line becomes a paragraph break, single newlines become
+ * `<br>` for the signature line.
+ */
+function plainTextToHtml(text: string): string {
+  const escape = (s: string) =>
+    s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const paras = text.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean)
+  return paras.map((p) => `<p>${escape(p).replace(/\n/g, '<br>')}</p>`).join('\n')
+}
+
+/** Map the EmailSendErrorCode union (lib/email/types.ts) to soft, voice-true
+ *  copy. Unknown codes fall through to a generic retry line. */
+function messageForSendError(code: string): string {
+  switch (code) {
+    case 'no_integration':     return 'Connect Gmail in Settings → Integrations before sending.'
+    case 'token_revoked':      return 'Your Gmail connection needs re-authorising — open Settings → Integrations.'
+    case 'recipient_excluded': return `${'This contact'} is on your do-not-contact list.`
+    case 'rate_limited':       return 'You’ve hit the hourly send limit — try again shortly.'
+    case 'invalid_input':      return 'That draft didn’t pass validation — edit it and try again.'
+    default:                   return 'That send didn’t go through — try again in a moment.'
+  }
+}

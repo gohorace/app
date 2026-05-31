@@ -7,11 +7,13 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type {
   CompanionAction,
   CompanionMessage,
+  CompanionSignalContext,
   ConversationTurn,
   HoraceMessage,
 } from '@/lib/companion/types'
 import {
   emptyConversation,
+  focusedConversation,
   initialMessages,
   requestReply,
   suggestedPrompts,
@@ -48,6 +50,9 @@ interface CompanionDrawerProps {
   contextLabel: string | undefined
   /** Latest prompt from `openCompanion(...)`. Re-keyed on `openToken`. */
   prompt: string | undefined
+  /** Focused-signal context (the card's "Ask"). When set, the opener is
+   *  Horace-led — it carries the signal's `read` and no auto-reply fires. */
+  signal: CompanionSignalContext | undefined
   openToken: number
   onClose: () => void
   onAction: (action: CompanionAction) => Promise<ActionAck>
@@ -67,12 +72,17 @@ export function CompanionDrawer({
   open,
   contextLabel,
   prompt,
+  signal,
   openToken,
   onClose,
   onAction,
 }: CompanionDrawerProps) {
   const [messages, setMessages] = useState<CompanionMessage[]>(() =>
-    prompt ? initialMessages(prompt, contextLabel) : emptyConversation(contextLabel),
+    signal
+      ? focusedConversation(signal, contextLabel)
+      : prompt
+        ? initialMessages(prompt, contextLabel)
+        : emptyConversation(contextLabel),
   )
   const [input, setInput] = useState('')
   const [pendingAction, setPendingAction] = useState<CompanionAction | null>(null)
@@ -104,13 +114,17 @@ export function CompanionDrawer({
     setPendingAction(null)
     setTyping(false)
     reqIdRef.current++ // cancel any reply still in flight from a previous open
-    if (prompt) {
+    if (signal) {
+      // Focused entry — Horace-led opener carrying the read. No auto-reply:
+      // the read is already computed, so we wait for the agent to drive.
+      setMessages(focusedConversation(signal, contextLabel))
+    } else if (prompt) {
       setMessages(initialMessages(prompt, contextLabel))
       void runReply(prompt, contextLabel, [])
     } else {
       setMessages(emptyConversation(contextLabel))
     }
-  }, [open, openToken, prompt, contextLabel, runReply])
+  }, [open, openToken, prompt, signal, contextLabel, runReply])
 
   // Scroll to bottom whenever messages change or the action card appears.
   useEffect(() => {
@@ -297,7 +311,7 @@ export function CompanionDrawer({
               flexShrink: 0,
             }}
           >
-            {suggestedPrompts(contextLabel).map((p) => (
+            {suggestedPrompts(contextLabel, signal).map((p) => (
               <button
                 key={p}
                 type="button"

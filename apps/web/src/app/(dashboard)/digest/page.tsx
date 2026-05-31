@@ -12,6 +12,13 @@ import {
   type ContactEvent,
   type ContactInsight,
 } from '@/lib/ai/briefing'
+import {
+  derivePretext,
+  fetchRecentSoldBySuburb,
+  getCachedSignalDraft,
+  type SignalDraft,
+  type SignalPretext,
+} from '@/lib/ai/signal-draft'
 
 // Server component — always fresh. Calls the same RPCs the daily-briefing
 // cron uses, so the in-app digest is content-true with whatever email was
@@ -102,6 +109,15 @@ export default async function DigestPage({
     (suburbRows ?? []).map((r) => [r.id, r.suburb ?? null]),
   )
 
+  // Bulk "recent sold per suburb" lookup — fed into derivePretext below so
+  // per-contact pretext sourcing is a cheap Map hit, not an N+1 SELECT.
+  const suburbList = Array.from(new Set(
+    Array.from(suburbByContact.values()).filter((s): s is string => Boolean(s)),
+  ))
+  const soldBySuburb = suburbList.length > 0
+    ? await fetchRecentSoldBySuburb(admin, agent.id, suburbList)
+    : new Map()
+
   type EnrichedLead = {
     contactId: string
     firstName: string | null
@@ -116,6 +132,10 @@ export default async function DigestPage({
     nudge: string
     tags: string[]
     topEventType: string | null
+    /** Phase 2 — firewall pretext + AI draft. Both undefined when the model
+     *  refused the firewall check or the API key is unset. */
+    pretext?: SignalPretext
+    draft?: SignalDraft
   }
 
   const enriched: EnrichedLead[] = await Promise.all(
@@ -130,12 +150,31 @@ export default async function DigestPage({
         occurred_at: e.occurred_at,
       }))
 
-      const insight = anthropic
-        ? await getCachedInsight({
+      const suburb = suburbByContact.get(lead.contact_id) ?? null
+
+      // Insight + pretext in parallel — they hit independent surfaces.
+      const [insight, pretext] = await Promise.all([
+        anthropic
+          ? getCachedInsight({ agentId: agent.id, agentName, lead, events }).catch(() => null)
+          : Promise.resolve(null),
+        derivePretext(admin, agent.id, { id: lead.contact_id, suburb }, soldBySuburb)
+          .catch(() => null),
+      ])
+
+      // Draft generation depends on the pretext (firewall §5: no pretext →
+      // no draft). Cached; tagged with the agent's digest. Null when the
+      // model couldn't clear the banned-phrase check after a retry.
+      const draft = anthropic && pretext
+        ? await getCachedSignalDraft({
             agentId: agent.id,
             agentName,
-            lead,
-            events,
+            contact: {
+              contact_id: lead.contact_id,
+              first_name: lead.first_name,
+              last_name:  lead.last_name,
+              email:      lead.email,
+            },
+            pretext,
           }).catch(() => null)
         : null
 
@@ -153,11 +192,13 @@ export default async function DigestPage({
         scoreChange: lead.score_change,
         lastSeenAt: lead.last_seen_at,
         eventCount: lead.event_count,
-        suburb: suburbByContact.get(lead.contact_id) ?? null,
+        suburb,
         events,
         nudge: insight?.why_now ?? `${displayName} has been active on your site recently.`,
         tags: deriveTags(events, lead.event_count),
         topEventType: events[0]?.event_type ?? null,
+        pretext:  pretext ?? undefined,
+        draft:    draft ?? undefined,
       }
     }),
   )
@@ -179,11 +220,11 @@ export default async function DigestPage({
     : ''
 
   // ── Shape the view-model ─────────────────────────────────────────────────
-  // Phase 0: briefing leads are all KNOWN, named contacts. The firewall-safe
-  // draft + pretext (Phase 2), outcome loop (Phase 3) and the probable /
-  // anonymous / ambient identity states (Phase 4) layer on in later PRs — so
-  // a Phase-0 live card shows the insight + the read, with no draft yet
-  // (informational; not counted by the Stream counter until a draft exists).
+  // Phase 2 (HOR-338): each known lead can now carry a firewall-safe pretext
+  // + draft. `draft` is undefined when the API key is unset, no truthful
+  // pretext survived, or the model couldn't clear the banned-phrase check —
+  // those cards stay informational. Cards WITH a draft are workable and
+  // count toward the Stream counter (signal-card §isWorkableSignal).
   const signals: DigestSignal[] = enriched.map((l, i) => {
     const intent = intentForScore(l.score) ?? 'low'
     return {
@@ -200,6 +241,11 @@ export default async function DigestPage({
       newlyKnown: l.topEventType === 'form_submit' || l.topEventType === 'return_visit',
       insight: l.tags.length ? l.tags.join(' · ') : 'Active on your site recently.',
       read: l.nudge,
+      // Firewall trust-line label (signal-card binds it to `pretext`, never
+      // to `read`/`insight`). Present even when the draft was dropped — the
+      // card-without-draft still renders honestly.
+      pretext: l.pretext?.label,
+      draft:   l.draft,
     }
   })
 
