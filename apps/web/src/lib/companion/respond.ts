@@ -15,12 +15,36 @@
  * rhythm.
  */
 
-import type { CompanionAction, CompanionMessage, ConversationTurn, HoraceMessage } from './types'
+import type {
+  CompanionAction,
+  CompanionMessage,
+  CompanionSignalContext,
+  ConversationTurn,
+  HoraceMessage,
+} from './types'
+
+const firstName = (name: string): string => name.split(' ')[0]
+
+/** Whether a focused signal points at a person we can name (vs an anonymous
+ *  or suburb-level signal). Drives both the greeting and the chips. */
+const isNamed = (signal: CompanionSignalContext): boolean =>
+  signal.identity === 'known' || signal.identity === 'probable'
 
 // ── Greeting ────────────────────────────────────────────────────────────────
 
-export function greet(contextLabel: string | undefined): string {
-  if (!contextLabel || contextLabel === 'Digest') {
+export function greet(
+  contextLabel: string | undefined,
+  signal?: CompanionSignalContext,
+): string {
+  // Focused on a single signal (the card's "Ask") — greet by name and let the
+  // opener carry the read as its italic follow-on (see `focusedConversation`).
+  if (signal) {
+    if (isNamed(signal)) {
+      return `I'm looking at ${firstName(signal.name)} with you — here's how I'm reading it.`
+    }
+    return `I'm on this signal with you — here's how I'm reading it.`
+  }
+  if (!contextLabel || contextLabel === 'Digest' || contextLabel.startsWith('On your activity')) {
     return 'Morning. What do you need to know?'
   }
   if (contextLabel.startsWith('Contact:')) {
@@ -51,6 +75,19 @@ export function emptyConversation(
   contextLabel: string | undefined,
 ): CompanionMessage[] {
   return [{ kind: 'horace', text: greet(contextLabel) }]
+}
+
+/**
+ * Focused opener for the card's "Ask". A single Horace turn that greets by
+ * name and seeds the signal's `read` as the italic follow-on — no agent
+ * prompt, no auto-reply. The read is already computed, so the entry is
+ * Horace-led; the agent picks it up from the contextual chips.
+ */
+export function focusedConversation(
+  signal: CompanionSignalContext,
+  contextLabel: string | undefined,
+): CompanionMessage[] {
+  return [{ kind: 'horace', text: greet(contextLabel, signal), italics: signal.read }]
 }
 
 // ── Response (server-backed brain) ───────────────────────────────────────────
@@ -90,8 +127,23 @@ export async function requestReply(
 
 // ── Suggested prompts (context-aware chips when conversation is empty) ──────
 
-export function suggestedPrompts(contextLabel: string | undefined): string[] {
-  if (!contextLabel || contextLabel === 'Digest') {
+export function suggestedPrompts(
+  contextLabel: string | undefined,
+  signal?: CompanionSignalContext,
+): string[] {
+  // Focused on a single signal — chips contextual to that contact / signal.
+  if (signal) {
+    if (isNamed(signal)) {
+      const first = firstName(signal.name)
+      return [`Draft a note to ${first}`, 'Why now?', 'Add to a list']
+    }
+    return [
+      'Who could this be?',
+      signal.suburb ? `What's moving in ${signal.suburb}?` : `What's behind this signal?`,
+      'Watch this one closely',
+    ]
+  }
+  if (!contextLabel || contextLabel === 'Digest' || contextLabel.startsWith('On your activity')) {
     return [
       'Why is Sarah on my digest?',
       'Draft a follow-up for Marcus',

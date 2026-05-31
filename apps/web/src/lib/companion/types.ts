@@ -93,6 +93,30 @@ export interface ConversationTurn {
   text: string
 }
 
+/**
+ * Structured context when the companion opens *focused* on a single digest
+ * signal — the card's "Ask". Lets the drawer greet by name and seed the
+ * signal's `read` as Horace's opener without parsing it back out of the
+ * context label, and gates which contextual chips make sense. The header's
+ * "Ask Horace" omits this for the general day-rundown entry.
+ *
+ * `identity` mirrors `SignalIdentity` in `digest/signal-card.tsx`; it is
+ * re-declared here as a plain union so the companion layer stays free of a
+ * component import (the shapes are structurally identical).
+ */
+export interface CompanionSignalContext {
+  /** The signal's contact id — anchors the `digest:contact:<id>` scope. */
+  contactId: string
+  /** Display name, or a placeholder ("Someone in …") for anon/ambient. */
+  name: string
+  /** The signal's Horace-voiced read — seeded as the opener's italic line. */
+  read: string
+  /** Identity state — drives whether draft/list chips are offered. */
+  identity?: 'known' | 'probable' | 'anonymous' | 'ambient'
+  /** Suburb / area string, when known. */
+  suburb?: string | null
+}
+
 export interface OpenCompanionOptions {
   /** Initial prompt to render as the agent's first message. Triggers an
    *  auto-response from Horace 600ms later. Omit to open with just the
@@ -100,8 +124,14 @@ export interface OpenCompanionOptions {
   prompt?: string
   /** Context label rendered in the drawer header (`Context · <label>`).
    *  Drives both the greeting and the suggested-prompt chips. When omitted
-   *  the provider derives a default from the current pathname. */
+   *  the provider derives a default from the current pathname (or from
+   *  `signal`, when focused). */
   contextLabel?: string
+  /** When set, the drawer opens focused on this digest signal — Horace's
+   *  opener carries the signal's `read` and the chips become contextual.
+   *  No auto-reply fires; the read is already computed, so the opener is
+   *  Horace-led and the agent drives from there. */
+  signal?: CompanionSignalContext
 }
 
 export interface CompanionContextValue {

@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation'
 import { deriveContextLabel } from '@/lib/companion/derive-context-label'
 import type {
   CompanionContextValue,
+  CompanionSignalContext,
   OpenCompanionOptions,
 } from '@/lib/companion/types'
 
@@ -27,6 +28,9 @@ interface InternalCompanionState {
   prompt: string | undefined
   /** Caller-supplied label, takes precedence over the pathname default. */
   contextLabelOverride: string | undefined
+  /** Focused-signal context (the card's "Ask"). Undefined for the general
+   *  header / floating-trigger entry. */
+  signal: CompanionSignalContext | undefined
   /** Token bumped on every `openCompanion(...)` so the drawer knows to
    *  rebuild the conversation even when called with the same arguments. */
   openToken: number
@@ -35,6 +39,8 @@ interface InternalCompanionState {
 interface CompanionInternalValue extends CompanionContextValue {
   /** Latest prompt — consumed once by the drawer on open. */
   prompt: string | undefined
+  /** Latest focused-signal context — consumed once by the drawer on open. */
+  signal: CompanionSignalContext | undefined
   openToken: number
 }
 
@@ -46,6 +52,7 @@ export function CompanionProvider({ children }: { children: React.ReactNode }) {
     open: false,
     prompt: undefined,
     contextLabelOverride: undefined,
+    signal: undefined,
     openToken: 0,
   })
 
@@ -54,6 +61,7 @@ export function CompanionProvider({ children }: { children: React.ReactNode }) {
       open: true,
       prompt: opts?.prompt,
       contextLabelOverride: opts?.contextLabel,
+      signal: opts?.signal,
       openToken: prev.openToken + 1,
     }))
   }, [])
@@ -62,20 +70,25 @@ export function CompanionProvider({ children }: { children: React.ReactNode }) {
     setState((prev) => ({ ...prev, open: false }))
   }, [])
 
+  // Explicit override wins; otherwise a focused signal labels by name, and
+  // failing both we derive from the pathname.
   const contextLabel = useMemo(() => {
-    return state.contextLabelOverride ?? deriveContextLabel(pathname)
-  }, [state.contextLabelOverride, pathname])
+    if (state.contextLabelOverride) return state.contextLabelOverride
+    if (state.signal) return `On ${state.signal.name}`
+    return deriveContextLabel(pathname)
+  }, [state.contextLabelOverride, state.signal, pathname])
 
   const value = useMemo<CompanionInternalValue>(
     () => ({
       open: state.open,
       prompt: state.prompt,
+      signal: state.signal,
       openToken: state.openToken,
       contextLabel,
       openCompanion,
       closeCompanion,
     }),
-    [state.open, state.prompt, state.openToken, contextLabel, openCompanion, closeCompanion],
+    [state.open, state.prompt, state.signal, state.openToken, contextLabel, openCompanion, closeCompanion],
   )
 
   return (

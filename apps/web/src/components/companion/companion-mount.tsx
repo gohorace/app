@@ -26,7 +26,7 @@ import { actionConfirmation } from '@/lib/companion/respond'
  */
 
 export function CompanionMount() {
-  const { open, prompt, openToken, contextLabel, openCompanion, closeCompanion } =
+  const { open, prompt, signal, openToken, contextLabel, openCompanion, closeCompanion } =
     useCompanionInternal()
 
   async function handleAction(action: CompanionAction): Promise<ActionAck> {
@@ -70,6 +70,7 @@ export function CompanionMount() {
         open={open}
         contextLabel={contextLabel}
         prompt={prompt}
+        signal={signal}
         openToken={openToken}
         onClose={closeCompanion}
         onAction={handleAction}

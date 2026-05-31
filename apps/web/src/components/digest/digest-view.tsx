@@ -168,7 +168,11 @@ function ActivityHeader({
         </Link>
         <BellButton attentionCount={attentionCount} />
         <span style={{ width: 1, height: 22, background: 'rgba(140,123,107,0.28)', margin: '0 2px' }} />
-        <button type="button" onClick={() => openCompanion()} style={askPillStyle}>
+        <button
+          type="button"
+          onClick={() => openCompanion({ contextLabel: `On your activity · ${dateLabel}` })}
+          style={askPillStyle}
+        >
           <Feather style={{ width: 15, height: 15 }} aria-hidden />
           Ask Horace
         </button>
