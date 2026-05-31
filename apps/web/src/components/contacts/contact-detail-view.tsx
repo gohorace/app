@@ -1,24 +1,34 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
   ArrowLeft,
   ArrowRight,
+  ArrowUp,
+  ArrowUpRight,
   Anchor,
-  Lock,
-  Database,
+  Bell,
+  Clock,
   Eye,
+  Flame,
+  Home,
+  KeyRound,
+  Loader2,
+  Mail,
+  MapPin,
+  MoreHorizontal,
+  Pencil,
   Phone,
   Plus,
-  TrendingUp,
-  Loader2,
+  Repeat,
+  Sun,
   X,
+  Zap,
 } from 'lucide-react'
 import {
   IdentityGradient,
-  PersonAvatar,
   PropertyThumb,
   RoleBadge,
   toneFor,
@@ -26,6 +36,7 @@ import {
 } from '@/lib/design/badges'
 import type { IdentityState } from '@/lib/design/badges'
 import { eventKind, eventLabel, eventUrl, formatEventUrl, type MergedEvent } from '@/lib/contacts/events'
+import { tierForScore, weeklyDelta, whatChanged, type ChipIcon } from '@/lib/contacts/signal-summary'
 import { AttachRoleDialog } from './attach-role-dialog'
 import { NotesThread } from '@/components/notes/notes-thread'
 import { SendTrackedEmailButton } from '@/components/email/email-composer-trigger'
@@ -46,13 +57,15 @@ export interface ContactDetailViewProps {
     identifiedAt: string | null
     score:        number
     source:       string
-    /** Free-text notes on the contact. Persisted on contacts.notes (legacy
-     *  column already in the schema — no migration needed). */
+    /** Free-text notes on the contact. Persisted on contacts.metadata.notes. */
     notes:        string | null
-    /** HOR-246: optional Horace-voiced nudge ("why now"). When present, the
-     *  "Horace says" card renders under the action row. Server populates it
-     *  from the same insight pipeline the digest uses; absent → no card. */
+    /** HOR-246: Horace-voiced "why now" read. Server populates it from the
+     *  same cached insight pipeline /digest uses. Drives the Signal block's
+     *  "Why now · Horace's read" paragraph; absent → that block is omitted. */
     nudge?:       string | null
+    /** HOR-246: the recommended next move (insight.action) — drives the
+     *  Action block's primary recommendation-card sub-line. */
+    recommendation?: string | null
   }
   identity: IdentityState
   initials: string
@@ -81,11 +94,32 @@ export interface ContactDetailViewProps {
 
 type TimelineFilter = 'all' | 'visits' | 'roles' | 'emails'
 
+// ── Mobile breakpoint (matches Tailwind `md`) ────────────────────────────────
+function useIsMobile(): boolean {
+  const [isMobile, setIsMobile] = useState(false)
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 767px)')
+    const sync = () => setIsMobile(mq.matches)
+    sync()
+    mq.addEventListener('change', sync)
+    return () => mq.removeEventListener('change', sync)
+  }, [])
+  return isMobile
+}
+
+const CHIP_ICON: Record<ChipIcon, typeof Repeat> = {
+  repeat: Repeat,
+  eye:    Eye,
+  pen:    Pencil,
+  mail:   Mail,
+  clock:  Clock,
+}
+
 export function ContactDetailView({
   contact,
   identity,
-  initials,
-  sessionsThisWeek,
+  initials: _initials,
+  sessionsThisWeek: _sessionsThisWeek,
   roleAttached,
   engagingNow,
   events,
@@ -93,19 +127,29 @@ export function ContactDetailView({
 }: ContactDetailViewProps) {
   const router = useRouter()
   const { openCompanion } = useCompanion()
+  const isMobile = useIsMobile()
   const [timelineFilter, setTimelineFilter] = useState<TimelineFilter>('all')
   const [attachOpen, setAttachOpen] = useState(false)
   const [removingRoleId, setRemovingRoleId] = useState<string | null>(null)
-  // HOR-142: Add-to-list sheet state (replaces the disabled placeholder
-  // button on the action row).
   const [addToListOpen, setAddToListOpen] = useState(false)
+  // HOR-246 mobile: the "act now" set lives in an overflow sheet above the
+  // sticky Draft CTA.
+  const [overflowOpen, setOverflowOpen] = useState(false)
 
   const isAnon = identity === 'anonymous'
   const displayName =
     [contact.firstName, contact.lastName].filter(Boolean).join(' ') ||
     contact.email ||
     `Visitor · ${contact.id.slice(0, 4)}`
-  const firstName = contact.firstName ?? displayName.split(' ')[0]
+  // When the "name" is really an email, the hero shrinks + breaks the string.
+  const nameIsEmail = !contact.firstName && !contact.lastName && Boolean(contact.email)
+  const companionName =
+    [contact.firstName, contact.lastName].filter(Boolean).join(' ') || contact.email || 'this contact'
+
+  // ── Signal derivations (pure, over the events already on the page) ────────
+  const tier = useMemo(() => tierForScore(contact.score), [contact.score])
+  const delta = useMemo(() => weeklyDelta(events), [events])
+  const changes = useMemo(() => whatChanged(events), [events])
 
   const lastSeenLabel = useMemo(() => {
     if (!contact.lastSeenAt) return '—'
@@ -119,22 +163,16 @@ export function ContactDetailView({
     return new Date(contact.lastSeenAt).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })
   }, [contact.lastSeenAt])
 
-  // Merge metadata.roles into the timeline as `role` events, and email_*
-  // events (slice F) as `email` rows. Kind-bucket each row so the filter
-  // chips can slice cleanly.
+  // ── Timeline (kept from v2-M5: funnel-stage email dots + filters) ─────────
   type TimelineRow = {
     key: string
     kind: 'visit' | 'role' | 'email'
-    icon: 'eye' | 'home' | 'key-round' | 'mail'
-    // HOR-246: granular email kind drives the v2 square-dot colour
-    // (sent → mustard, opened → deeper mustard, clicked → terracotta).
     emailKind?: 'sent' | 'opened' | 'clicked' | 'bounced' | 'other'
     title: string
     detail: string | null
     when: string
     occurredAt: string
   }
-  // O(1) lookup: email_sends row by id, for subject enrichment.
   const emailSendIndex = useMemo(() => buildEmailSendIndex(emailSends), [emailSends])
   const timeline: TimelineRow[] = useMemo(() => {
     const rows: TimelineRow[] = []
@@ -154,12 +192,8 @@ export function ContactDetailView({
         rows.push({
           key:        `event-${e.id}`,
           kind:       'email',
-          icon:       'mail',
           emailKind,
           title:      eventLabel(e, send?.subject ?? null),
-          // Email rows have a subject in the title — keep the second-line
-          // detail clean. If we ever want recipient hash / open count etc.
-          // it goes here.
           detail:     null,
           when:       relativeWhen(e.occurred_at),
           occurredAt: e.occurred_at,
@@ -170,7 +204,6 @@ export function ContactDetailView({
       rows.push({
         key:        `event-${e.id}`,
         kind:       'visit',
-        icon:       'eye',
         title:      eventLabel(e),
         detail:     url ? formatEventUrl(url) : null,
         when:       relativeWhen(e.occurred_at),
@@ -181,8 +214,7 @@ export function ContactDetailView({
       rows.push({
         key:        `role-${r.roleId}`,
         kind:       'role',
-        icon:       r.role === 'seller' ? 'home' : 'key-round',
-        title:      `Attached as ${r.role === 'seller' ? 'Seller' : 'Buyer'} of ${r.address}`,
+        title:      `Attached as ${r.role === 'seller' ? 'Vendor' : 'Buyer'} of ${r.address}`,
         detail:     null,
         when:       relativeWhen(r.date),
         occurredAt: r.date,
@@ -213,261 +245,273 @@ export function ContactDetailView({
     }
   }
 
+  function openDraft() {
+    openCompanion({
+      prompt: `Draft a follow-up to ${companionName}`,
+      contextLabel: `Contact: ${companionName}`,
+    })
+  }
+
+  // Roles the contact currently holds, for the RoleControl pill "active" state.
+  const heldRoles = useMemo(() => new Set(roleAttached.map((r) => r.role)), [roleAttached])
+
+  const ChangeChips =
+    changes.length > 0 ? (
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
+        {changes.map((c, i) => {
+          const Icon = CHIP_ICON[c.icon]
+          return (
+            <span key={i} style={changeChipStyle}>
+              <Icon style={{ width: 12, height: 12, color: tier.color }} />
+              {c.label}
+            </span>
+          )
+        })}
+      </div>
+    ) : null
+
   return (
-    <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 80 }}>
-      <div style={{ maxWidth: 920, padding: '20px 32px' }}>
-        {/* Breadcrumb */}
+    <div style={{ flex: 1, overflowY: 'auto', position: 'relative', paddingBottom: isMobile ? 132 : 80 }}>
+      <div style={{ maxWidth: 880, padding: isMobile ? '18px 16px 16px' : '30px 32px 40px' }}>
+        {/* Header — breadcrumb on desktop, back/name/bell on mobile */}
+        {isMobile ? (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: 18,
+            }}
+          >
+            <Link href="/contacts" aria-label="Back to contacts" style={iconBtnStyle}>
+              <ArrowLeft style={{ width: 17, height: 17, color: '#1A1612' }} />
+            </Link>
+            <span
+              style={{
+                fontSize: 13,
+                fontWeight: 600,
+                color: '#1A1612',
+                maxWidth: 200,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {nameIsEmail ? 'Email-only visitor' : displayName}
+            </span>
+            <Link href="#notifications" aria-label="Notifications" style={iconBtnStyle}>
+              <Bell style={{ width: 17, height: 17, color: '#8C7B6B' }} />
+            </Link>
+          </div>
+        ) : (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              marginBottom: 22,
+              fontSize: 13,
+            }}
+          >
+            <Link
+              href="/contacts"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                color: '#8C7B6B',
+                textDecoration: 'none',
+                fontWeight: 500,
+                padding: '4px 6px',
+                borderRadius: 4,
+              }}
+            >
+              <ArrowLeft style={{ width: 14, height: 14 }} />
+              Contacts
+            </Link>
+            <span style={{ color: 'rgba(140,123,107,0.4)' }}>/</span>
+            <span style={{ color: '#1A1612', fontWeight: 500 }}>{displayName}</span>
+          </div>
+        )}
+
+        {/* ── SIGNAL ─────────────────────────────────────────────────────── */}
         <div
           style={{
             display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-            marginBottom: 18,
-            fontSize: 13,
-          }}
-        >
-          <Link
-            href="/contacts"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-              color: '#8C7B6B',
-              textDecoration: 'none',
-              fontWeight: 500,
-              padding: '4px 6px',
-              borderRadius: 4,
-            }}
-          >
-            <ArrowLeft style={{ width: 14, height: 14 }} />
-            Contacts
-          </Link>
-          <span style={{ color: 'rgba(140,123,107,0.4)' }}>/</span>
-          <span style={{ color: '#1A1612', fontWeight: 500 }}>{displayName}</span>
-        </div>
-
-        {/* Hero */}
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '180px 1fr',
-            gap: 28,
-            marginBottom: 22,
+            gap: isMobile ? 18 : 30,
             alignItems: 'flex-start',
+            flexDirection: isMobile ? 'column' : 'row',
           }}
         >
-          {/* Avatar column */}
-          <div style={{ display: 'flex', justifyContent: 'center' }}>
-            <PersonAvatar
-              initials={initials}
-              identity={identity}
-              size={180}
-              anonymous={isAnon}
-            />
-          </div>
-
-          {/* Info column */}
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6, flexWrap: 'wrap' }}>
+          <TempDial
+            pct={tier.pct}
+            color={tier.color}
+            word={tier.word}
+            delta={delta}
+            size={isMobile ? 120 : 152}
+            stroke={isMobile ? 11 : 13}
+          />
+          <div style={{ flex: 1, minWidth: 0, paddingTop: isMobile ? 6 : 4 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
               <IdentityGradient state={identity} size="lg" />
               <span style={metaPillStyle}>
-                <Database style={{ width: 11, height: 11 }} />
-                {isAnon ? `Anonymous · ${contact.source}` : `Source: ${contact.source}`}
+                <Zap style={{ width: 11, height: 11 }} />
+                {contact.source}
               </span>
-              {!isAnon && (
-                <span style={metaPillStyle}>
-                  <Lock style={{ width: 11, height: 11 }} />
-                  Read-only fields
+              {!isAnon && contact.lastSeenAt && (
+                <span style={{ fontSize: 12, color: '#8C7B6B' }}>
+                  Active <strong style={{ color: '#1A1612', fontWeight: 500 }}>{lastSeenLabel}</strong>
                 </span>
               )}
             </div>
             <h1
               className="font-display"
               style={{
-                fontSize: 34,
                 fontWeight: 600,
                 color: '#1A1612',
                 letterSpacing: '-0.02em',
-                lineHeight: 1.1,
-                margin: '6px 0 4px',
+                lineHeight: 1.08,
+                margin: '0 0 4px',
+                fontSize: nameIsEmail ? (isMobile ? 20 : 25) : (isMobile ? 28 : 34),
+                wordBreak: nameIsEmail ? 'break-all' : 'normal',
               }}
             >
               {displayName}
             </h1>
-            <div style={{ fontSize: 14, color: '#8C7B6B', marginBottom: 20 }}>
-              {contact.suburb ?? 'Unknown suburb'}
-              {!isAnon && (
-                <>
-                  {' · Active '}
-                  <strong style={{ color: '#1A1612', fontWeight: 500 }}>{lastSeenLabel}</strong>
-                </>
-              )}
-            </div>
-
-            {/* Reference fields */}
             <div
               style={{
+                fontSize: 13.5,
+                color: '#8C7B6B',
+                marginBottom: 14,
                 display: 'flex',
-                border: '1px solid rgba(140,123,107,0.18)',
-                borderRadius: 8,
-                overflow: 'hidden',
-                marginBottom: 20,
-                background: '#FAF7F2',
+                alignItems: 'center',
+                gap: 6,
               }}
             >
-              <ReferenceCell label="Email" value={contact.email} />
-              <ReferenceCell label="Phone" value={contact.phone} />
-              <ReferenceCell
-                label="Sessions this week"
-                value={String(sessionsThisWeek)}
-                last
-              />
+              <MapPin style={{ width: 13, height: 13 }} />
+              {contact.suburb ?? 'Unknown suburb'}
             </div>
 
-            {/* Actions */}
-            {/*
-              HOR-135: CRM-boundary language. The button label says "View
-              phone number" — Horace shows the affordance; the agent dials
-              from their device. Behaviour is still a tel: handoff (an OS
-              action, not a Horace one), which is fine; only the label
-              moves off the "Call X" framing.
-            */}
-            {/* HOR-246: v2 action row — Contact (terracotta) / Add to list /
-                Draft with Horace are the primary three. Attach role + the
-                real tracked-email send are kept alongside (their v2
-                replacement — companion drafting wired to a real send — is
-                still stubbed from M2, so dropping them now would regress
-                actual sending). Flagged in the PR for a follow-up trim. */}
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {contact.phone ? (
-                <a href={`tel:${contact.phone}`} style={primaryBtnStyle}>
-                  <Phone style={{ width: 13, height: 13 }} />
-                  Contact
-                </a>
-              ) : contact.email ? (
-                <a href={`mailto:${contact.email}`} style={primaryBtnStyle}>
-                  <Phone style={{ width: 13, height: 13 }} />
-                  Contact
-                </a>
-              ) : (
-                <button
-                  type="button"
-                  disabled
-                  style={{ ...primaryBtnStyle, opacity: 0.5, cursor: 'not-allowed' }}
-                  title="No phone or email on file"
-                >
-                  <Phone style={{ width: 13, height: 13 }} />
-                  Contact
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => setAddToListOpen(true)}
-                style={secondaryBtnStyle}
-              >
-                Add to list
-              </button>
-              <button
-                type="button"
-                onClick={() =>
-                  openCompanion({
-                    prompt: `Draft a follow-up to ${
-                      [contact.firstName, contact.lastName].filter(Boolean).join(' ') ||
-                      contact.email ||
-                      'this contact'
-                    }`,
-                    contextLabel: `Contact: ${
-                      [contact.firstName, contact.lastName].filter(Boolean).join(' ') ||
-                      contact.email ||
-                      'this contact'
-                    }`,
-                  })
-                }
-                style={secondaryBtnStyle}
-              >
-                <QuillIcon style={{ width: 13, height: 13 }} />
-                Draft with Horace
-              </button>
-              {!isAnon && (
-                <button
-                  type="button"
-                  onClick={() => setAttachOpen(true)}
-                  style={secondaryBtnStyle}
-                >
-                  <Plus style={{ width: 13, height: 13 }} />
-                  Attach role
-                </button>
-              )}
-              {contact.email && (
-                <SendTrackedEmailButton
-                  contactId={contact.id}
-                  contactEmail={contact.email}
-                  contactName={
-                    [contact.firstName, contact.lastName].filter(Boolean).join(' ') ||
-                    contact.email
-                  }
-                  source="ui"
-                  buttonStyle={secondaryBtnStyle}
-                />
-              )}
-              <AddToListSheet
-                open={addToListOpen}
-                onClose={() => setAddToListOpen(false)}
-                contactId={contact.id}
-                subjectLabel={
-                  [contact.firstName, contact.lastName].filter(Boolean).join(' ') ||
-                  contact.email ||
-                  'this contact'
-                }
-              />
-            </div>
-
-            {/* HOR-246: "Horace says" nudge card — italic Playfair on a soft
-                terracotta tint. Renders only when the server supplies a
-                non-empty nudge. */}
+            {/* Why now · Horace's read — omitted when no nudge */}
             {contact.nudge && contact.nudge.trim().length > 0 && (
-              <div
-                style={{
-                  marginTop: 14,
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: 10,
-                  padding: '12px 14px',
-                  background: 'rgba(196,98,45,0.06)',
-                  border: '1px solid rgba(196,98,45,0.18)',
-                  borderRadius: 10,
-                }}
-              >
-                <QuillIcon
-                  style={{ width: 13, height: 13, flexShrink: 0, marginTop: 3 }}
-                  color="#C4622D"
-                />
+              <>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 7, margin: '0 0 7px' }}>
+                  <Zap style={{ width: 12, height: 12, color: '#C4622D' }} />
+                  <span style={uppercaseTerracottaLabel}>Why now · Horace&rsquo;s read</span>
+                </div>
                 <p
-                  className="font-display"
                   style={{
-                    margin: 0,
-                    fontStyle: 'italic',
-                    fontSize: 14,
+                    fontSize: isMobile ? 14 : 15.5,
                     lineHeight: 1.55,
                     color: '#2E2823',
+                    margin: '0 0 14px',
+                    textWrap: 'pretty',
                   }}
                 >
                   {contact.nudge}
                 </p>
-              </div>
+              </>
+            )}
+
+            {ChangeChips}
+
+            {/* Surfaced in your Stream — opens the notifications slide-over.
+                Not yet a per-moment deep link (props carry no Stream moment
+                id); when broadens once that lands. */}
+            {!isAnon && contact.lastSeenAt && (
+              <Link href="#notifications" style={streamLinkStyle}>
+                <Sun style={{ width: 13, height: 13, color: '#C4622D' }} />
+                Surfaced in your Stream · {lastSeenLabel}
+                <ArrowUpRight style={{ width: 12, height: 12, color: '#8C7B6B' }} />
+              </Link>
             )}
           </div>
         </div>
 
-        {/* Properties panel */}
+        {/* ── ACTION ─────────────────────────────────────────────────────── */}
+        <div style={{ marginTop: 26 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 10 }}>
+            <Zap style={{ width: 13, height: 13, color: '#C4622D' }} />
+            <span style={{ ...uppercaseTerracottaLabel, letterSpacing: '0.1em', fontSize: 11 }}>
+              Horace&rsquo;s move
+            </span>
+          </div>
+          <div
+            style={{
+              background: '#FAF7F2',
+              border: '1px solid rgba(140,123,107,0.2)',
+              borderRadius: 12,
+              padding: isMobile ? '14px 16px' : '16px 18px',
+              boxShadow: '0 1px 3px rgba(26,22,18,0.06)',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: 14,
+                flexDirection: isMobile ? 'column' : 'row',
+              }}
+            >
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div
+                  className="font-display"
+                  style={{ fontSize: isMobile ? 17 : 18.5, fontWeight: 600, color: '#1A1612', marginBottom: 4 }}
+                >
+                  {primaryTitleForTier(tier.word)}
+                </div>
+                <p style={{ margin: 0, fontSize: 13, color: '#5E5246', lineHeight: 1.5, textWrap: 'pretty' }}>
+                  {contact.recommendation && contact.recommendation.trim().length > 0
+                    ? contact.recommendation
+                    : 'Horace can draft a follow-up tuned to what they’ve been looking at — review it, tweak the tone, and send in your voice.'}
+                </p>
+              </div>
+              {!isMobile && (
+                <button type="button" onClick={openDraft} style={primaryDraftBtnStyle}>
+                  <QuillIcon style={{ width: 15, height: 15 }} />
+                  Draft with Horace
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* "or" act-now set — moves into the mobile overflow sheet */}
+          {!isMobile && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 11, color: '#8C7B6B', marginRight: 2 }}>or</span>
+              <ContactActionButton phone={contact.phone} email={contact.email} />
+              {contact.email && (
+                <SendTrackedEmailButton
+                  contactId={contact.id}
+                  contactEmail={contact.email}
+                  contactName={companionName}
+                  source="ui"
+                  buttonStyle={ghostBtnStyle}
+                />
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* ── CONTEXT ────────────────────────────────────────────────────── */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, margin: isMobile ? '26px 0 16px' : '34px 0 22px' }}>
+          <span style={contextDividerLabel}>Context</span>
+          <div style={{ flex: 1, height: 1, background: 'rgba(140,123,107,0.14)' }} />
+        </div>
+
+        {/* Role control — Vendor / Buyer (maps to the property-attached
+            seller/buyer roles; tapping opens the existing Attach-role flow). */}
+        {!isAnon && (
+          <div style={{ marginBottom: isMobile ? 18 : 20 }}>
+            <RoleControl held={heldRoles} onPick={() => setAttachOpen(true)} />
+          </div>
+        )}
+
+        {/* Properties they're circling */}
         <section style={panelStyle}>
           <PanelHeader
-            title="Properties"
-            subtitle={
-              isAnon
-                ? 'Where this anonymous pattern has been engaging.'
-                : 'Roles this person holds, and properties they’re engaging with right now.'
-            }
+            title="Properties they’re circling"
+            subtitle="One tap into Properties — where they’re putting their attention."
             count={roleAttached.length + engagingNow.length}
           />
 
@@ -491,12 +535,8 @@ export function ContactDetailView({
             <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
               {roleAttached.length > 0 && (
                 <div>
-                  <GroupLabel
-                    Icon={Anchor}
-                    label="Role-attached"
-                    note="durable, survives ownership change"
-                  />
-                  <div style={contactGridStyle}>
+                  <GroupLabel Icon={Anchor} label="Role-attached" note="durable, survives ownership change" />
+                  <div style={contactGridStyle(isMobile)}>
                     {roleAttached.map((r) => (
                       <RoleAttachedCard
                         key={r.roleId}
@@ -510,12 +550,8 @@ export function ContactDetailView({
               )}
               {engagingNow.length > 0 && (
                 <div>
-                  <GroupLabel
-                    Icon={TrendingUp}
-                    label="Engaging now"
-                    note="this week's behaviour"
-                  />
-                  <div style={contactGridStyle}>
+                  <GroupLabel Icon={Eye} label="Engaging now" note="this week’s behaviour" />
+                  <div style={contactGridStyle(isMobile)}>
                     {engagingNow.map((p) => (
                       <EngagingNowCard key={p.propertyId} property={p} />
                     ))}
@@ -526,53 +562,31 @@ export function ContactDetailView({
           )}
         </section>
 
-        {/* Notes — HOR-252 threaded NotesThread (replaces the v1 textarea). */}
+        {/* Notes — HOR-252 threaded NotesThread (own card chrome). */}
         {!isAnon && (
           <div style={{ marginBottom: 18 }}>
             <NotesThread contactId={contact.id} subjectKind="contact" />
           </div>
         )}
 
-        {/* Timeline */}
+        {/* Behavioural timeline */}
         <section style={panelStyle}>
           <PanelHeader
             title="Behavioural timeline"
-            subtitle={
-              isAnon
-                ? 'Every session on this device.'
-                : 'Sessions, page views, role events, identity changes.'
-            }
+            subtitle="The spine — every session, and the moment it became one."
             actions={
               <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                <TimelineFilterBtn
-                  label="All"
-                  active={timelineFilter === 'all'}
-                  onClick={() => setTimelineFilter('all')}
-                />
-                <TimelineFilterBtn
-                  label="Visits"
-                  active={timelineFilter === 'visits'}
-                  onClick={() => setTimelineFilter('visits')}
-                />
-                <TimelineFilterBtn
-                  label="Emails"
-                  active={timelineFilter === 'emails'}
-                  onClick={() => setTimelineFilter('emails')}
-                />
-                <TimelineFilterBtn
-                  label="Roles + merges"
-                  active={timelineFilter === 'roles'}
-                  onClick={() => setTimelineFilter('roles')}
-                />
+                <TimelineFilterBtn label="All" active={timelineFilter === 'all'} onClick={() => setTimelineFilter('all')} />
+                <TimelineFilterBtn label="Visits" active={timelineFilter === 'visits'} onClick={() => setTimelineFilter('visits')} />
+                <TimelineFilterBtn label="Emails" active={timelineFilter === 'emails'} onClick={() => setTimelineFilter('emails')} />
+                <TimelineFilterBtn label="Roles" active={timelineFilter === 'roles'} onClick={() => setTimelineFilter('roles')} />
               </div>
             }
           />
 
           {filteredTimeline.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '24px 0' }}>
-              <p style={{ fontSize: 13, color: '#5E5246', fontWeight: 500, margin: '0 0 4px' }}>
-                Quiet so far.
-              </p>
+              <p style={{ fontSize: 13, color: '#5E5246', fontWeight: 500, margin: '0 0 4px' }}>Quiet so far.</p>
               <p style={{ fontSize: 12, color: '#8C7B6B', margin: 0 }}>
                 Horace is watching every visit — you&rsquo;ll see them land here.
               </p>
@@ -581,19 +595,12 @@ export function ContactDetailView({
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               {filteredTimeline.map((row, i) => {
                 const isLast = i === filteredTimeline.length - 1
-                // HOR-246 per-kind accent. Email rows split by funnel stage:
-                //   sent    → mustard
-                //   opened  → deeper mustard
-                //   clicked → terracotta
-                //   bounced → muted clay
-                // Non-email: role=forest, visit=horace-orange.
                 const color =
                   row.kind === 'role'
                     ? '#3D5246'
                     : row.kind === 'email'
                       ? EMAIL_DOT_COLOR[row.emailKind ?? 'other']
                       : '#C4622D'
-                // Email events read as squares; everything else stays round.
                 const isEmail = row.kind === 'email'
                 const kindLabel =
                   row.kind === 'role'
@@ -618,8 +625,6 @@ export function ContactDetailView({
                         style={{
                           width: 10,
                           height: 10,
-                          // Square (with a hair of rounding) for email funnel
-                          // events; round for visits + role events.
                           borderRadius: isEmail ? 2 : '50%',
                           background: color,
                         }}
@@ -636,7 +641,7 @@ export function ContactDetailView({
                         />
                       )}
                     </div>
-                    <div style={{ flex: 1, paddingBottom: 18 }}>
+                    <div style={{ flex: 1, paddingBottom: 18, minWidth: 0 }}>
                       <div
                         style={{
                           display: 'flex',
@@ -646,9 +651,7 @@ export function ContactDetailView({
                           marginBottom: 3,
                         }}
                       >
-                        <span style={{ fontSize: 12, fontWeight: 600, color }}>
-                          {kindLabel}
-                        </span>
+                        <span style={{ fontSize: 12, fontWeight: 600, color }}>{kindLabel}</span>
                         {titleParts ? (
                           <span style={{ fontSize: 13, color: '#2E2823' }}>
                             {titleParts.prefix}
@@ -673,9 +676,7 @@ export function ContactDetailView({
                         </span>
                       </div>
                       {row.detail && (
-                        <div style={{ fontSize: 12, color: '#8C7B6B', lineHeight: 1.5 }}>
-                          {row.detail}
-                        </div>
+                        <div style={{ fontSize: 12, color: '#8C7B6B', lineHeight: 1.5 }}>{row.detail}</div>
                       )}
                     </div>
                   </div>
@@ -685,9 +686,10 @@ export function ContactDetailView({
           )}
         </section>
 
+        {/* Sovereignty line */}
         <p
           style={{
-            marginTop: 12,
+            marginTop: 14,
             fontSize: 11,
             color: '#8C7B6B',
             display: 'flex',
@@ -696,9 +698,68 @@ export function ContactDetailView({
             fontStyle: 'italic',
           }}
         >
-          Your people, your history. Behaviour belongs to you — sovereign across every tool you ever use.
+          <Anchor style={{ width: 12, height: 12 }} />
+          Your people, your history — behaviour belongs to you, sovereign across every tool you ever use.
         </p>
       </div>
+
+      {/* ── Mobile sticky CTA + overflow sheet ───────────────────────────── */}
+      {isMobile && (
+        <>
+          {overflowOpen && (
+            <div style={overflowSheetStyle}>
+              <ContactSheetRow phone={contact.phone} email={contact.email} />
+              {contact.email && (
+                <SendTrackedEmailButton
+                  contactId={contact.id}
+                  contactEmail={contact.email}
+                  contactName={companionName}
+                  source="ui"
+                >
+                  {({ onClick }) => (
+                    <SheetRow Icon={Mail} label="Send tracked email" onClick={() => { onClick(); setOverflowOpen(false) }} />
+                  )}
+                </SendTrackedEmailButton>
+              )}
+              <SheetRow Icon={Plus} label="Add to list" onClick={() => { setAddToListOpen(true); setOverflowOpen(false) }} />
+              {!isAnon && (
+                <SheetRow Icon={Home} label="Attach role" last onClick={() => { setAttachOpen(true); setOverflowOpen(false) }} />
+              )}
+            </div>
+          )}
+          <div style={stickyBarStyle}>
+            <button type="button" onClick={openDraft} style={{ ...primaryDraftBtnStyle, flex: 1, justifyContent: 'center', padding: '14px 18px', fontSize: 15 }}>
+              <QuillIcon style={{ width: 16, height: 16 }} />
+              Draft with Horace
+            </button>
+            <button
+              type="button"
+              aria-label="More actions"
+              onClick={() => setOverflowOpen((o) => !o)}
+              style={{
+                width: 50,
+                borderRadius: 9,
+                background: '#FAF7F2',
+                border: '1px solid rgba(140,123,107,0.2)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                boxShadow: overflowOpen ? 'inset 0 0 0 1px rgba(196,98,45,0.4)' : 'none',
+              }}
+            >
+              <MoreHorizontal style={{ width: 20, height: 20, color: overflowOpen ? '#C4622D' : '#8C7B6B' }} />
+            </button>
+          </div>
+        </>
+      )}
+
+      <AddToListSheet
+        open={addToListOpen}
+        onClose={() => setAddToListOpen(false)}
+        contactId={contact.id}
+        subjectLabel={companionName}
+      />
 
       {attachOpen && (
         <AttachRoleDialog
@@ -711,13 +772,223 @@ export function ContactDetailView({
   )
 }
 
+// ── Temperature dial — the Signal hero (replaces the avatar) ─────────────────
+
+function TempDial({
+  pct,
+  color,
+  word,
+  delta,
+  size,
+  stroke,
+}: {
+  pct: number
+  color: string
+  word: string
+  delta: number | null
+  size: number
+  stroke: number
+}) {
+  const r = (size - stroke) / 2
+  const circ = 2 * Math.PI * r
+  const dash = circ * pct
+  return (
+    <div style={{ position: 'relative', width: size, height: size, flexShrink: 0 }}>
+      <svg width={size} height={size} style={{ transform: 'rotate(-90deg)' }}>
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgba(140,123,107,0.16)" strokeWidth={stroke} />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          fill="none"
+          stroke={color}
+          strokeWidth={stroke}
+          strokeLinecap="round"
+          strokeDasharray={`${dash} ${circ}`}
+        />
+      </svg>
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <Flame style={{ width: size * 0.15, height: size * 0.15, color, marginBottom: 3 }} strokeWidth={1.7} />
+        <div className="font-display" style={{ fontSize: size * 0.185, fontWeight: 600, color: '#1A1612', lineHeight: 1 }}>
+          {word}
+        </div>
+      </div>
+      {delta != null && (
+        <div
+          style={{
+            position: 'absolute',
+            bottom: -6,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 3,
+            padding: '3px 9px',
+            borderRadius: 9999,
+            whiteSpace: 'nowrap',
+            background: '#FAF7F2',
+            border: `1px solid ${color}`,
+            color,
+            fontSize: 11,
+            fontWeight: 600,
+            fontFamily: 'var(--font-mono)',
+            boxShadow: '0 1px 3px rgba(26,22,18,0.08)',
+          }}
+        >
+          <ArrowUp style={{ width: 11, height: 11 }} strokeWidth={2.2} />
+          +{delta} this wk
+        </div>
+      )}
+    </div>
+  )
+}
+
+function primaryTitleForTier(word: string): string {
+  if (word === 'Hot') return 'Make your move today'
+  if (word === 'Warming') return 'Reach out without crowding them'
+  return 'Keep this one warm'
+}
+
+// ── Role control — light "who is this to you?" ───────────────────────────────
+
+const ROLE_PILLS: Array<{ role: ContactRole; label: string; Icon: typeof Home }> = [
+  { role: 'seller', label: 'Vendor', Icon: Home },
+  { role: 'buyer',  label: 'Buyer',  Icon: KeyRound },
+]
+
+function RoleControl({ held, onPick }: { held: Set<ContactRole>; onPick: () => void }) {
+  const anyHeld = held.has('seller') || held.has('buyer')
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+      <span style={{ fontSize: 13, color: '#5E5246', fontWeight: 500 }}>Who is this to you?</span>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        {ROLE_PILLS.map(({ role, label, Icon }) => {
+          const on = held.has(role)
+          return (
+            <button
+              key={role}
+              type="button"
+              onClick={onPick}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '6px 12px',
+                borderRadius: 9999,
+                fontSize: 12.5,
+                fontWeight: 500,
+                cursor: 'pointer',
+                background: on ? 'rgba(196,98,45,0.12)' : 'transparent',
+                border: `1px solid ${on ? 'rgba(196,98,45,0.4)' : 'rgba(140,123,107,0.2)'}`,
+                color: on ? '#C4622D' : '#8C7B6B',
+                fontFamily: 'var(--font-body)',
+              }}
+            >
+              <Icon style={{ width: 13, height: 13 }} />
+              {label}
+            </button>
+          )
+        })}
+      </div>
+      {!anyHeld && (
+        <span style={{ fontSize: 11.5, color: '#8C7B6B', fontStyle: 'italic' }}>one tap — it sharpens the read</span>
+      )}
+    </div>
+  )
+}
+
+// ── Contact (tel/mailto) action — desktop ghost + mobile sheet row ───────────
+
+function ContactActionButton({ phone, email }: { phone: string | null; email: string | null }) {
+  if (phone) {
+    return (
+      <a href={`tel:${phone}`} style={ghostBtnStyle}>
+        <Phone style={{ width: 13, height: 13 }} />
+        Contact
+      </a>
+    )
+  }
+  if (email) {
+    return (
+      <a href={`mailto:${email}`} style={ghostBtnStyle}>
+        <Mail style={{ width: 13, height: 13 }} />
+        Contact
+      </a>
+    )
+  }
+  return (
+    <button type="button" disabled style={{ ...ghostBtnStyle, opacity: 0.5, cursor: 'not-allowed' }} title="No phone or email on file">
+      <Phone style={{ width: 13, height: 13 }} />
+      Contact
+    </button>
+  )
+}
+
+function ContactSheetRow({ phone, email }: { phone: string | null; email: string | null }) {
+  const href = phone ? `tel:${phone}` : email ? `mailto:${email}` : null
+  const Icon = phone ? Phone : Mail
+  if (!href) {
+    return <SheetRow Icon={Phone} label="Contact" disabled />
+  }
+  return (
+    <a href={href} style={{ textDecoration: 'none' }}>
+      <SheetRow Icon={Icon} label="Contact" />
+    </a>
+  )
+}
+
+function SheetRow({
+  Icon,
+  label,
+  last,
+  disabled,
+  onClick,
+}: {
+  Icon: typeof Phone
+  label: string
+  last?: boolean
+  disabled?: boolean
+  onClick?: () => void
+}) {
+  return (
+    <div
+      role={onClick ? 'button' : undefined}
+      onClick={disabled ? undefined : onClick}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+        padding: '12px 12px',
+        fontSize: 14,
+        color: '#1A1612',
+        fontWeight: 500,
+        borderBottom: last ? 'none' : '1px solid rgba(140,123,107,0.14)',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.5 : 1,
+      }}
+    >
+      <Icon style={{ width: 17, height: 17, color: '#8C7B6B' }} />
+      {label}
+    </div>
+  )
+}
+
 // ── HOR-246: email funnel-stage timeline treatment ──────────────────────────
 
 const EMAIL_DOT_COLOR: Record<NonNullable<EmailKind>, string> = {
-  sent:    '#B5922A', // mustard
-  opened:  '#8A6A00', // deeper mustard
-  clicked: '#C4622D', // terracotta
-  bounced: '#9C6B5A', // muted clay
+  sent:    '#B5922A',
+  opened:  '#8A6A00',
+  clicked: '#C4622D',
+  bounced: '#9C6B5A',
   other:   '#8A6A00',
 }
 
@@ -731,13 +1002,6 @@ const EMAIL_KIND_LABEL: Record<NonNullable<EmailKind>, string> = {
 
 type EmailKind = 'sent' | 'opened' | 'clicked' | 'bounced' | 'other'
 
-/**
- * Split an `eventLabel` email string into a prefix + quoted subject so the
- * subject can render in italic next to the kind label. The leading stage
- * word (already shown as the coloured kind label) is stripped so we don't
- * render "Opened Opened"; any residual nuance — "(×3)", the Apple-MPP /
- * scanner notes — is preserved as the prefix.
- */
 function splitEmailTitle(title: string, kindLabel: string): { prefix: string; subject: string | null } {
   const idx = title.indexOf(' — "')
   let prefix = title
@@ -778,13 +1042,7 @@ function PanelHeader({
       <div>
         <h2
           className="font-display"
-          style={{
-            fontSize: 20,
-            fontWeight: 500,
-            color: '#1A1612',
-            letterSpacing: '-0.01em',
-            margin: '0 0 2px',
-          }}
+          style={{ fontSize: 19, fontWeight: 600, color: '#1A1612', letterSpacing: '-0.01em', margin: '0 0 2px' }}
         >
           {title}
         </h2>
@@ -811,15 +1069,7 @@ function PanelHeader({
   )
 }
 
-function GroupLabel({
-  Icon,
-  label,
-  note,
-}: {
-  Icon: typeof Anchor
-  label: string
-  note: string
-}) {
+function GroupLabel({ Icon, label, note }: { Icon: typeof Anchor; label: string; note: string }) {
   return (
     <div
       style={{
@@ -864,15 +1114,10 @@ function RoleAttachedCard({
 }) {
   const tone = toneFor(role.propertyId)
   return (
-    <Link
-      href={`/properties/${role.propertyId}`}
-      style={{ ...propertyCardStyle, position: 'relative' }}
-    >
+    <Link href={`/properties/${role.propertyId}`} style={{ ...propertyCardStyle, position: 'relative' }}>
       <PropertyThumb tone={tone} address={role.address} size={44} />
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 600, color: '#1A1612', marginBottom: 4 }}>
-          {role.address}
-        </div>
+        <div style={{ fontSize: 13, fontWeight: 600, color: '#1A1612', marginBottom: 4 }}>{role.address}</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
           <RoleBadge role={role.role} />
           <span style={{ fontSize: 11, color: '#8C7B6B' }}>· {relativeWhen(role.date)}</span>
@@ -908,18 +1153,12 @@ function RoleAttachedCard({
   )
 }
 
-function EngagingNowCard({
-  property,
-}: {
-  property: ContactDetailViewProps['engagingNow'][number]
-}) {
+function EngagingNowCard({ property }: { property: ContactDetailViewProps['engagingNow'][number] }) {
   return (
     <Link href={`/properties/${property.propertyId}`} style={propertyCardStyle}>
       <PropertyThumb tone={toneFor(property.propertyId)} address={property.address} size={44} />
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 600, color: '#1A1612', marginBottom: 4 }}>
-          {property.address}
-        </div>
+        <div style={{ fontSize: 13, fontWeight: 600, color: '#1A1612', marginBottom: 4 }}>{property.address}</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
           <RoleBadge role="engaged" count={property.sessions > 1 ? property.sessions : undefined} />
           <span style={{ fontSize: 11, color: '#8C7B6B' }}>· {relativeWhen(property.lastViewAt)}</span>
@@ -936,7 +1175,7 @@ function TimelineFilterBtn({ label, active, onClick }: { label: string; active: 
       type="button"
       onClick={onClick}
       style={{
-        padding: '4px 10px',
+        padding: '4px 11px',
         fontSize: 11,
         fontWeight: 500,
         color: active ? '#1A1612' : '#8C7B6B',
@@ -949,34 +1188,6 @@ function TimelineFilterBtn({ label, active, onClick }: { label: string; active: 
     >
       {label}
     </button>
-  )
-}
-
-function ReferenceCell({ label, value, last }: { label: string; value: string | null; last?: boolean }) {
-  return (
-    <div
-      style={{
-        flex: 1,
-        padding: '12px 16px',
-        borderRight: last ? 'none' : '1px solid rgba(140,123,107,0.14)',
-      }}
-    >
-      <div
-        style={{
-          fontSize: 10,
-          fontWeight: 500,
-          letterSpacing: '0.06em',
-          textTransform: 'uppercase',
-          color: '#8C7B6B',
-          marginBottom: 4,
-        }}
-      >
-        {label}
-      </div>
-      <div style={{ fontSize: 13, fontWeight: 500, color: value ? '#1A1612' : '#8C7B6B', fontFamily: 'var(--font-body)' }}>
-        {value ?? '—'}
-      </div>
-    </div>
   )
 }
 
@@ -994,49 +1205,105 @@ const metaPillStyle: React.CSSProperties = {
   color: '#8C7B6B',
 }
 
-const primaryBtnStyle: React.CSSProperties = {
+const uppercaseTerracottaLabel: React.CSSProperties = {
+  fontSize: 10,
+  fontWeight: 600,
+  letterSpacing: '0.12em',
+  textTransform: 'uppercase',
+  color: '#C4622D',
+}
+
+const changeChipStyle: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 5,
+  fontSize: 11.5,
+  fontWeight: 500,
+  padding: '4px 10px',
+  borderRadius: 9999,
+  background: '#FAF7F2',
+  border: '1px solid rgba(140,123,107,0.2)',
+  color: '#5E5246',
+}
+
+const streamLinkStyle: React.CSSProperties = {
   display: 'inline-flex',
   alignItems: 'center',
   gap: 6,
-  padding: '9px 14px',
-  borderRadius: 7,
+  fontSize: 12,
+  fontWeight: 500,
+  color: '#8C7B6B',
+  textDecoration: 'none',
+}
+
+const contextDividerLabel: React.CSSProperties = {
+  fontSize: 10,
+  fontWeight: 600,
+  letterSpacing: '0.14em',
+  textTransform: 'uppercase',
+  color: '#8C7B6B',
+}
+
+const primaryDraftBtnStyle: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 8,
+  padding: '12px 20px',
+  borderRadius: 9,
   background: '#C4622D',
   color: '#F5F0E8',
-  fontSize: 13,
-  fontWeight: 500,
+  fontSize: 14.5,
+  fontWeight: 600,
   border: 'none',
+  cursor: 'pointer',
+  fontFamily: 'var(--font-body)',
+  whiteSpace: 'nowrap',
+  textDecoration: 'none',
+  boxShadow: '0 2px 8px rgba(196,98,45,0.28)',
+}
+
+const ghostBtnStyle: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 6,
+  padding: '8px 13px',
+  borderRadius: 8,
+  background: 'transparent',
+  color: '#1A1612',
+  fontSize: 12.5,
+  fontWeight: 500,
+  border: '1px solid rgba(140,123,107,0.2)',
   cursor: 'pointer',
   fontFamily: 'var(--font-body)',
   textDecoration: 'none',
 }
 
-const secondaryBtnStyle: React.CSSProperties = {
+const iconBtnStyle: React.CSSProperties = {
+  width: 34,
+  height: 34,
+  borderRadius: 8,
   display: 'inline-flex',
   alignItems: 'center',
-  gap: 6,
-  padding: '9px 14px',
-  borderRadius: 7,
+  justifyContent: 'center',
   background: 'transparent',
-  color: '#1A1612',
-  fontSize: 13,
-  fontWeight: 500,
-  border: '1px solid rgba(140,123,107,0.3)',
-  cursor: 'pointer',
-  fontFamily: 'var(--font-body)',
+  border: 'none',
+  textDecoration: 'none',
 }
 
 const panelStyle: React.CSSProperties = {
   background: '#FAF7F2',
-  border: '1px solid rgba(140,123,107,0.18)',
-  borderRadius: 10,
+  border: '1px solid rgba(140,123,107,0.2)',
+  borderRadius: 12,
   padding: '20px 22px',
-  marginBottom: 18,
+  marginBottom: 16,
 }
 
-const contactGridStyle: React.CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-  gap: 8,
+function contactGridStyle(isMobile: boolean): React.CSSProperties {
+  return {
+    display: 'grid',
+    gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(260px, 1fr))',
+    gap: 8,
+  }
 }
 
 const propertyCardStyle: React.CSSProperties = {
@@ -1045,12 +1312,38 @@ const propertyCardStyle: React.CSSProperties = {
   gap: 12,
   padding: '12px 14px',
   background: '#FFFFFF',
-  border: '1px solid rgba(140,123,107,0.18)',
+  border: '1px solid rgba(140,123,107,0.2)',
   borderRadius: 8,
   textDecoration: 'none',
   color: 'inherit',
   cursor: 'pointer',
-  transition: 'all 180ms',
+  transition: 'all 180ms cubic-bezier(0.16, 1, 0.3, 1)',
+}
+
+const stickyBarStyle: React.CSSProperties = {
+  position: 'fixed',
+  left: 0,
+  right: 0,
+  bottom: 'calc(56px + env(safe-area-inset-bottom))',
+  padding: '12px 16px 12px',
+  background: '#F5F0E8',
+  borderTop: '1px solid rgba(140,123,107,0.14)',
+  display: 'flex',
+  gap: 10,
+  zIndex: 39,
+}
+
+const overflowSheetStyle: React.CSSProperties = {
+  position: 'fixed',
+  left: 14,
+  right: 14,
+  bottom: 'calc(56px + 64px + env(safe-area-inset-bottom))',
+  background: '#FAF7F2',
+  border: '1px solid rgba(140,123,107,0.2)',
+  borderRadius: 14,
+  boxShadow: '0 8px 32px rgba(26,22,18,0.18)',
+  padding: 6,
+  zIndex: 39,
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────

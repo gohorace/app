@@ -422,7 +422,7 @@ function RoleStep({
         }}
       >
         <RoleCard
-          label="Seller"
+          label="Vendor"
           desc="You represented them on a sale"
           Icon={Home}
           active={roleChoice === 'seller'}
