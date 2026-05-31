@@ -5,6 +5,7 @@ import { CompanionTrigger } from './companion-trigger'
 import { CompanionDrawer, type ActionAck } from './companion-drawer'
 import type { CompanionAction } from '@/lib/companion/types'
 import { actionConfirmation } from '@/lib/companion/respond'
+import { splitDisplayName } from './identity-edit-form'
 
 /**
  * CompanionMount — single global mount for the Horace companion.
@@ -50,6 +51,30 @@ export function CompanionMount() {
       } catch (err) {
         console.error('[companion] dismiss failed:', err)
         return { text: 'That dismissal did not save — try again in a moment.', ok: false }
+      }
+      return { text: actionConfirmation(action), ok: true }
+    }
+
+    if (action.kind === 'edit-identity') {
+      // HOR-246 Phase 2b: the spoken writer. Translate the parsed field to the
+      // PATCH shape — display_name → first/last, phone → phone. Email is never
+      // a writable field here (the grounding/prompt forbid it).
+      const body =
+        action.field === 'display_name'
+          ? splitDisplayName(action.value)
+          : { phone: action.value.trim() || null }
+      try {
+        const res = await fetch(`/api/contacts/${action.contactId}`, {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+        if (!res.ok) {
+          return { text: 'That update did not save — try again in a moment.', ok: false }
+        }
+      } catch (err) {
+        console.error('[companion] edit-identity failed:', err)
+        return { text: 'That update did not save — try again in a moment.', ok: false }
       }
       return { text: actionConfirmation(action), ok: true }
     }

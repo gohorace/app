@@ -198,5 +198,9 @@ export function actionConfirmation(action: CompanionAction): string {
       return `Dismissed. I'll resurface them if something changes.`
     case 'create-inspection':
       return `Scheduled. QR is ready in Inspections.`
+    case 'edit-identity':
+      return action.field === 'phone'
+        ? `Saved ${action.target}'s phone — agent-supplied. The observed trail stays as-is.`
+        : `Saved ${action.target}'s name — agent-supplied. The observed email stays locked.`
   }
 }

@@ -195,11 +195,24 @@ export function CompanionDrawer({
 
   const editMode = Boolean(edit)
   const showEditForm = editMode && !editDone
-  // Suggested prompts + composer belong to the conversation, not the edit form.
-  const conversationIsEmpty = !editMode && messages.length <= 2 && !pendingAction && !typing
+  // Suggested prompts + composer belong to the conversation, not the form —
+  // they reappear once the form is dismissed (saved or "tell Horace" spoken).
+  const conversationIsEmpty = !showEditForm && messages.length <= 2 && !pendingAction && !typing
 
   function handleEditSaved(ack: { text: string; ok: boolean }) {
     setMessages((m) => [...m, { kind: 'system', text: ack.text }])
+    setEditDone(true)
+  }
+
+  // "Tell Horace in your own words" — dismiss the form and seed a conversation
+  // turn; the agent types the edit and the brain proposes an edit-identity
+  // action (confirmed before it writes). Phase 2b.
+  function handleSpoken() {
+    const name = edit?.displayName || 'this contact'
+    setMessages((m) => [
+      ...m,
+      { kind: 'horace', text: `Sure — tell me what to change about ${name} and I’ll confirm before saving. I’ll keep the observed email locked.` },
+    ])
     setEditDone(true)
   }
 
@@ -339,7 +352,12 @@ export function CompanionDrawer({
             />
           )}
           {showEditForm && edit && (
-            <IdentityEditForm context={edit} onSaved={handleEditSaved} onCancel={onClose} />
+            <IdentityEditForm
+              context={edit}
+              onSaved={handleEditSaved}
+              onCancel={onClose}
+              onSpoken={handleSpoken}
+            />
           )}
         </div>
 
@@ -377,8 +395,9 @@ export function CompanionDrawer({
           </div>
         )}
 
-        {/* Composer — hidden in identity-edit mode; the form is the interaction. */}
-        {!editMode && (
+        {/* Composer — hidden while the edit form is up; reappears once the form
+            is dismissed (saved, or the agent chose to speak the edit). */}
+        {!showEditForm && (
         <div
           style={{
             padding: '12px 18px 16px',

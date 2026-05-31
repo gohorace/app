@@ -38,9 +38,11 @@ export interface IdentityEditFormProps {
   context: EditIdentityContext
   onSaved: (ack: { text: string; ok: boolean }) => void
   onCancel: () => void
+  /** Phase 2b: drop into the conversation so the agent can speak the edit. */
+  onSpoken?: () => void
 }
 
-export function IdentityEditForm({ context, onSaved, onCancel }: IdentityEditFormProps) {
+export function IdentityEditForm({ context, onSaved, onCancel, onSpoken }: IdentityEditFormProps) {
   const router = useRouter()
   const [displayName, setDisplayName] = useState(context.displayName ?? '')
   const [phone, setPhone] = useState(context.phone ?? '')
@@ -261,23 +263,31 @@ export function IdentityEditForm({ context, onSaved, onCancel }: IdentityEditFor
         </button>
       </div>
 
-      {/* Phase 2b hook — inert for now (the spoken writer wires here). */}
-      <div
-        title="Coming soon"
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: 6,
-          width: '100%',
-          marginTop: 10,
-          color: 'rgba(140,123,107,0.6)',
-          fontSize: 12,
-        }}
-      >
-        <MessageSquare style={{ width: 13, height: 13 }} /> Or just tell Horace in your own words
-        <ArrowRight style={{ width: 12, height: 12 }} />
-      </div>
+      {/* Phase 2b: drop into the conversation to speak the edit. */}
+      {onSpoken && (
+        <button
+          type="button"
+          onClick={onSpoken}
+          disabled={saving}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 6,
+            width: '100%',
+            marginTop: 10,
+            background: 'transparent',
+            border: 'none',
+            color: STONE,
+            fontSize: 12,
+            fontFamily: 'var(--font-body)',
+            cursor: 'pointer',
+          }}
+        >
+          <MessageSquare style={{ width: 13, height: 13 }} /> Or just tell Horace in your own words
+          <ArrowRight style={{ width: 12, height: 12 }} />
+        </button>
+      )}
     </div>
   )
 }

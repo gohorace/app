@@ -8,7 +8,7 @@
  * wire shape shared across that boundary.
  */
 
-export type ActionKind = 'draft-email' | 'add-to-list' | 'dismiss' | 'create-inspection'
+export type ActionKind = 'draft-email' | 'add-to-list' | 'dismiss' | 'create-inspection' | 'edit-identity'
 
 interface BaseAction {
   kind: ActionKind
@@ -47,11 +47,33 @@ export interface CreateInspectionAction extends BaseAction {
   token: string
 }
 
+/**
+ * Spoken/NLU identity edit (HOR-246 amendment, Phase 2b). The agent says
+ * "set Dan's phone to 0412…"; Horace parses it into this action and the drawer
+ * shows a parse-confirmation before anything is written. Writes only
+ * agent-supplied fields — never the observed email.
+ *
+ * `field` is limited to `display_name` / `phone` (clean string writes).
+ * Suburb is intentionally excluded from the spoken path: it maps to a
+ * residence *address*, which a bare spoken string can't resolve — suburb edits
+ * stay in the structured form (Phase 2a), which uses AddressAutocomplete.
+ */
+export interface EditIdentityAction extends BaseAction {
+  kind: 'edit-identity'
+  contactId: string
+  field: 'display_name' | 'phone'
+  value: string
+  /** The observed email, echoed in the confirm card's safety inset so the
+   *  agent sees the locked fact stays untouched. Populated server-side. */
+  lockedNote?: string
+}
+
 export type CompanionAction =
   | DraftEmailAction
   | AddToListAction
   | DismissAction
   | CreateInspectionAction
+  | EditIdentityAction
 
 export interface MessageReference {
   label: string
