@@ -9,7 +9,7 @@ import { getRoles, withRoleAdded, withRoleRemoved } from '@/lib/contacts/roles'
 //   - `{ add_role: { type, property_id, date? } }`         — append/replace
 //   - `{ remove_role_id: '<uuid>' }`                       — remove by id
 const AddRoleSchema = z.object({
-  type: z.enum(['seller', 'buyer']),
+  type: z.enum(['seller', 'buyer', 'landlord']),
   property_id: z.string().uuid(),
   date: z.string().datetime({ offset: true }).optional(),
 })

@@ -1,10 +1,10 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { Archive, SlidersHorizontal, Check, Feather } from 'lucide-react'
-import { SignalCard, isWorkableSignal, type DigestSignal, type SignalTier } from './signal-card'
+import { isWorkableSignal, type DigestSignal, type SignalIdentity } from './signal-card'
+import { StreamCardMini, type StreamCardData, type StreamTier } from './stream-card'
 import { DigestRail, type DigestRailData } from './digest-rail'
 import { ActivityPrompts } from './activity-prompts'
 import { BellButton } from '@/components/dashboard/bell-button'
@@ -47,11 +47,71 @@ interface DigestViewProps {
   model: DigestViewModel
 }
 
-const TIER_ORDER: SignalTier[] = ['act-now', 'worth-a-look', 'ambient']
-const TIER_LABEL: Record<SignalTier, string> = {
-  'act-now': 'Act now — today',
-  'worth-a-look': 'Worth a look',
-  ambient: 'Ambient',
+// Feed order + headings, cooling down the column (handoff Tier table).
+const STREAM_TIER_ORDER: StreamTier[] = ['act', 'heating', 'cooling', 'steady', 'quiet']
+const STREAM_TIER_LABEL: Record<StreamTier, string> = {
+  act: 'Act now — today',
+  heating: 'Heating up',
+  cooling: 'Cooling down',
+  steady: 'Steady',
+  quiet: 'Quiet',
+}
+
+// ── DigestSignal → StreamCardMini mapping (HOR-363 / HOR-365) ─────────────────
+// A signal's Stream tier is its explicit `streamTier` when set (e.g. a
+// cooling-down contact merged in from outside the active roster), otherwise
+// derived from the legacy tier + intent the briefing RPC still emits.
+function streamTierFor(signal: DigestSignal): StreamTier {
+  if (signal.streamTier) return signal.streamTier
+  if (signal.tier === 'act-now') return 'act'
+  if (signal.tier === 'ambient') return 'quiet'
+  return signal.intent === 'high' ? 'heating' : 'steady'
+}
+
+// Handoff shows Known / Unknown; reconciled here with the digest identity
+// states. 'probable' reads as Partial (a likely-but-unconfirmed match); the
+// DS 'email only' state isn't surfaced by the digest model yet (HOR-364).
+function identityFor(identity: SignalIdentity): { identityLabel: string; isUnknown: boolean } {
+  switch (identity) {
+    case 'known':
+      return { identityLabel: 'Known', isUnknown: false }
+    case 'probable':
+      return { identityLabel: 'Partial', isUnknown: false }
+    default:
+      return { identityLabel: 'Unknown', isUnknown: true }
+  }
+}
+
+// Compact recency for the Stream timestamp: ≤24h reads by the hour/minute
+// (rendered live-green by TimeStamp), older as a plain day interval. Falls
+// back to the verbose `timing` string when there's no raw last-seen.
+function formatRecency(iso: string | null | undefined): string | null {
+  if (!iso) return null
+  const then = new Date(iso).getTime()
+  if (Number.isNaN(then)) return null
+  const diffMs = Date.now() - then
+  if (diffMs < 60_000) return 'just now'
+  const minutes = Math.floor(diffMs / 60_000)
+  if (minutes < 60) return `${minutes}m`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h`
+  const days = Math.floor(hours / 24)
+  return `${days}d`
+}
+
+function toStreamCardData(signal: DigestSignal): StreamCardData {
+  return {
+    contactId: signal.contactId,
+    name: signal.name,
+    initials: signal.initials,
+    ...identityFor(signal.identity),
+    tier: streamTierFor(signal),
+    observation: signal.insight,
+    place: signal.suburb,
+    when: formatRecency(signal.lastSeenAt) ?? signal.timing,
+    role: signal.role,
+    property: signal.property,
+  }
 }
 
 /**
@@ -77,7 +137,7 @@ export function DigestView({ model }: DigestViewProps) {
           {model.signals.length === 0 ? (
             <EmptyState websiteUrl={model.websiteUrl} />
           ) : (
-            <Stream signals={model.signals} dateLabel={model.dateLabel} />
+            <Stream signals={model.signals} />
           )}
         </div>
 
@@ -214,41 +274,46 @@ const askPillStyle: React.CSSProperties = {
 
 // ── Stream — the ranked, tier-grouped roster + live counter ───────────────────
 
-function Stream({ signals, dateLabel }: { signals: DigestSignal[]; dateLabel: string }) {
-  // Decisions made this session, keyed by contactId. Lifted here so the live
-  // counter can tick down across the whole stream (§3). Reset per day/data.
-  const [cleared, setCleared] = useState<Set<string>>(() => new Set())
-  const markCleared = useCallback((id: string) => {
-    setCleared((prev) => {
-      const next = new Set(prev)
-      next.add(id)
-      return next
-    })
-  }, [])
-  useEffect(() => setCleared(new Set()), [dateLabel])
+function Stream({ signals }: { signals: DigestSignal[] }) {
+  const { openCompanion } = useCompanion()
 
-  // Ambient cards are dashboard residue on a busy day — suppress them when
+  // Resolve each signal's Stream tier once, then group/suppress on it.
+  const tiered = signals.map((s) => ({ signal: s, tier: streamTierFor(s) }))
+
+  // Quiet cards are dashboard residue on a busy day — suppress them when
   // there's real work in the stream. They stand alone only on a quiet day (§4).
-  const hasRealWork = signals.some((s) => s.tier !== 'ambient')
-  const visible = hasRealWork ? signals.filter((s) => s.tier !== 'ambient') : signals
+  const hasRealWork = tiered.some((t) => t.tier !== 'quiet')
+  const visible = hasRealWork ? tiered.filter((t) => t.tier !== 'quiet') : tiered
 
-  const workable = visible.filter(isWorkableSignal)
-  const unworked = workable.filter((s) => !cleared.has(s.contactId)).length
+  // Volume of signals warranting a look. The in-card Send/Skip decision flow
+  // was retired with the inline draft (Stream Card handoff §6); a "mark
+  // handled" affordance may return later, so the counter is static for now.
+  const workable = visible.filter((t) => isWorkableSignal(t.signal)).length
 
-  const groups = TIER_ORDER.map((tier) => ({
+  const groups = STREAM_TIER_ORDER.map((tier) => ({
     tier,
-    items: visible.filter((s) => s.tier === tier),
+    items: visible.filter((t) => t.tier === tier).map((t) => t.signal),
   })).filter((g) => g.items.length > 0)
+
+  // Ask Horace → read-context Companion (reuses the Phase 1 focused entry).
+  const askAbout = (s: DigestSignal) => {
+    const contextLabel =
+      s.name && s.name !== 'A contact' ? `On ${s.name}` : s.suburb ? `On ${s.suburb}` : 'On this signal'
+    openCompanion({
+      contextLabel,
+      signal: { contactId: s.contactId, name: s.name, read: s.read, identity: s.identity, suburb: s.suburb },
+    })
+  }
 
   return (
     <>
-      {/* Section heading — "Stream" + the live signal counter */}
+      {/* Section heading — "Stream" + the signal counter */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 14 }}>
         <span style={{ fontSize: 12.5, fontWeight: 600, color: '#5E5246', letterSpacing: '0.01em' }}>Stream</span>
-        {unworked > 0 ? (
+        {workable > 0 ? (
           <span style={counterLiveStyle}>
             <span style={counterDotStyle} />
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12.5, fontWeight: 500 }}>{unworked}</span> to clear
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12.5, fontWeight: 500 }}>{workable}</span> to clear
           </span>
         ) : (
           <span style={counterClearStyle}>
@@ -263,11 +328,11 @@ function Stream({ signals, dateLabel }: { signals: DigestSignal[]; dateLabel: st
           <div key={g.tier} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {groups.length > 1 && (
               <div style={{ fontSize: 11.5, fontWeight: 600, color: '#9C4A1F', letterSpacing: '0.01em' }}>
-                {TIER_LABEL[g.tier]}
+                {STREAM_TIER_LABEL[g.tier]}
               </div>
             )}
             {g.items.map((s) => (
-              <SignalCard key={s.contactId} signal={s} onClear={markCleared} />
+              <StreamCardMini key={s.contactId} data={toStreamCardData(s)} onAsk={() => askAbout(s)} />
             ))}
           </div>
         ))}

@@ -85,6 +85,29 @@
     --color-signal-low:  #3D5246;
     --color-signal-none: #8C7B6B;
 
+    /* ── Stream V2 tier shading (HOR-363) ──
+       Each Stream card is warm-shaded by its intent tier: a background
+       gradient + border + accent that cools down the feed. Canonical values
+       are mirrored in STREAM_TIERS (components/digest/stream-card.tsx), which
+       the card consumes via inline styles — keep the two in sync. Gradients
+       are the only net-new values; the colours map to existing DS tokens
+       (terracotta / ember / clay / moss / stone / cream). */
+    --stream-shade-act-bg:      linear-gradient(165deg, #F3E1D2 0%, #F5EADE 52%, #F7F0E8 100%);
+    --stream-shade-act-border:  rgba(196,98,45,0.22);
+    --stream-shade-act-accent:  #C4622D;
+    --stream-shade-heating-bg:      linear-gradient(165deg, #F5E8DD 0%, #F7EFE6 60%, #F8F2EB 100%);
+    --stream-shade-heating-border:  rgba(232,149,109,0.24);
+    --stream-shade-heating-accent:  #C4622D;
+    --stream-shade-cooling-bg:      linear-gradient(165deg, #EEE6DE 0%, #F3EEE7 62%, #F6F2EC 100%);
+    --stream-shade-cooling-border:  rgba(156,107,90,0.2);
+    --stream-shade-cooling-accent:  #9C6B5A;
+    --stream-shade-steady-bg:      linear-gradient(165deg, #ECEFE9 0%, #F4F1EA 66%, #F7F3EC 100%);
+    --stream-shade-steady-border:  rgba(61,82,70,0.16);
+    --stream-shade-steady-accent:  #3D5246;
+    --stream-shade-quiet-bg:      #FAF7F2;
+    --stream-shade-quiet-border:  rgba(140,123,107,0.2);
+    --stream-shade-quiet-accent:  #8C7B6B;
+
     /* ── Radius scale ── */
     --radius-xs:   2px;
     --radius-sm:   4px;
@@ -332,6 +355,13 @@
   0%   { box-shadow: 0 0 0 0 rgba(196,98,45,0.45); }
   70%  { box-shadow: 0 0 0 6px rgba(196,98,45,0); }
   100% { box-shadow: 0 0 0 0 rgba(196,98,45,0); }
+}
+/* `streamLive` — the green expanding-ring pulse on a Stream card's ≤24h "live"
+ * timestamp (HOR-363). Green ring, distinct from the terracotta `pulseDot`. */
+@keyframes streamLive {
+  0%   { box-shadow: 0 0 0 0 rgba(61,163,97,0.45); }
+  70%  { box-shadow: 0 0 0 5px rgba(61,163,97,0); }
+  100% { box-shadow: 0 0 0 0 rgba(61,163,97,0); }
 }
 
 /* Companion trigger — soft shadow lift on hover, matches sidebar tokens. */

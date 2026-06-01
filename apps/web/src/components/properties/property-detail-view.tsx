@@ -53,7 +53,7 @@ export interface PropertyDetailRoleAttached {
   name: string
   initials: string
   identity: IdentityState
-  role: 'seller' | 'buyer'
+  role: 'seller' | 'buyer' | 'landlord'
   date: string
 }
 

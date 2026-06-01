@@ -108,7 +108,7 @@ type TimeWindow = 'Active anytime' | 'Today' | 'This week' | 'This month' | 'Eve
 const TIME_WINDOWS: TimeWindow[] = ['Active anytime', 'Today', 'This week', 'This month', 'Ever']
 
 interface SecondaryFilters {
-  role: 'All' | 'Vendors' | 'Buyers' | 'Engaged only'
+  role: 'All' | 'Vendors' | 'Buyers' | 'Landlords' | 'Engaged only'
   list: 'All lists'
   intensity: 'Any' | 'High' | 'Medium' | 'Low'
   time: TimeWindow
@@ -399,6 +399,8 @@ export function ContactsGrid({ contacts, initialQ = '', agentId, appUrl, selecte
       rows = rows.filter((c) => c.roles.some((r) => r.type === 'seller'))
     } else if (filters.role === 'Buyers') {
       rows = rows.filter((c) => c.roles.some((r) => r.type === 'buyer'))
+    } else if (filters.role === 'Landlords') {
+      rows = rows.filter((c) => c.roles.some((r) => r.type === 'landlord'))
     } else if (filters.role === 'Engaged only') {
       rows = rows.filter((c) => c.roles.length === 0 && c.score >= 5)
     }
@@ -1182,7 +1184,7 @@ function SecondaryFilterBar({
         Icon={Tag}
         isActive={filters.role !== 'All'}
         current={filters.role}
-        options={['All', 'Vendors', 'Buyers', 'Engaged only']}
+        options={['All', 'Vendors', 'Buyers', 'Landlords', 'Engaged only']}
         onSelect={(v) => onChange({ role: v as SecondaryFilters['role'] })}
       />
       <FilterChip
@@ -1419,6 +1421,7 @@ function roleLabel(contact: ContactGridRow): string {
   if (counts.seller > 0 && counts.buyer > 0) return 'Vendor/Buyer'
   if (counts.seller > 0) return 'Vendor'
   if (counts.buyer > 0) return 'Buyer'
+  if (counts.landlord > 0) return 'Landlord'
   if (contact.score >= 5) return 'Engaged'
   return '—'
 }
