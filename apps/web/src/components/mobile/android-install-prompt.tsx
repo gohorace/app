@@ -96,7 +96,7 @@ export function AndroidInstallPrompt({ token }: Props) {
             <div className={styles.stepTitle}>Install Horace</div>
             <div className={styles.stepCopy}>
               {phase === 'await-event'
-                ? 'Tap install when Chrome offers it (we&rsquo;ll keep going either way).'
+                ? 'Tap install when Chrome offers it (we’ll keep going either way).'
                 : phase === 'prompting'
                   ? 'Choose Install in the dialog.'
                   : 'Tap install to add Horace to your home screen.'}

@@ -40,7 +40,12 @@ export const metadata: Metadata = {
   },
   appleWebApp: {
     capable: true,
-    statusBarStyle: 'black-translucent',
+    // 'default' (opaque) rather than 'black-translucent' — Horace's UI is a
+    // light parchment, so the immersive translucent bar rendered the iOS
+    // status-bar glyphs (clock/battery) in white over light page headers and
+    // pulled page content up underneath the notch. 'default' reserves an
+    // opaque system bar above the webview: legible glyphs, content sits below.
+    statusBarStyle: 'default',
     title: 'Horace',
   },
 }
@@ -51,6 +56,11 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
+  // Required for env(safe-area-inset-*) to report real values on notched
+  // iPhones. Without it the insets are 0 and the bottom tab bar's
+  // safe-area-inset-bottom padding (mobile-nav.tsx) is inert — the nav would
+  // sit under the home indicator.
+  viewportFit: 'cover',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

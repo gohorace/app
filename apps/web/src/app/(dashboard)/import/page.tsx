@@ -25,7 +25,10 @@ export default async function ImportPage() {
     : { data: [] }
 
   return (
-    <div className="p-8 space-y-6">
+    // h-full + overflow-y-auto so long content scrolls inside the
+    // overflow-hidden dashboard shell; pb-24 on mobile clears the fixed
+    // bottom tab bar (reset on md+ where the bar is hidden).
+    <div className="h-full overflow-y-auto p-8 pb-24 md:pb-8 space-y-6">
       <div>
         <h1 className="font-display font-semibold tracking-tight" style={{ fontSize: '26px', color: '#1A1612' }}>
           Import contacts
