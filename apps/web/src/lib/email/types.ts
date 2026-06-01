@@ -44,13 +44,26 @@ export type EmailSendId = string & { readonly __brand: 'EmailSendId' }
 
 export type EmailSendStatus =
   | 'queued'
+  | 'scheduled' // HOR-357 — set when scheduled_at is in the future; the cron worker flips it to 'queued'/'sent'
   | 'sent'
   | 'soft_bounced'
   | 'hard_bounced'
   | 'failed'
   | 'spam_complaint'
 
-export type EmailSendSource = 'ui' | 'mcp' | 'digest_prompt'
+/**
+ * Where a send originated. HOR-356 extended the UI surfaces from a bare `ui`
+ * to the three composer-dock entry points so per-surface attribution survives
+ * into `email_sends.source`. Keep in sync with the CHECK constraint on
+ * `email_sends.source` and `mapToOutreachSource()` in `send.ts`.
+ */
+export type EmailSendSource =
+  | 'ui'
+  | 'mcp'
+  | 'digest_prompt'
+  | 'stream'
+  | 'contact'
+  | 'companion'
 
 export type EngagementEventType =
   | 'email_sent'
@@ -78,6 +91,7 @@ export interface EmailSendPayload {
   tracked?: boolean                                  // default true
   links?: Array<{ url: string; label?: string }>    // optional pre-annotation
   source?: EmailSendSource                           // server defaults from auth context
+  scheduled_at?: string                              // HOR-357 — ISO; when set & future, the send is deferred
 }
 
 export interface EmailSendResult {

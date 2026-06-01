@@ -28,7 +28,7 @@ import type { IdentityState } from '@/lib/design/badges'
 import { eventKind, eventLabel, eventUrl, formatEventUrl, type MergedEvent } from '@/lib/contacts/events'
 import { AttachRoleDialog } from './attach-role-dialog'
 import { NotesThread } from '@/components/notes/notes-thread'
-import { SendTrackedEmailButton } from '@/components/email/email-composer-trigger'
+import { OpenComposerButton } from '@/components/email/open-composer-button'
 import { AddToListSheet } from '@/components/lists/add-to-list-sheet'
 import { buildEmailSendIndex, type EmailSendSummary } from '@/lib/contacts/email-engagement'
 import { useCompanion } from '@/components/companion/companion-context'
@@ -399,14 +399,14 @@ export function ContactDetailView({
                 </button>
               )}
               {contact.email && (
-                <SendTrackedEmailButton
+                <OpenComposerButton
                   contactId={contact.id}
-                  contactEmail={contact.email}
+                  recipient={contact.email}
                   contactName={
                     [contact.firstName, contact.lastName].filter(Boolean).join(' ') ||
                     contact.email
                   }
-                  source="ui"
+                  source="contact"
                   buttonStyle={secondaryBtnStyle}
                 />
               )}

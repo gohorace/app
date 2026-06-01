@@ -20,6 +20,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { authenticateRequest } from '@/lib/mcp/auth'
 import {
   sendTrackedEmail,
+  scheduleTrackedEmail,
   SendTrackedEmailError,
 } from '@/lib/email/send'
 import type {
@@ -59,16 +60,19 @@ export async function POST(req: NextRequest) {
   const source: EmailSendSource = payload.source ?? auth.source
 
   const admin = createAdminClient()
+  const sendCtx = {
+    admin,
+    agentId: auth.agentId,
+    workspaceId: auth.workspaceId,
+    source,
+  }
   try {
-    const result = await sendTrackedEmail(
-      {
-        admin,
-        agentId: auth.agentId,
-        workspaceId: auth.workspaceId,
-        source,
-      },
-      payload,
-    )
+    // Scheduled send (HOR-357) — park the row; the cron worker fires it.
+    if (payload.scheduled_at) {
+      const scheduled = await scheduleTrackedEmail(sendCtx, payload, payload.scheduled_at)
+      return NextResponse.json(scheduled, { status: 200 })
+    }
+    const result = await sendTrackedEmail(sendCtx, payload)
     return NextResponse.json(result, { status: 200 })
   } catch (err) {
     if (err instanceof SendTrackedEmailError) {

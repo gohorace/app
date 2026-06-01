@@ -7,6 +7,8 @@ import { PairingOverlay } from '@/components/dashboard/pairing-overlay'
 import { NotificationsSlideOver } from '@/components/notifications/slide-over'
 import { CompanionProvider } from '@/components/companion/companion-context'
 import { CompanionMount } from '@/components/companion/companion-mount'
+import { ComposerDockProvider } from '@/components/email/composer-dock-context'
+import { ComposerDockMount } from '@/components/email/composer-dock-mount'
 import { fetchAttentionCount } from '@/lib/notifications/attention-count'
 import { requireActiveSubscription } from '@/lib/billing/gate'
 
@@ -61,6 +63,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   return (
     <CompanionProvider>
+     <ComposerDockProvider>
       <div className="flex h-screen overflow-hidden bg-background">
         {/* Desktop sidebar — hidden on mobile. Collapse pref lives client-side
           * in `useSidebarPref` (localStorage). attentionCount is still fetched
@@ -100,7 +103,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
           * `useCompanion().openCompanion({...})` from any Ask Horace CTA.
           * v2-M2 (HOR-243). */}
         <CompanionMount />
+
+        {/* Tracked-email composer dock — global modeless surface. Entry
+          * points call `useComposerDock().openComposer({...})`. HOR-354. */}
+        <ComposerDockMount />
       </div>
+     </ComposerDockProvider>
     </CompanionProvider>
   )
 }

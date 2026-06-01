@@ -87,13 +87,67 @@ export interface SendTrackedEmailContext {
   source?: EmailSendSource
 }
 
+/** Result of parking a scheduled send (HOR-357) — no Gmail ids yet. */
+export interface ScheduledEmailResult {
+  email_send_id: string
+  scheduled_at: string
+}
+
 export async function sendTrackedEmail(
   ctx: SendTrackedEmailContext,
   payloadIn: EmailSendPayload,
 ): Promise<EmailSendResult> {
-  // ── Step 2: validate + sanitize ───────────────────────────────────────────
   const payload = normalizePayload(payloadIn)
+  const contactRow = await resolveRecipientContact(ctx, payload)
+  const emailSendId = await insertEmailSendRow(ctx, contactRow.id, payload, 'queued', null)
+  return dispatchSend(ctx, emailSendId, contactRow.id, payload)
+}
 
+/**
+ * Schedule a tracked email for later delivery (HOR-357). Runs the same
+ * validation + exclusion + ownership front-matter as an immediate send, then
+ * parks a `status='scheduled'` row with `scheduled_at`. The pg_cron worker
+ * (`/api/cron/process-scheduled-emails`) later claims the row and calls
+ * `dispatchScheduledRow`, which routes through the exact same `dispatchSend`
+ * core — so a scheduled send is identical to an immediate one, just deferred.
+ *
+ * Exclusion is re-checked at dispatch time too: an unsubscribe between
+ * scheduling and firing must still block the send.
+ */
+export async function scheduleTrackedEmail(
+  ctx: SendTrackedEmailContext,
+  payloadIn: EmailSendPayload,
+  scheduledAtIso: string,
+): Promise<ScheduledEmailResult> {
+  const at = new Date(scheduledAtIso)
+  if (Number.isNaN(at.getTime())) {
+    throw new SendTrackedEmailError('invalid_input', 400, 'scheduled_at must be an ISO timestamp')
+  }
+  if (at.getTime() <= Date.now()) {
+    throw new SendTrackedEmailError('invalid_input', 400, 'scheduled_at must be in the future')
+  }
+  const payload = normalizePayload(payloadIn)
+  const contactRow = await resolveRecipientContact(ctx, payload)
+  const emailSendId = await insertEmailSendRow(ctx, contactRow.id, payload, 'scheduled', at.toISOString())
+  return { email_send_id: emailSendId, scheduled_at: at.toISOString() }
+}
+
+/** A contact resolved + authorized for a send. */
+interface ResolvedContact {
+  id: string
+  email: string | null
+  agent_id: string | null
+  owner_agent_id: string | null
+}
+
+/**
+ * Shared front-matter for send + schedule: exclusion check (steps 3) then
+ * contact load + ownership (step 4). Throws SendTrackedEmailError on any gate.
+ */
+async function resolveRecipientContact(
+  ctx: SendTrackedEmailContext,
+  payload: NormalizedPayload,
+): Promise<ResolvedContact> {
   // ── Step 3: exclusion check ───────────────────────────────────────────────
   // RPC cast: slice A's RPCs aren't in the generated Database type yet.
   // Drop the casts once database.types.ts is regenerated.
@@ -129,12 +183,7 @@ export async function sendTrackedEmail(
     )
   }
   // Phase 1 dual-write: ownership is either column.
-  const contactRow = contact as {
-    id: string
-    email: string | null
-    agent_id: string | null
-    owner_agent_id: string | null
-  }
+  const contactRow = contact as ResolvedContact
   if (
     contactRow.agent_id !== ctx.agentId &&
     contactRow.owner_agent_id !== ctx.agentId
@@ -145,13 +194,75 @@ export async function sendTrackedEmail(
       'Contact is not owned by this agent.',
     )
   }
+  return contactRow
+}
 
+/**
+ * Insert the email_sends row. `status` is 'queued' for an immediate send (the
+ * dispatcher flips it to 'sent') or 'scheduled' for a deferred one.
+ */
+async function insertEmailSendRow(
+  ctx: SendTrackedEmailContext,
+  contactId: string,
+  payload: NormalizedPayload,
+  status: 'queued' | 'scheduled',
+  scheduledAt: string | null,
+): Promise<string> {
+  const { data: insertedRow, error: insertErr } = await ctx.admin
+    .from('email_sends')
+    .insert({
+      workspace_id: ctx.workspaceId,
+      agent_id: ctx.agentId,
+      contact_id: contactId,
+      to_email: payload.toEmail,
+      subject: payload.subject,
+      body_html: payload.bodyHtml,
+      body_text: payload.bodyText,
+      tracked: payload.tracked,
+      provider: 'gmail',
+      status,
+      scheduled_at: scheduledAt,
+      links: [],
+      source: ctx.source ?? 'ui',
+    })
+    .select('id')
+    .single()
+
+  if (insertErr || !insertedRow) {
+    throw new SendTrackedEmailError(
+      'send_failed',
+      502,
+      `email_sends insert failed: ${insertErr?.message ?? 'no row returned'}`,
+    )
+  }
+  return (insertedRow as { id: string }).id
+}
+
+/**
+ * Dispatch an already-inserted email_sends row through Gmail (steps 5–13):
+ * resolve token + sender, rewrite + pixel, build MIME, send-with-retry, mark
+ * sent, dual-write outreach_log + emit the event. Shared by the immediate
+ * path (`sendTrackedEmail`) and the scheduled worker (`dispatchScheduledRow`)
+ * so a deferred send reuses the exact same logic without a second row.
+ *
+ * Ordering note (HOR-357): token/sender resolution now happens *after* the
+ * row insert (it used to precede it). On a token-revoked failure the queued
+ * row therefore persists — which matches how transient Gmail failures already
+ * leave a retryable 'queued' row.
+ */
+async function dispatchSend(
+  ctx: SendTrackedEmailContext,
+  emailSendId: string,
+  contactId: string,
+  payload: NormalizedPayload,
+): Promise<EmailSendResult> {
   // ── Step 5: get a valid access token ──────────────────────────────────────
   let accessToken: string
   try {
     accessToken = await getValidAccessToken(ctx.admin, ctx.agentId)
   } catch (err) {
     if (err instanceof RefreshRevokedError) {
+      await markSendStatus(ctx.admin, emailSendId, 'failed', 'auth', 'Gmail connection revoked')
       throw new SendTrackedEmailError(
         'token_revoked',
         409,
@@ -159,6 +270,7 @@ export async function sendTrackedEmail(
       )
     }
     if (err instanceof WorkspaceAdminBlockedError) {
+      await markSendStatus(ctx.admin, emailSendId, 'failed', 'auth', 'Workspace admin blocked app access')
       throw new SendTrackedEmailError(
         'token_revoked',
         409,
@@ -166,6 +278,7 @@ export async function sendTrackedEmail(
       )
     }
     if (err instanceof Error && /No Gmail integration/i.test(err.message)) {
+      await markSendStatus(ctx.admin, emailSendId, 'failed', 'no_integration', 'No Gmail integration')
       throw new SendTrackedEmailError(
         'no_integration',
         403,
@@ -192,35 +305,7 @@ export async function sendTrackedEmail(
       'Connected Gmail integration is missing its sender address.',
     )
   }
-
-  // ── Step 6: pre-insert email_sends with status='queued' ───────────────────
-  const { data: insertedRow, error: insertErr } = await ctx.admin
-    .from('email_sends')
-    .insert({
-      workspace_id: ctx.workspaceId,
-      agent_id: ctx.agentId,
-      contact_id: contactRow.id,
-      to_email: payload.toEmail,
-      subject: payload.subject,
-      body_html: payload.bodyHtml,
-      body_text: payload.bodyText,
-      tracked: payload.tracked,
-      provider: 'gmail',
-      status: 'queued',
-      links: [],
-      source: ctx.source ?? 'ui',
-    })
-    .select('id')
-    .single()
-
-  if (insertErr || !insertedRow) {
-    throw new SendTrackedEmailError(
-      'send_failed',
-      502,
-      `email_sends insert failed: ${insertErr?.message ?? 'no row returned'}`,
-    )
-  }
-  const emailSendId = (insertedRow as { id: string }).id
+  const contactRow = { id: contactId }
 
   // ── Step 7: rewrite links + inject pixel (if tracked) ─────────────────────
   let finalHtml = payload.bodyHtml
@@ -387,6 +472,71 @@ export async function sendTrackedEmail(
   }
 }
 
+// ── Scheduled-send worker (HOR-357) ───────────────────────────────────────────
+
+/** A due scheduled row, as loaded by the cron worker. */
+export interface DueScheduledRow {
+  id: string
+  agent_id: string
+  workspace_id: string
+  contact_id: string | null
+  to_email: string
+  subject: string
+  body_html: string
+  body_text: string | null
+  tracked: boolean
+  source: EmailSendSource
+}
+
+/**
+ * Dispatch one due scheduled row. Re-runs the recipient guard (an unsubscribe
+ * since scheduling must still block) and routes through the shared
+ * `dispatchSend`. Claims the row optimistically (`scheduled → queued`) so a
+ * double-tick of the cron can't send twice. Returns the send result, or
+ * throws SendTrackedEmailError on a hard failure (the worker logs + continues).
+ */
+export async function dispatchScheduledRow(
+  admin: SupabaseClient,
+  row: DueScheduledRow,
+): Promise<EmailSendResult> {
+  // Optimistic claim — only the tick that flips scheduled→queued proceeds.
+  const { data: claimed } = await admin
+    .from('email_sends')
+    .update({ status: 'queued', updated_at: new Date().toISOString() })
+    .eq('id', row.id)
+    .eq('status', 'scheduled')
+    .select('id')
+    .maybeSingle()
+  if (!claimed) {
+    throw new SendTrackedEmailError('invalid_input', 409, `Row ${row.id} already claimed`)
+  }
+
+  const ctx: SendTrackedEmailContext = {
+    admin,
+    agentId: row.agent_id,
+    workspaceId: row.workspace_id,
+    source: row.source,
+  }
+  if (!row.contact_id) {
+    await markSendStatus(admin, row.id, 'failed', 'invalid_input', 'scheduled row missing contact_id')
+    throw new SendTrackedEmailError('invalid_input', 400, `Row ${row.id} has no contact_id`)
+  }
+
+  const payload: NormalizedPayload = {
+    contactId: row.contact_id,
+    toEmail: row.to_email,
+    subject: row.subject,
+    bodyHtml: row.body_html,
+    bodyText: row.body_text ?? derivePlainText(row.body_html),
+    tracked: row.tracked,
+  }
+
+  // Re-check the recipient guard at fire time.
+  await resolveRecipientContact(ctx, payload)
+
+  return dispatchSend(ctx, row.id, row.contact_id, payload)
+}
+
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 interface NormalizedPayload {
@@ -479,7 +629,10 @@ function derivePreview(plainText: string): string {
 }
 
 function mapToOutreachSource(s: EmailSendSource): 'mcp' | 'ui' | 'auto' {
-  // outreach_log enum is ('mcp', 'ui', 'auto'); digest_prompt collapses to ui.
+  // outreach_log enum is ('mcp', 'ui', 'auto'). Only 'mcp' maps through; every
+  // UI surface — including the composer-dock entry points (stream/contact/
+  // companion) and digest_prompt — collapses to 'ui'. Per-surface attribution
+  // lives on email_sends.source; outreach_log stays coarse. (HOR-356)
   if (s === 'mcp') return 'mcp'
   return 'ui'
 }

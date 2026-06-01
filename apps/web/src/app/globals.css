@@ -59,6 +59,14 @@
     --color-terracotta-dim: rgba(196, 98, 45, 0.12);
     --color-moss-dim:       rgba(61, 82, 70, 0.12);
 
+    /* ── accent-horace — "this is Horace, not the agent" on light surfaces ──
+       Deliberately Ember (not Terracotta) so it never competes with the Send
+       CTA. Carries the bear-mark + soft glow on the compose surface. (HOR-354) */
+    --accent-horace:          var(--color-ember);          /* #E8956D */
+    --accent-horace-tint-bg:  rgba(232, 149, 109, 0.14);   /* draft-tag / drafting-pill fill */
+    --accent-horace-tint-bd:  rgba(232, 149, 109, 0.45);   /* assist control / tag borders */
+    --accent-horace-ink:      #9C5A30;                      /* text on ember tints */
+
     /* ── Semantic foreground / background / border ── */
     --fg-primary:       var(--color-ink);
     --fg-secondary:     var(--color-stone-aa);
