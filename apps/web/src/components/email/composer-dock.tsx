@@ -226,6 +226,15 @@ export function ComposerDock({ payload, onClose, rightOffset = 24, focusNonce = 
     }
   }, [editor, payload.contactId])
 
+  // Escape hatch — write it yourself, from any state (idle, setup, or a failed
+  // draft). The email is the agent's; Horace is never mandatory.
+  const writeMyself = useCallback(() => {
+    setDraftedByHorace(false)
+    setScenario('empty')
+    setWriting(true)
+    editor?.commands.focus()
+  }, [editor])
+
   // Companion entry auto-drafts on open (once the editor is ready).
   const autoKicked = useRef(false)
   useEffect(() => {
@@ -414,8 +423,8 @@ export function ComposerDock({ payload, onClose, rightOffset = 24, focusNonce = 
       {/* Body */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
         {scenario === 'drafting' && <DraftingBody />}
-        {scenario === 'failed-draft' && <FailedDraftBody onRetry={runDraft} />}
-        {scenario === 'setup' && <SetupBody />}
+        {scenario === 'failed-draft' && <FailedDraftBody onRetry={runDraft} onWriteMyself={writeMyself} />}
+        {scenario === 'setup' && <SetupBody onWriteMyself={writeMyself} />}
         {scenario !== 'drafting' && scenario !== 'failed-draft' && scenario !== 'setup' && (
           <WriteableBody
             scenario={scenario}
@@ -767,13 +776,17 @@ function WriteableBody({
             </span>
           </span>
         </button>
-        <button
-          type="button"
-          onClick={onStartWriting}
-          style={{ margin: 0, maxWidth: 250, textAlign: 'center', fontSize: 12, color: 'var(--color-stone)', fontFamily: 'var(--font-body)', lineHeight: 1.5, background: 'none', border: 'none', cursor: 'text' }}
-        >
-          Or just start writing — it’s your email, in your voice.
-        </button>
+        <p style={{ margin: 0, maxWidth: 250, textAlign: 'center', fontSize: 12, color: 'var(--color-stone)', fontFamily: 'var(--font-body)', lineHeight: 1.5 }}>
+          It’s your email, in your voice —{' '}
+          <button
+            type="button"
+            onClick={onStartWriting}
+            style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', font: 'inherit', color: 'var(--color-terracotta-text)', fontWeight: 600, textDecoration: 'underline', textUnderlineOffset: 2 }}
+          >
+            just start writing
+          </button>
+          .
+        </p>
       </div>
     )
   }
@@ -821,7 +834,7 @@ function WriteableBody({
   )
 }
 
-function FailedDraftBody({ onRetry }: { onRetry: () => void }) {
+function FailedDraftBody({ onRetry, onWriteMyself }: { onRetry: () => void; onWriteMyself: () => void }) {
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 13, padding: '24px 22px' }}>
       <HoraceAvatar size={34} />
@@ -836,11 +849,14 @@ function FailedDraftBody({ onRetry }: { onRetry: () => void }) {
         <HoraceAvatar size={20} />
         <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-ink)', fontFamily: 'var(--font-body)' }}>Ask Horace again</span>
       </button>
+      <button type="button" onClick={onWriteMyself} style={writeMyselfBtnStyle}>
+        Write it yourself
+      </button>
     </div>
   )
 }
 
-function SetupBody() {
+function SetupBody({ onWriteMyself }: { onWriteMyself: () => void }) {
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, padding: '24px 22px' }}>
       <HoraceAvatar size={34} />
@@ -853,9 +869,24 @@ function SetupBody() {
       >
         Set up your voice
       </a>
-      <span style={{ fontSize: 11.5, color: 'var(--color-stone)', fontFamily: 'var(--font-body)' }}>Or write this one yourself</span>
+      <button type="button" onClick={onWriteMyself} style={writeMyselfBtnStyle}>
+        Or write this one yourself
+      </button>
     </div>
   )
+}
+
+// Quiet ghost link shared by the failed-draft + setup escape hatches.
+const writeMyselfBtnStyle: React.CSSProperties = {
+  background: 'none',
+  border: 'none',
+  padding: 4,
+  cursor: 'pointer',
+  fontSize: 12,
+  color: 'var(--color-stone-aa)',
+  fontFamily: 'var(--font-body)',
+  textDecoration: 'underline',
+  textUnderlineOffset: 2,
 }
 
 // ── #3 GuardrailBand ──────────────────────────────────────────────────────────
