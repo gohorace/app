@@ -31,13 +31,17 @@
   /* density (driven by vertical cell padding only) — regular */
   --t-cell-py: 5px;
 
-  min-height: 100%;
   height: 100%;
-  overflow-y: auto;
+  /* Flex column so the grid owns a bounded internal scroll region — this is
+     what lets the column header stay sticky on a long vertical scroll (an
+     overflow-x wrapper would otherwise capture the sticky context). */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   background: var(--t-page);
   /* Full-bleed: fill the content area from the primary nav to the browser
      edge. Slim side gutter so the rounded block frame isn't clipped. */
-  padding: 32px 20px 96px;
+  padding: 32px 20px 24px;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -62,7 +66,15 @@
 .substrate[data-density='compact'] { --t-cell-py: 3px; }
 .substrate[data-density='comfy']   { --t-cell-py: 9px; }
 
-.inner { max-width: none; margin: 0; }
+.inner {
+  max-width: none;
+  margin: 0;
+  /* fill the substrate's height so the block (and its grid) can flex */
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
 
 /* page header — quiet, schema-browser feel.
    Stacked: serif table name on top, mono breadcrumb beneath. */
@@ -72,6 +84,7 @@
   gap: 14px;
   margin-bottom: 16px;
   flex-wrap: wrap;
+  flex: none;
 }
 .headMain {
   display: flex;
@@ -117,9 +130,12 @@
   border-radius: var(--radius-md);
   overflow: hidden;
   background: var(--t-bg-primary);
-  margin-bottom: 28px;            /* spacing-2xl between blocks */
+  /* fill remaining height: fixed header bar + footer, grid scrolls between */
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
 }
-.block:last-child { margin-bottom: 0; }
 
 .vh { /* visually hidden heading */
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
@@ -135,6 +151,7 @@
   background: var(--t-bg-secondary);
   border-bottom: 0.5px solid var(--t-border-secondary);
   flex-wrap: wrap;
+  flex: none;
 }
 .barName {
   font-family: var(--font-mono);
@@ -185,7 +202,14 @@
 
 /* ── Grid ──────────────────────────────────────── */
 
-.gridScroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+/* bounded scroll region (both axes) — fills the space between the header bar
+   and footer; the column header is sticky to the TOP of this element. */
+.gridScroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
 
 .grid {
   width: 100%;
@@ -356,6 +380,7 @@ th[aria-sort='descending'] .caret { opacity: 1; color: var(--t-text-secondary); 
   padding: 7px 12px;
   background: var(--t-bg-secondary);
   border-top: 0.5px solid var(--t-border-secondary);
+  flex: none;
 }
 .range {
   font-family: var(--font-mono);
