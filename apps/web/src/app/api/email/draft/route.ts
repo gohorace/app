@@ -103,6 +103,9 @@ export async function POST(req: NextRequest) {
       email: contact.email,
     },
     pretext,
+    // Draft in the agent's configured voice + signature (gated above, so both
+    // are present here). Makes the draft truly "in your voice". (HOR-356)
+    voice: { brand_voice: profile.brand_voice, email_signature: profile.email_signature },
   })
 
   if (!draft) {

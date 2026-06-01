@@ -848,7 +848,7 @@ function SetupBody() {
         Before I draft in your voice, I need your brand voice and signature — a two-minute setup.
       </p>
       <a
-        href="/settings/profile"
+        href="/settings#brand-voice"
         style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '9px 16px', borderRadius: 9, background: 'var(--color-terracotta)', color: 'var(--color-cream)', textDecoration: 'none', fontSize: 13, fontWeight: 600, fontFamily: 'var(--font-body)' }}
       >
         Set up your voice

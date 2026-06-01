@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { ProfileSettings } from '@/components/settings/profile-settings'
+import { BrandVoiceSettings } from '@/components/settings/brand-voice-settings'
 
 export default async function SettingsPage() {
   const supabase = await createClient()
@@ -19,7 +20,7 @@ export default async function SettingsPage() {
   const { data: settings } = agent
     ? await admin
         .from('agent_settings')
-        .select('timezone')
+        .select('timezone, brand_voice, email_signature')
         .eq('agent_id', agent.id)
         .maybeSingle()
     : { data: null }
@@ -59,6 +60,15 @@ export default async function SettingsPage() {
         workspaceName={workspace?.name ?? 'My Agency'}
         seatType={seatType}
       />
+
+      {/* Brand voice + signature — powers Horace's email drafting and the
+        * composer dock's setup gate. (HOR-356 follow-up) */}
+      <div id="brand-voice" className="mt-10 scroll-mt-6 border-t border-[var(--border-subtle)] pt-8">
+        <BrandVoiceSettings
+          brandVoice={settings?.brand_voice ?? null}
+          emailSignature={settings?.email_signature ?? null}
+        />
+      </div>
     </div>
   )
 }
