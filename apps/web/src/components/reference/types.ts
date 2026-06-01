@@ -2,9 +2,9 @@
  *
  * The substrate layer is a read-only "infrastructure, not UI" view of the
  * contacts / properties data. These types are the data contract the table
- * components render against. The stub generator (`stub-data.ts`) produces
- * them today; a real server-paginated query swaps in behind the same shape
- * (see `ReferenceTables` data-interface note). */
+ * components render against. The server loaders (`lib/reference/load-contacts`,
+ * `load-properties`) produce these rows from real Supabase data; the table
+ * sorts / filters / paginates over them in-component. */
 
 export type SignalValue =
   | 'high intent'
@@ -48,8 +48,8 @@ export interface ContactRow {
   intent: number
   signal: SignalValue
   sessions_7d: number
-  /** postgres timestamptz string, e.g. `2026-06-01 10:52:00+10` */
-  last_seen: string
+  /** postgres timestamptz string, e.g. `2026-06-01 10:52:00+10`; null if never seen */
+  last_seen: string | null
 }
 
 export interface PropertyRow {
@@ -58,6 +58,6 @@ export interface PropertyRow {
   views_7d: number
   visitors: number
   top_signal: SignalValue
-  /** postgres timestamptz string, e.g. `2026-06-01 10:52:00+10` */
-  last_viewed: string
+  /** postgres timestamptz string, e.g. `2026-06-01 10:52:00+10`; null if never viewed */
+  last_viewed: string | null
 }
