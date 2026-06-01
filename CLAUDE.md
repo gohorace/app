@@ -36,6 +36,7 @@ Read the relevant doc for the task before starting work. Don't load everything.
 | Anything that touches design references | [docs/design-sources.md](docs/design-sources.md) |
 | Inbound email infra | [docs/adr/0001-inbound-email-infrastructure.md](docs/adr/0001-inbound-email-infrastructure.md) |
 | Outbound email / "brief isn't arriving" | [docs/email-deliverability.md](docs/email-deliverability.md) |
+| Suburb boundary polygons / choropleth data | [docs/sal-boundaries.md](docs/sal-boundaries.md) |
 
 **Planned but not yet written** (don't pretend they exist — flag if a task needs them):
 `docs/data-architecture.md`, `docs/mcp-readiness-checklist.md`, `docs/tech-stack.md`, and feature briefs under `docs/briefs/` (digest, notifications, properties, contacts).

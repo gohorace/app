@@ -42,6 +42,8 @@
  * The SAL→GNAF match is the documented HOR-369 risk: we join on uppercased
  * locality name + state. Unmatched SAL localities are LOGGED, never silently
  * dropped — review the tail of the run before trusting a load.
+ *
+ * See docs/sal-boundaries.md for the full runbook (source URLs, apply steps).
  */
 
 import { createReadStream, createWriteStream, existsSync } from 'node:fs'
