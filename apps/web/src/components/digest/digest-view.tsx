@@ -2,6 +2,7 @@
 
 import Image from 'next/image'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { Archive, SlidersHorizontal, Check, Feather } from 'lucide-react'
 import { isWorkableSignal, type DigestSignal, type SignalIdentity } from './signal-card'
 import { StreamCardMini, type StreamCardData, type StreamTier } from './stream-card'
@@ -276,6 +277,7 @@ const askPillStyle: React.CSSProperties = {
 
 function Stream({ signals }: { signals: DigestSignal[] }) {
   const { openCompanion } = useCompanion()
+  const router = useRouter()
 
   // Resolve each signal's Stream tier once, then group/suppress on it.
   const tiered = signals.map((s) => ({ signal: s, tier: streamTierFor(s) }))
@@ -332,7 +334,18 @@ function Stream({ signals }: { signals: DigestSignal[] }) {
               </div>
             )}
             {g.items.map((s) => (
-              <StreamCardMini key={s.contactId} data={toStreamCardData(s)} onAsk={() => askAbout(s)} />
+              <StreamCardMini
+                key={s.contactId}
+                data={toStreamCardData(s)}
+                onAsk={() => askAbout(s)}
+                // Whole-card affordance → contact record (HOR-343). Demo cards
+                // have no real contact page, so they stay non-clickable.
+                onOpen={
+                  s.contactId.startsWith('demo-')
+                    ? undefined
+                    : () => router.push(`/contacts/${s.contactId}`)
+                }
+              />
             ))}
           </div>
         ))}

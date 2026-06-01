@@ -115,6 +115,9 @@ interface StreamCardMiniProps {
   data: StreamCardData
   /** Opens the read-context Companion for this card (HOR-366 wires the rest). */
   onAsk?: (data: StreamCardData) => void
+  /** Opens the contact record — the card's primary affordance (HOR-343).
+   *  Omitted (e.g. demo cards) → the card isn't clickable. */
+  onOpen?: () => void
 }
 
 // ── Timestamp — ≤24h by the hour, live green + pulsing; older grey ────────────
@@ -175,7 +178,12 @@ function CTARow({ phone }: { phone?: string | null }) {
     fontFamily: 'var(--font-body)',
   }
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
+    // stopPropagation so the action buttons never trigger the card's
+    // open-contact navigation (HOR-343).
+    <div
+      onClick={(e) => e.stopPropagation()}
+      style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 14, flexWrap: 'wrap' }}
+    >
       {/* Email is the primary action — wiring to the composer dock is HOR-366. */}
       <button
         type="button"
@@ -223,10 +231,25 @@ function CTARow({ phone }: { phone?: string | null }) {
   )
 }
 
-export function StreamCardMini({ data, onAsk }: StreamCardMiniProps) {
+export function StreamCardMini({ data, onAsk, onOpen }: StreamCardMiniProps) {
   const shade = STREAM_TIERS[data.tier]
+  const clickable = Boolean(onOpen)
   return (
     <div
+      onClick={onOpen}
+      onKeyDown={
+        clickable
+          ? (e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                onOpen?.()
+              }
+            }
+          : undefined
+      }
+      role={clickable ? 'button' : undefined}
+      tabIndex={clickable ? 0 : undefined}
+      aria-label={clickable ? `Open ${data.name}` : undefined}
       style={{
         background: shade.cardBg,
         border: `1px solid ${shade.cardBorder}`,
@@ -234,6 +257,7 @@ export function StreamCardMini({ data, onAsk }: StreamCardMiniProps) {
         padding: '18px 22px 20px',
         boxShadow: '0 1px 3px rgba(26,22,18,0.05)',
         fontFamily: 'var(--font-body)',
+        cursor: clickable ? 'pointer' : 'default',
       }}
     >
       {/* Header: tier badge · identity · Ask Horace */}
@@ -245,7 +269,10 @@ export function StreamCardMini({ data, onAsk }: StreamCardMiniProps) {
           </span>
           <button
             type="button"
-            onClick={() => onAsk?.(data)}
+            onClick={(e) => {
+              e.stopPropagation()
+              onAsk?.(data)
+            }}
             style={{
               display: 'inline-flex',
               alignItems: 'center',
