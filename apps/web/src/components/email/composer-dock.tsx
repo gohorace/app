@@ -140,12 +140,21 @@ function escapeHtml(s: string): string {
 }
 
 export function ComposerDock({ payload, onClose, rightOffset = 24, focusNonce = 0 }: ComposerDockProps) {
-  const name = (payload.contactName?.trim() || payload.recipient).trim()
-  const firstName = name.split(/\s+/)[0] || name
   const mobile = useIsMobile()
 
+  // Recipient may arrive on the payload (Contact header) or need resolving from
+  // the contact record (Stream / Companion only carry a contactId).
+  const [recipient, setRecipient] = useState<string | null>(payload.recipient ?? null)
+  const [resolvedName, setResolvedName] = useState<string | null>(payload.contactName ?? null)
+  const [recipientState, setRecipientState] = useState<'ready' | 'resolving' | 'missing'>(
+    payload.recipient ? 'ready' : 'resolving',
+  )
+
+  const name = (resolvedName?.trim() || recipient || 'this contact').trim()
+  const firstName = name.split(/\s+/)[0] || name
+
   const [scenario, setScenario] = useState<ComposerScenario>(
-    payload.autoDraft ? 'drafting' : 'empty',
+    payload.draft ? 'drafted' : payload.autoDraft ? 'drafting' : 'empty',
   )
   const [collapsed, setCollapsed] = useState(false)
   const [subject, setSubject] = useState('')
@@ -155,6 +164,35 @@ export function ComposerDock({ payload, onClose, rightOffset = 24, focusNonce = 
   const [scheduledLabel, setScheduledLabel] = useState<string | null>(null)
   const [writing, setWriting] = useState(false)
   const [bodyEmpty, setBodyEmpty] = useState(true)
+
+  // Resolve the recipient email from the contact record when not supplied.
+  useEffect(() => {
+    if (payload.recipient) return
+    let cancelled = false
+    fetch(`/api/contacts/${payload.contactId}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: { contact?: { email?: string | null; first_name?: string | null; last_name?: string | null } } | null) => {
+        if (cancelled) return
+        const c = data?.contact
+        const email = c?.email?.trim() || null
+        if (!email) {
+          setRecipientState('missing')
+          return
+        }
+        setRecipient(email)
+        if (!payload.contactName) {
+          const full = [c?.first_name, c?.last_name].filter(Boolean).join(' ')
+          if (full) setResolvedName(full)
+        }
+        setRecipientState('ready')
+      })
+      .catch(() => {
+        if (!cancelled) setRecipientState('missing')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [payload.contactId, payload.recipient, payload.contactName])
 
   // Guards a programmatic setContent so the draft-fill doesn't read as an edit.
   const programmaticFill = useRef(false)
@@ -235,18 +273,35 @@ export function ComposerDock({ payload, onClose, rightOffset = 24, focusNonce = 
     editor?.commands.focus()
   }, [editor])
 
-  // Companion entry auto-drafts on open (once the editor is ready).
+  // A pre-supplied draft (e.g. from the Companion) fills the editor once, in
+  // the `drafted` state — no round-trip to the draft endpoint.
+  const seededDraft = useRef(false)
+  useEffect(() => {
+    if (!payload.draft || !editor || seededDraft.current) return
+    seededDraft.current = true
+    setSubject(payload.draft.subject)
+    programmaticFill.current = true
+    editor.commands.setContent(bodyTextToHtml(payload.draft.body), false)
+    setBodyEmpty(editor.isEmpty)
+    programmaticFill.current = false
+    setDraftedByHorace(true)
+    setWriting(true)
+    setScenario('drafted')
+  }, [payload.draft, editor])
+
+  // Companion entry auto-drafts on open (once the editor is ready) — unless a
+  // draft was already supplied, in which case the seed effect above handles it.
   const autoKicked = useRef(false)
   useEffect(() => {
-    if (payload.autoDraft && editor && !autoKicked.current) {
+    if (payload.autoDraft && !payload.draft && editor && !autoKicked.current) {
       autoKicked.current = true
       void runDraft()
     }
-  }, [payload.autoDraft, editor, runDraft])
+  }, [payload.autoDraft, payload.draft, editor, runDraft])
 
   // ── Recipient guardrail check (#3) ────────────────────────────────────────
   useEffect(() => {
-    const email = payload.recipient.trim().toLowerCase()
+    const email = recipient?.trim().toLowerCase()
     if (!email) return
     let cancelled = false
     fetch(`/api/email/check-recipient?email=${encodeURIComponent(email)}`)
@@ -259,12 +314,12 @@ export function ComposerDock({ payload, onClose, rightOffset = 24, focusNonce = 
     return () => {
       cancelled = true
     }
-  }, [payload.recipient])
+  }, [recipient])
 
   const sendBlocked = guardrail === 'unsubscribed' || guardrail === 'excluded'
   const tracked = guardrail !== 'untracked'
   const hasContent = !!subject.trim() && !bodyEmpty
-  const canSend = hasContent && !sendBlocked && !locked
+  const canSend = hasContent && !sendBlocked && !locked && recipientState === 'ready' && !!recipient
 
   // ── Send ──────────────────────────────────────────────────────────────────
   const submit = useCallback(
@@ -279,7 +334,7 @@ export function ComposerDock({ payload, onClose, rightOffset = 24, focusNonce = 
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             contact_id: payload.contactId,
-            to_email: payload.recipient,
+            to_email: recipient,
             subject: subject.trim(),
             body_html: bodyHtml,
             tracked,
@@ -304,7 +359,7 @@ export function ComposerDock({ payload, onClose, rightOffset = 24, focusNonce = 
         setScenario('failed-send')
       }
     },
-    [editor, subject, tracked, payload.contactId, payload.recipient, payload.source, onClose],
+    [editor, subject, tracked, recipient, payload.contactId, payload.source, onClose],
   )
 
   const initials = useMemo(() => initialsFor(name), [name])
@@ -387,12 +442,16 @@ export function ComposerDock({ payload, onClose, rightOffset = 24, focusNonce = 
                 {name}
               </span>
             </span>
-            {guardrail !== 'untracked' ? (
-              <span style={{ fontSize: 11.5, color: 'var(--color-stone)', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {payload.recipient}
-              </span>
-            ) : (
+            {guardrail === 'untracked' ? (
               <span style={{ fontSize: 11.5, color: WARN, fontFamily: 'var(--font-mono)' }}>edited address</span>
+            ) : recipientState === 'missing' ? (
+              <span style={{ fontSize: 11.5, color: WARN, fontFamily: 'var(--font-body)' }}>No email on file — add one to send</span>
+            ) : recipientState === 'resolving' ? (
+              <span style={{ fontSize: 11.5, color: 'var(--color-stone)', fontFamily: 'var(--font-body)' }}>Finding email…</span>
+            ) : (
+              <span style={{ fontSize: 11.5, color: 'var(--color-stone)', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {recipient}
+              </span>
             )}
           </div>
         </div>

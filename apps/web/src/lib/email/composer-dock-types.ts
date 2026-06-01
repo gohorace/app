@@ -45,11 +45,16 @@ export interface ComposerSignalContext {
  */
 export interface OpenComposerOptions {
   contactId: string
-  recipient: string
+  /** Recipient email. Optional — when omitted (Stream/Companion only carry a
+   *  contactId), the dock resolves it from the contact record on open. */
+  recipient?: string
   contactName?: string | null
   signalContext?: ComposerSignalContext
   /** Companion opens already drafting; Stream + Contact offer the draft. */
   autoDraft?: boolean
+  /** A draft already produced upstream (e.g. the Companion conversation) — the
+   *  dock opens pre-filled in the `drafted` state instead of re-generating. */
+  draft?: { subject: string; body: string }
   /** Which UI surface opened the dock — preserved for send attribution. */
   source: Extract<EmailSendSource, 'stream' | 'contact' | 'companion'>
 }

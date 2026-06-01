@@ -118,6 +118,9 @@ interface StreamCardMiniProps {
   /** Opens the contact record — the card's primary affordance (HOR-343).
    *  Omitted (e.g. demo cards) → the card isn't clickable. */
   onOpen?: () => void
+  /** Opens the tracked-email composer dock for this card (HOR-361). Omitted →
+   *  Email button is inert (e.g. demo cards). */
+  onEmail?: (data: StreamCardData) => void
 }
 
 // ── Timestamp — ≤24h by the hour, live green + pulsing; older grey ────────────
@@ -166,7 +169,7 @@ function TierBadge({ shade }: { shade: TierShade }) {
   )
 }
 
-function CTARow({ phone }: { phone?: string | null }) {
+function CTARow({ phone, onEmail }: { phone?: string | null; onEmail?: () => void }) {
   const base: React.CSSProperties = {
     display: 'inline-flex',
     alignItems: 'center',
@@ -184,16 +187,19 @@ function CTARow({ phone }: { phone?: string | null }) {
       onClick={(e) => e.stopPropagation()}
       style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 14, flexWrap: 'wrap' }}
     >
-      {/* Email is the primary action — wiring to the composer dock is HOR-366. */}
+      {/* Email is the primary action — opens the tracked-email composer dock. */}
       <button
         type="button"
+        onClick={onEmail}
+        disabled={!onEmail}
         style={{
           ...base,
           fontWeight: 600,
           border: 'none',
           background: '#C4622D',
           color: '#FBF4EE',
-          cursor: 'pointer',
+          cursor: onEmail ? 'pointer' : 'not-allowed',
+          opacity: onEmail ? 1 : 0.5,
           boxShadow: '0 2px 8px rgba(196,98,45,0.24)',
         }}
       >
@@ -231,7 +237,7 @@ function CTARow({ phone }: { phone?: string | null }) {
   )
 }
 
-export function StreamCardMini({ data, onAsk, onOpen }: StreamCardMiniProps) {
+export function StreamCardMini({ data, onAsk, onOpen, onEmail }: StreamCardMiniProps) {
   const shade = STREAM_TIERS[data.tier]
   const clickable = Boolean(onOpen)
   return (
@@ -359,7 +365,7 @@ export function StreamCardMini({ data, onAsk, onOpen }: StreamCardMiniProps) {
         {data.observation}
       </p>
 
-      <CTARow phone={data.phone} />
+      <CTARow phone={data.phone} onEmail={onEmail ? () => onEmail(data) : undefined} />
     </div>
   )
 }

@@ -6,6 +6,7 @@ import { CompanionDrawer, type ActionAck } from './companion-drawer'
 import type { CompanionAction } from '@/lib/companion/types'
 import { actionConfirmation } from '@/lib/companion/respond'
 import { splitDisplayName } from './identity-edit-form'
+import { useComposerDock } from '@/components/email/composer-dock-context'
 
 /**
  * CompanionMount — single global mount for the Horace companion.
@@ -29,8 +30,28 @@ import { splitDisplayName } from './identity-edit-form'
 export function CompanionMount() {
   const { open, prompt, signal, edit, openToken, contextLabel, openCompanion, closeCompanion } =
     useCompanionInternal()
+  const { openComposer } = useComposerDock()
 
   async function handleAction(action: CompanionAction): Promise<ActionAck> {
+    if (action.kind === 'draft-email') {
+      // Hand the Horace-drafted email to the composer dock (HOR-361). The dock
+      // opens pre-filled in the `drafted` state and resolves the recipient from
+      // the contact record. Needs a known contact to send to.
+      if (!action.contactId) {
+        return {
+          text: 'I can draft it here, but I need to know which contact to send to — open them from the Stream or Contacts first.',
+          ok: false,
+        }
+      }
+      openComposer({
+        contactId: action.contactId,
+        contactName: action.target,
+        source: 'companion',
+        draft: { subject: action.subject, body: action.body },
+      })
+      return { text: `Opened a draft to ${action.target} — edit and send when you're ready.`, ok: true }
+    }
+
     if (action.kind === 'dismiss') {
       const scope = action.scope ?? `companion:${action.target}`
       try {
