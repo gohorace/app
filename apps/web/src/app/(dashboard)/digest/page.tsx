@@ -6,6 +6,7 @@ import { type DigestSignal } from '@/components/digest/signal-card'
 import { type DigestRailData } from '@/components/digest/digest-rail'
 import { intentForScore } from '@/lib/design/intent'
 import { getRoles } from '@/lib/contacts/roles'
+import { findCoolingCandidates, DEFAULT_COOLING } from '@/lib/digest/cooling'
 import { fetchAttentionCount } from '@/lib/notifications/attention-count'
 import {
   generateContactInsight,
@@ -284,6 +285,18 @@ export default async function DigestPage({
     (l) => l.topEventType === 'form_submit' || l.topEventType === 'return_visit',
   ).length
 
+  // ── Cooling down (HOR-365) ───────────────────────────────────────────────
+  // Contacts who were active but have gone quiet are, by definition, NOT in
+  // the active roster above. Surface them separately from score_history so the
+  // agent can re-engage before the trail goes cold.
+  const coolingSignals = await fetchCoolingSignals(
+    admin,
+    agent.id,
+    new Set(leads.map((l) => l.contact_id)),
+    new Date(),
+  )
+  const signalsWithCooling = [...signals, ...coolingSignals]
+
   const model: DigestViewModel = {
     dateLabel: new Date().toLocaleDateString('en-AU', {
       weekday: 'long',
@@ -292,10 +305,10 @@ export default async function DigestPage({
     }),
     sentAtLabel: null, // Cron timestamp lookup deferred — see HOR-122 backlog.
     narrative,
-    signals,
+    signals: signalsWithCooling,
     stats: {
-      worthAttention: signals.length,
-      highIntent: signals.filter((s) => s.intent === 'high').length,
+      worthAttention: signalsWithCooling.length,
+      highIntent: signalsWithCooling.filter((s) => s.intent === 'high').length,
       newlyKnown,
     },
     rail: realRail(),
@@ -304,6 +317,99 @@ export default async function DigestPage({
   }
 
   return <DigestView model={model} />
+}
+
+/**
+ * Surface "cooling down" contacts (HOR-365) — active in the prior window but
+ * quiet recently. They're not in the active roster, so we read scored-activity
+ * from score_history, bucket it (lib/digest/cooling), drop anyone still active,
+ * and cap to the most-cooled few so cooling never floods the stream above the
+ * live work. Known/identified only — cooling is a re-engagement prompt.
+ */
+async function fetchCoolingSignals(
+  admin: ReturnType<typeof createAdminClient>,
+  agentId: string,
+  activeIds: Set<string>,
+  now: Date,
+): Promise<DigestSignal[]> {
+  const since = new Date(now.getTime() - DEFAULT_COOLING.priorDays * 86_400_000).toISOString()
+  const { data: shRows } = await admin
+    .from('score_history')
+    .select('contact_id, occurred_at')
+    .eq('agent_id', agentId)
+    .gt('delta', 0)
+    .gte('occurred_at', since)
+
+  const candidates = findCoolingCandidates(
+    (shRows ?? []).map((r) => ({ contactId: r.contact_id, occurredAt: r.occurred_at })),
+    now,
+  )
+  for (const id of activeIds) candidates.delete(id)
+  if (candidates.size === 0) return []
+
+  // Most-cooled first (longest gap); cap so cooling never outweighs active work.
+  const ranked = Array.from(candidates.entries())
+    .sort((a, b) => b[1].gapDays - a[1].gapDays)
+    .slice(0, 5)
+  const ids = ranked.map(([id]) => id)
+
+  const { data: contacts } = await admin
+    .from('contacts')
+    .select('id, first_name, last_name, email, score, last_seen_at, suburb, metadata')
+    .eq('agent_id', agentId)
+    .in('id', ids)
+    .not('identified_at', 'is', null)
+  if (!contacts || contacts.length === 0) return []
+
+  // Durable role + property address for the cooling set (same shape as the
+  // active leads' property line).
+  const roleByContact = new Map<string, { type: 'seller' | 'buyer' | 'landlord'; propertyId: string }>()
+  for (const c of contacts) {
+    const roles = getRoles(c.metadata)
+    if (roles.length === 0) continue
+    const latest = roles.reduce((a, b) => (a.date >= b.date ? a : b))
+    roleByContact.set(c.id, { type: latest.type, propertyId: latest.property_id })
+  }
+  const propIds = Array.from(new Set(Array.from(roleByContact.values()).map((v) => v.propertyId)))
+  const addressByProperty = new Map<string, string>()
+  if (propIds.length > 0) {
+    const { data: props } = await admin
+      .from('properties')
+      .select('id, street_number, street_name, suburb')
+      .in('id', propIds)
+    for (const p of props ?? []) {
+      const street = [p.street_number, p.street_name].filter(Boolean).join(' ')
+      addressByProperty.set(p.id, [street, p.suburb].filter(Boolean).join(', ') || 'Address pending')
+    }
+  }
+
+  const byId = new Map(contacts.map((c) => [c.id, c]))
+  const out: DigestSignal[] = []
+  for (const [id, cand] of ranked) {
+    const c = byId.get(id)
+    if (!c) continue
+    const roleInfo = roleByContact.get(id)
+    const name = [c.first_name, c.last_name].filter(Boolean).join(' ') || c.email || 'A contact'
+    const first = name.split(' ')[0]
+    const days = `${cand.gapDays} ${cand.gapDays === 1 ? 'day' : 'days'}`
+    out.push({
+      contactId: id,
+      name,
+      initials: makeInitials(c.first_name, c.last_name, c.email),
+      suburb: c.suburb,
+      timing: formatTiming(c.last_seen_at),
+      lastSeenAt: c.last_seen_at,
+      streamTier: 'cooling',
+      tier: 'worth-a-look', // legacy field; the Stream groups on streamTier
+      identity: 'known',
+      intent: intentForScore(c.score) ?? 'low',
+      insight: `Active ${cand.priorCount} times a few weeks back, then quiet for ${days}.`,
+      read: `${first} was paying attention and then went quiet — a gentle re-introduction could bring them back before the trail goes cold.`,
+      role: roleInfo?.type,
+      property: roleInfo ? addressByProperty.get(roleInfo.propertyId) : undefined,
+    })
+  }
+  return out
 }
 
 // ─── Demo dataset ────────────────────────────────────────────────────────────
@@ -421,6 +527,24 @@ function demoModel(scenario: 'live' | 'quiet'): DigestViewModel {
     read: 'No name yet, but this one keeps coming back. Nothing to send — let me keep watching, and I’ll tell you the moment they surface.',
   }
 
+  // Cooling down — active a few weeks ago, now gone quiet. The re-engage prompt.
+  const david: DigestSignal = {
+    contactId: 'demo-david-nguyen',
+    name: 'David Nguyen',
+    initials: 'DN',
+    suburb: 'Annandale, NSW',
+    timing: '9 days ago',
+    lastSeenAt: new Date(Date.now() - 9 * 86_400_000).toISOString(),
+    streamTier: 'cooling',
+    role: 'seller',
+    property: '8 Trafalgar St, Annandale',
+    identity: 'known',
+    tier: 'worth-a-look',
+    intent: 'mid',
+    insight: 'Active eight times through May, then nothing for nine days.',
+    read: 'David was circling hard, then went quiet — a gentle re-introduction could bring him back before the trail goes cold.',
+  }
+
   // Ambient — suburb-level, no individual. Suppressed on a busy day; the hero of a quiet one.
   const ambient: DigestSignal = {
     contactId: 'demo-ambient-paddington',
@@ -434,7 +558,7 @@ function demoModel(scenario: 'live' | 'quiet'): DigestViewModel {
     read: 'Quiet week — nothing on your site needs you today. But three new vendors started circling Paddington. The ground’s shifting; I’ll tell you the moment it’s a person.',
   }
 
-  const signals = scenario === 'quiet' ? [ambient] : [marcus, sarah, priya, tom, anon, ambient]
+  const signals = scenario === 'quiet' ? [ambient] : [marcus, sarah, priya, tom, david, anon, ambient]
 
   return {
     dateLabel: new Date().toLocaleDateString('en-AU', {

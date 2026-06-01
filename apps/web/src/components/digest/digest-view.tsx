@@ -3,7 +3,7 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import { Archive, SlidersHorizontal, Check, Feather } from 'lucide-react'
-import { isWorkableSignal, type DigestSignal, type SignalTier, type SignalIdentity } from './signal-card'
+import { isWorkableSignal, type DigestSignal, type SignalIdentity } from './signal-card'
 import { StreamCardMini, type StreamCardData, type StreamTier } from './stream-card'
 import { DigestRail, type DigestRailData } from './digest-rail'
 import { ActivityPrompts } from './activity-prompts'
@@ -47,19 +47,22 @@ interface DigestViewProps {
   model: DigestViewModel
 }
 
-const TIER_ORDER: SignalTier[] = ['act-now', 'worth-a-look', 'ambient']
-const TIER_LABEL: Record<SignalTier, string> = {
-  'act-now': 'Act now — today',
-  'worth-a-look': 'Worth a look',
-  ambient: 'Ambient',
+// Feed order + headings, cooling down the column (handoff Tier table).
+const STREAM_TIER_ORDER: StreamTier[] = ['act', 'heating', 'cooling', 'steady', 'quiet']
+const STREAM_TIER_LABEL: Record<StreamTier, string> = {
+  act: 'Act now — today',
+  heating: 'Heating up',
+  cooling: 'Cooling down',
+  steady: 'Steady',
+  quiet: 'Quiet',
 }
 
-// ── DigestSignal → StreamCardMini mapping (HOR-363) ───────────────────────────
-// Interim 3→5 tier shading: the digest page still emits the legacy 3-tier
-// vocabulary, so here we shade those tiers with the new gradient set. Proper
-// 5-tier assignment — including the net-new Cooling down — lands in the digest
-// page under HOR-365.
+// ── DigestSignal → StreamCardMini mapping (HOR-363 / HOR-365) ─────────────────
+// A signal's Stream tier is its explicit `streamTier` when set (e.g. a
+// cooling-down contact merged in from outside the active roster), otherwise
+// derived from the legacy tier + intent the briefing RPC still emits.
 function streamTierFor(signal: DigestSignal): StreamTier {
+  if (signal.streamTier) return signal.streamTier
   if (signal.tier === 'act-now') return 'act'
   if (signal.tier === 'ambient') return 'quiet'
   return signal.intent === 'high' ? 'heating' : 'steady'
@@ -274,19 +277,22 @@ const askPillStyle: React.CSSProperties = {
 function Stream({ signals }: { signals: DigestSignal[] }) {
   const { openCompanion } = useCompanion()
 
-  // Ambient cards are dashboard residue on a busy day — suppress them when
+  // Resolve each signal's Stream tier once, then group/suppress on it.
+  const tiered = signals.map((s) => ({ signal: s, tier: streamTierFor(s) }))
+
+  // Quiet cards are dashboard residue on a busy day — suppress them when
   // there's real work in the stream. They stand alone only on a quiet day (§4).
-  const hasRealWork = signals.some((s) => s.tier !== 'ambient')
-  const visible = hasRealWork ? signals.filter((s) => s.tier !== 'ambient') : signals
+  const hasRealWork = tiered.some((t) => t.tier !== 'quiet')
+  const visible = hasRealWork ? tiered.filter((t) => t.tier !== 'quiet') : tiered
 
   // Volume of signals warranting a look. The in-card Send/Skip decision flow
   // was retired with the inline draft (Stream Card handoff §6); a "mark
   // handled" affordance may return later, so the counter is static for now.
-  const workable = visible.filter(isWorkableSignal).length
+  const workable = visible.filter((t) => isWorkableSignal(t.signal)).length
 
-  const groups = TIER_ORDER.map((tier) => ({
+  const groups = STREAM_TIER_ORDER.map((tier) => ({
     tier,
-    items: visible.filter((s) => s.tier === tier),
+    items: visible.filter((t) => t.tier === tier).map((t) => t.signal),
   })).filter((g) => g.items.length > 0)
 
   // Ask Horace → read-context Companion (reuses the Phase 1 focused entry).
@@ -322,7 +328,7 @@ function Stream({ signals }: { signals: DigestSignal[] }) {
           <div key={g.tier} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {groups.length > 1 && (
               <div style={{ fontSize: 11.5, fontWeight: 600, color: '#9C4A1F', letterSpacing: '0.01em' }}>
-                {TIER_LABEL[g.tier]}
+                {STREAM_TIER_LABEL[g.tier]}
               </div>
             )}
             {g.items.map((s) => (
