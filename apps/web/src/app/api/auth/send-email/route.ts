@@ -103,13 +103,38 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Server misconfigured' }, { status: 500 })
   }
 
-  // Construct the verify URL — Supabase consumes the token_hash, then
-  // redirects to email_data.redirect_to with a PKCE `?code=...` param.
-  const verifyUrl =
-    `${supabaseUrl}/auth/v1/verify` +
-    `?token=${encodeURIComponent(email_data.token_hash)}` +
-    `&type=${encodeURIComponent(email_data.email_action_type)}` +
-    `&redirect_to=${encodeURIComponent(email_data.redirect_to)}`
+  // Point the magic link at our own token_hash verifier (/auth/confirm)
+  // instead of Supabase's PKCE `/auth/v1/verify` → `?code=` round-trip.
+  // verifyOtp on /auth/confirm needs no code_verifier, so the link works even
+  // when opened in a different browser than the one that requested it (e.g.
+  // the Gmail in-app browser on iOS) — the case that made the PKCE callback
+  // fail with "both auth code and code verifier should be non-empty".
+  let verifyUrl: string
+  try {
+    const requested = new URL(email_data.redirect_to)
+    const confirm = new URL('/auth/confirm', requested.origin)
+    confirm.searchParams.set('token_hash', email_data.token_hash)
+    confirm.searchParams.set('type', email_data.email_action_type)
+
+    // Carry the original destination through. Invites encode the invite id as
+    // a path segment on /auth/callback/invite/<id> (HOR-201); everything else
+    // uses a ?redirectTo= query param.
+    const inviteMatch = requested.pathname.match(/^\/auth\/callback\/invite\/([^/]+)/)
+    if (inviteMatch) {
+      confirm.searchParams.set('invite_id', decodeURIComponent(inviteMatch[1]))
+    } else {
+      const next = requested.searchParams.get('redirectTo')
+      if (next) confirm.searchParams.set('redirectTo', next)
+    }
+    verifyUrl = confirm.toString()
+  } catch {
+    // redirect_to unparseable — fall back to Supabase's verify endpoint.
+    verifyUrl =
+      `${supabaseUrl}/auth/v1/verify` +
+      `?token=${encodeURIComponent(email_data.token_hash)}` +
+      `&type=${encodeURIComponent(email_data.email_action_type)}` +
+      `&redirect_to=${encodeURIComponent(email_data.redirect_to)}`
+  }
 
   const { subject, html } = buildMagicLinkEmail({
     action: email_data.email_action_type,

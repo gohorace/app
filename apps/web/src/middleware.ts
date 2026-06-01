@@ -159,6 +159,9 @@ export async function middleware(request: NextRequest) {
     // this, the magic-link send CTA is gated behind /login and the flow stalls.
     pathname.startsWith('/invite/') ||
     pathname.startsWith('/auth/callback') ||
+    // Browser-independent magic-link verification (token_hash → verifyOtp).
+    // Must be reachable pre-auth: the whole point is to establish the session.
+    pathname.startsWith('/auth/confirm') ||
     pathname.startsWith('/api/auth') ||
     pathname.startsWith('/api/t') ||
     pathname.startsWith('/api/identity') ||
