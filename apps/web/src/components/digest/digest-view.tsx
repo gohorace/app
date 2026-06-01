@@ -10,6 +10,7 @@ import { DigestRail, type DigestRailData } from './digest-rail'
 import { ActivityPrompts } from './activity-prompts'
 import { BellButton } from '@/components/dashboard/bell-button'
 import { useCompanion } from '@/components/companion/companion-context'
+import { useComposerDock } from '@/components/email/composer-dock-context'
 
 export interface DigestViewModel {
   /** Human date the digest is for ("Wednesday, 13 May"). Computed server-side. */
@@ -277,6 +278,7 @@ const askPillStyle: React.CSSProperties = {
 
 function Stream({ signals }: { signals: DigestSignal[] }) {
   const { openCompanion } = useCompanion()
+  const { openComposer } = useComposerDock()
   const router = useRouter()
 
   // Resolve each signal's Stream tier once, then group/suppress on it.
@@ -344,6 +346,19 @@ function Stream({ signals }: { signals: DigestSignal[] }) {
                   s.contactId.startsWith('demo-')
                     ? undefined
                     : () => router.push(`/contacts/${s.contactId}`)
+                }
+                // Email → composer dock (HOR-361). The dock resolves the
+                // recipient from the contact; we pass the signal as context.
+                onEmail={
+                  s.contactId.startsWith('demo-')
+                    ? undefined
+                    : () =>
+                        openComposer({
+                          contactId: s.contactId,
+                          contactName: s.name && s.name !== 'A contact' ? s.name : undefined,
+                          source: 'stream',
+                          signalContext: { label: s.insight, detail: s.suburb ?? undefined },
+                        })
                 }
               />
             ))}

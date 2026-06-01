@@ -38,7 +38,7 @@ import { tierForScore, weeklyDelta, whatChanged, readProvenance } from '@/lib/co
 import { HoraceReadCard } from '@/components/shared/horace-read-card'
 import { AttachRoleDialog } from './attach-role-dialog'
 import { NotesThread } from '@/components/notes/notes-thread'
-import { SendTrackedEmailButton } from '@/components/email/email-composer-trigger'
+import { OpenComposerButton } from '@/components/email/open-composer-button'
 import { AddToListSheet } from '@/components/lists/add-to-list-sheet'
 import { buildEmailSendIndex, type EmailSendSummary } from '@/lib/contacts/email-engagement'
 import { useCompanion } from '@/components/companion/companion-context'
@@ -517,11 +517,11 @@ export function ContactDetailView({
               <span style={{ fontSize: 11, color: '#8C7B6B', marginRight: 2 }}>or</span>
               <ContactActionButton phone={contact.phone} email={contact.email} />
               {contact.email && (
-                <SendTrackedEmailButton
+                <OpenComposerButton
                   contactId={contact.id}
-                  contactEmail={contact.email}
+                  recipient={contact.email}
                   contactName={companionName}
-                  source="ui"
+                  source="contact"
                   buttonStyle={ghostBtnStyle}
                 />
               )}
@@ -754,16 +754,16 @@ export function ContactDetailView({
               )}
               <ContactSheetRow phone={contact.phone} email={contact.email} />
               {contact.email && (
-                <SendTrackedEmailButton
+                <OpenComposerButton
                   contactId={contact.id}
-                  contactEmail={contact.email}
+                  recipient={contact.email}
                   contactName={companionName}
-                  source="ui"
+                  source="contact"
                 >
                   {({ onClick }) => (
                     <SheetRow Icon={Mail} label="Send tracked email" onClick={() => { onClick(); setOverflowOpen(false) }} />
                   )}
-                </SendTrackedEmailButton>
+                </OpenComposerButton>
               )}
               <SheetRow Icon={Plus} label="Add to list" onClick={() => { setAddToListOpen(true); setOverflowOpen(false) }} />
               {!isAnon && (

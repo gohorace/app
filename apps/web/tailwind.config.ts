@@ -29,6 +29,13 @@ const config: Config = {
           ochre:      '#B5922A', /* mid-intent / high-intent moment accent — matches INTENT_PALETTE.mid */
           moss:       '#3D5246',
         },
+        /* accent-horace — the "this is Horace, not the agent" mark (HOR-354) */
+        'accent-horace': {
+          DEFAULT: 'var(--accent-horace)',
+          'tint-bg': 'var(--accent-horace-tint-bg)',
+          'tint-bd': 'var(--accent-horace-tint-bd)',
+          ink:       'var(--accent-horace-ink)',
+        },
         border: 'hsl(var(--border))',
         input: 'hsl(var(--input))',
         ring: 'hsl(var(--ring))',

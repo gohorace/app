@@ -64,6 +64,14 @@ export interface SignalDraft {
   body: string
 }
 
+/** The agent's configured voice + signature (agent_settings). When supplied,
+ *  the draft is written in `brand_voice` and the `email_signature` is appended
+ *  verbatim instead of a first-name sign-off. (HOR-356 follow-up) */
+export interface AgentVoice {
+  brand_voice: string | null
+  email_signature: string | null
+}
+
 /** A sold property used as a pretext source, returned by the bulk lookup. */
 export interface RecentSoldHit {
   street_number: string | null
@@ -172,6 +180,13 @@ export function findBannedPhrase(text: string): string | null {
   return null
 }
 
+/** Tiny stable string hash for cache keys (not security-sensitive). */
+function djb2(s: string): string {
+  let h = 5381
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0
+  return (h >>> 0).toString(36)
+}
+
 // ── 3. Draft generation ─────────────────────────────────────────────────────
 
 const SYSTEM_PROMPT = `You are Horace — a quiet, perceptive companion writing on behalf of a real-estate agent. You compose outbound emails to the agent's contacts. Voice: warm, brief, slightly understated, never salesy. No emoji. No exclamation marks. Use em-dashes for rhythm.
@@ -192,25 +207,39 @@ function buildUserBlock(
   agentName: string,
   pretext: SignalPretext,
   retryNudge: string | null,
+  voice?: AgentVoice,
 ): string {
   const name = [contact.first_name, contact.last_name].filter(Boolean).join(' ') || contact.email || 'there'
   const first = contact.first_name?.trim() || name.split(' ')[0] || ''
   const agentFirst = agentName.split(' ')[0] || agentName
 
+  // When the agent has configured a brand voice, write in it. When they've
+  // configured a signature, we append it verbatim after generation — so the
+  // model must NOT write its own sign-off (avoids a double signature).
+  const hasSignature = !!voice?.email_signature
+  const signOffInstruction = hasSignature
+    ? 'Do NOT write any sign-off or signature — the agent\'s signature is appended automatically.'
+    : `Sign off with the agent's first name (${agentFirst}) on its own line.`
+
   return [
+    voice?.brand_voice
+      ? `VOICE — this OVERRIDES the default tone. Write the email in this voice, exactly as described (the firewall + length rules still apply):\n${voice.brand_voice}\n`
+      : '',
     'CONTACT:',
     `- name: ${name}`,
     `- address by first name: ${first || '(use a polite generic opener)'}`,
-    `- agent's first name (sign-off): ${agentFirst}`,
+    hasSignature ? '' : `- agent's first name (sign-off): ${agentFirst}`,
     '',
     'PRETEXT — your ONLY justification for writing:',
     `- label: ${pretext.label}`,
     pretext.detail ? `- you may reference this concrete detail: ${pretext.detail}` : '',
     `- source: ${pretext.source}`,
     '',
-    'Write the draft now. Subject ≤ 60 chars, specific to the pretext. Sign off with the agent\'s first name on its own line. Respond with JSON only.',
+    `Write the draft now. Subject ≤ 60 chars, specific to the pretext. ${signOffInstruction} Respond with JSON only.`,
     retryNudge ?? '',
-  ].filter(Boolean).join('\n')
+  ]
+    .filter((line) => line !== null && line !== '')
+    .join('\n')
 }
 
 /**
@@ -227,6 +256,7 @@ export async function generateSignalDraft(
   agentName: string,
   contact: { first_name: string | null; last_name: string | null; email: string | null },
   pretext: SignalPretext,
+  voice?: AgentVoice,
 ): Promise<SignalDraft | null> {
   let nudge: string | null = null
 
@@ -236,21 +266,26 @@ export async function generateSignalDraft(
         model: MODEL,
         max_tokens: 480,
         system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
-        messages: [{ role: 'user', content: buildUserBlock(contact, agentName, pretext, nudge) }],
+        messages: [{ role: 'user', content: buildUserBlock(contact, agentName, pretext, nudge, voice) }],
       })
       const raw = message.content[0]?.type === 'text' ? message.content[0].text : ''
       const stripped = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim()
       const parsed = JSON.parse(stripped) as { subject?: unknown; body?: unknown }
       const subject = typeof parsed.subject === 'string' ? parsed.subject.trim() : ''
-      const body = typeof parsed.body === 'string' ? parsed.body.trim() : ''
+      let body = typeof parsed.body === 'string' ? parsed.body.trim() : ''
       if (!subject || !body) {
         nudge = '\nYour previous reply was empty or malformed. Return JSON with both "subject" and "body" populated.'
         continue
       }
+      // The firewall checks the model's own words — run it BEFORE appending the
+      // agent's verbatim signature (which is trusted, agent-authored text).
       const violation = findBannedPhrase(subject) ?? findBannedPhrase(body)
       if (violation) {
         nudge = `\nYour previous draft used "${violation}", which violates the firewall. Rewrite without that phrasing — lean on the PRETEXT only and never imply the contact was tracked.`
         continue
+      }
+      if (voice?.email_signature) {
+        body = `${body}\n\n${voice.email_signature}`
       }
       return { subject, body }
     } catch (err) {
@@ -275,6 +310,9 @@ export interface CachedDraftArgs {
     email: string | null
   }
   pretext: SignalPretext
+  /** Optional agent voice + signature (agent_settings). Part of the cache key
+   *  so a profile edit busts stale drafts. */
+  voice?: AgentVoice
 }
 
 /**
@@ -290,18 +328,24 @@ export interface CachedDraftArgs {
 export async function getCachedSignalDraft(args: CachedDraftArgs): Promise<SignalDraft | null> {
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) return null
-  const { agentId, agentName, contact, pretext } = args
+  const { agentId, agentName, contact, pretext, voice } = args
+
+  // Fingerprint the voice so a brand-voice/signature edit busts the cache.
+  const voiceKey = voice
+    ? `${(voice.brand_voice ?? '').length}:${(voice.email_signature ?? '').length}:${djb2(`${voice.brand_voice ?? ''}|${voice.email_signature ?? ''}`)}`
+    : 'novoice'
 
   const cached = unstable_cache(
     async () => {
       const client = new Anthropic({ apiKey })
-      return generateSignalDraft(client, agentName, contact, pretext)
+      return generateSignalDraft(client, agentName, contact, pretext, voice)
     },
     [
       'digest-signal-draft-v1',
       contact.contact_id,
       pretext.source,
       pretext.label,
+      voiceKey,
     ],
     { tags: [`digest:${agentId}`], revalidate: 86400 },
   )
