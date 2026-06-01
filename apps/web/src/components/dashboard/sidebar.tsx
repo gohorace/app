@@ -2,17 +2,17 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useState } from 'react'
 import {
   Building,
-  ChevronLeft,
-  ChevronRight,
   DoorOpen,
   HelpCircle,
-  List,
   MapPin,
+  PanelLeftClose,
+  PanelLeftOpen,
   Settings,
-  Sun,
   Users,
+  Waves,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useSidebarPref } from '@/lib/ui/use-sidebar-pref'
@@ -32,10 +32,15 @@ type NavSection = {
 
 // ── Nav definitions ───────────────────────────────────────────────────────────
 // v2 IA per the locked four-section structure (HOR-242):
-//   Insights — Digest, Market
-//   Data     — Contacts, Properties, Lists
+//   Insights — Stream, Market
+//   Data     — Contacts, Properties
 //   Events   — Inspections
 //   Account  — Settings, Support
+//
+// "Stream" is the renamed Digest surface (wave icon, latest designs). The
+// route stays `/digest` — only the nav label + icon change. Lists was
+// removed from primary nav as redundant; the /lists page is still reachable
+// from the contact/property "add to list" affordances.
 //
 // Notifications is no longer a page. The bell-button in each page topbar
 // opens the slide-over (desktop + mobile) — see `components/notifications/
@@ -45,7 +50,7 @@ const NAV_SECTIONS: NavSection[] = [
   {
     label: 'Insights',
     items: [
-      { href: '/digest', label: 'Digest', icon: Sun    },
+      { href: '/digest', label: 'Stream', icon: Waves  },
       { href: '/market', label: 'Market', icon: MapPin },
     ],
   },
@@ -54,7 +59,6 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { href: '/contacts',   label: 'Contacts',   icon: Users    },
       { href: '/properties', label: 'Properties', icon: Building },
-      { href: '/lists',      label: 'Lists',      icon: List     },
     ],
   },
   {
@@ -97,8 +101,16 @@ export function Sidebar({
   trialDaysLeft = null,
 }: SidebarProps) {
   const pathname = usePathname()
-  const [collapsed, toggle] = useSidebarPref()
+  const [pinnedCollapsed, toggle] = useSidebarPref()
+  const [hovered, setHovered] = useState(false)
+
+  // Effective visual state. When the rail is pinned collapsed, hovering
+  // "peeks" it open (Claude-style) without reflowing the page — the layout
+  // slot keeps the pinned width while the <aside> overlays the content.
+  const collapsed = pinnedCollapsed && !hovered
+  const peeking = pinnedCollapsed && hovered
   const width = collapsed ? COLLAPSED_WIDTH : EXPANDED_WIDTH
+  const slotWidth = pinnedCollapsed ? COLLAPSED_WIDTH : EXPANDED_WIDTH
 
   const initials =
     [agentFirstName?.[0], agentLastName?.[0]].filter(Boolean).join('').toUpperCase() || '?'
@@ -108,23 +120,49 @@ export function Sidebar({
     return pathname === href || pathname.startsWith(`${href}/`)
   }
 
+  // Double-click anywhere on the sidebar chrome toggles the pinned state.
+  // Ignore double-clicks that land on a nav link or button so the first
+  // click's navigation / action isn't undone by an accidental toggle.
+  function handleDoubleClick(e: React.MouseEvent) {
+    if ((e.target as HTMLElement).closest('a, button')) return
+    toggle()
+  }
+
   return (
+    <div
+      style={{
+        width: `${slotWidth}px`,
+        minWidth: `${slotWidth}px`,
+        transition: 'width 280ms var(--ease-out), min-width 280ms var(--ease-out)',
+        position: 'relative',
+      }}
+      className="h-full"
+    >
     <aside
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onDoubleClick={handleDoubleClick}
       style={{
         background: '#2E2823',
         width: `${width}px`,
         minWidth: `${width}px`,
-        transition: 'width 280ms var(--ease-out), min-width 280ms var(--ease-out)',
-        position: 'relative',
+        transition: 'width 280ms var(--ease-out), min-width 280ms var(--ease-out), box-shadow 200ms',
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        bottom: 0,
+        zIndex: 30,
+        boxShadow: peeking ? '6px 0 28px rgba(0,0,0,0.28)' : 'none',
+        userSelect: 'none',
       }}
       className="h-full flex flex-col overflow-hidden"
     >
-      {/* ── Wordmark ── */}
+      {/* ── Wordmark + collapse toggle ── */}
       <div
         className="flex items-center shrink-0"
         style={{
           gap: 10,
-          padding: collapsed ? '20px 0 22px' : '20px 20px 22px',
+          padding: collapsed ? '20px 0 22px' : '20px 12px 22px 20px',
           justifyContent: collapsed ? 'center' : 'flex-start',
         }}
       >
@@ -139,6 +177,39 @@ export function Sidebar({
           >
             Horace
           </span>
+        )}
+        {/* Toggle — revealed on hover (fades in), like Claude's sidebar.
+            Single click pins/unpins; double-click on the chrome does too. */}
+        {!collapsed && (
+          <button
+            type="button"
+            onClick={toggle}
+            aria-label={pinnedCollapsed ? 'Pin sidebar open' : 'Collapse sidebar'}
+            title={pinnedCollapsed ? 'Pin open' : 'Collapse'}
+            className="focus:outline-none focus-visible:ring-2 focus-visible:ring-[#C4622D]"
+            style={{
+              marginLeft: 'auto',
+              width: 26,
+              height: 26,
+              borderRadius: 6,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: 'transparent',
+              border: 'none',
+              padding: 0,
+              cursor: 'pointer',
+              color: 'rgba(245,240,232,0.5)',
+              opacity: hovered ? 1 : 0,
+              transition: 'opacity 160ms var(--ease-out), color 160ms, background 160ms',
+            }}
+          >
+            {pinnedCollapsed ? (
+              <PanelLeftOpen style={{ width: 16, height: 16 }} aria-hidden />
+            ) : (
+              <PanelLeftClose style={{ width: 16, height: 16 }} aria-hidden />
+            )}
+          </button>
         )}
       </div>
 
@@ -171,39 +242,6 @@ export function Sidebar({
           </div>
         ))}
       </nav>
-
-      {/* ── Collapse toggle pinned mid-right ── */}
-      <button
-        type="button"
-        onClick={toggle}
-        aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-        title={collapsed ? 'Expand' : 'Collapse'}
-        className="focus:outline-none focus-visible:ring-2 focus-visible:ring-[#C4622D]"
-        style={{
-          position: 'absolute',
-          right: -11,
-          top: 28,
-          width: 22,
-          height: 22,
-          borderRadius: '50%',
-          background: '#2E2823',
-          border: '1px solid rgba(245,240,232,0.18)',
-          color: 'rgba(245,240,232,0.55)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: 0,
-          zIndex: 50,
-          cursor: 'pointer',
-          transition: 'color 180ms, border-color 180ms, background 180ms',
-        }}
-      >
-        {collapsed ? (
-          <ChevronRight style={{ width: 12, height: 12 }} aria-hidden />
-        ) : (
-          <ChevronLeft style={{ width: 12, height: 12 }} aria-hidden />
-        )}
-      </button>
 
       {/* ── Profile block ── */}
       <div
@@ -292,6 +330,7 @@ export function Sidebar({
         </Link>
       </div>
     </aside>
+    </div>
   )
 }
 
