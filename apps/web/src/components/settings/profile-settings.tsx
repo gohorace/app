@@ -309,22 +309,6 @@ export function ProfileSettings({
         </div>
       </div>
 
-      {/* HOR-250: data-sovereignty strip — trust commitment, verbatim. */}
-      <div className="rounded-lg bg-[var(--color-charcoal)] p-[22px] text-[var(--color-cream)]">
-        <div className="mb-2.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-[rgba(245,240,232,0.55)]">
-          Your data
-        </div>
-        <p className="m-0 max-w-[600px] font-serif text-lg italic leading-relaxed text-[rgba(245,240,232,0.95)]">
-          Your relationships, your history. The signal is shared with Horace — your view of it is
-          sovereign.
-        </p>
-        <div className="mt-3.5 flex flex-wrap gap-4 text-xs text-[rgba(245,240,232,0.75)]">
-          <span>· Export everything as CSV, anytime.</span>
-          <span>· Australian-hosted infrastructure.</span>
-          <span>· Your book leaves with you if you ever go.</span>
-        </div>
-      </div>
-
       {/* Add to home screen */}
       <InstallPrompt />
 
