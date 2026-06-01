@@ -2,10 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowRight, Check, CircleDashed, Home, KeyRound, Loader2, Search, X } from 'lucide-react'
+import { ArrowRight, Building2, Check, CircleDashed, Home, KeyRound, Loader2, Search, X } from 'lucide-react'
 import { PropertyThumb, toneFor } from '@/lib/design/badges'
 
-type RoleChoice = 'seller' | 'buyer'
+type RoleChoice = 'seller' | 'buyer' | 'landlord'
 
 interface PropertyOption {
   id: string
@@ -200,9 +200,9 @@ export function AttachRoleDialog({
 
         <div style={{ padding: '18px 24px 18px', flex: 1, overflowY: 'auto' }}>
           {/* Role buttons */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 16 }}>
             <RoleCard
-              label="Seller"
+              label="Vendor"
               desc="You represented them on a sale"
               Icon={Home}
               active={role === 'seller'}
@@ -214,6 +214,13 @@ export function AttachRoleDialog({
               Icon={KeyRound}
               active={role === 'buyer'}
               onClick={() => setRole('buyer')}
+            />
+            <RoleCard
+              label="Landlord"
+              desc="They own a rental property"
+              Icon={Building2}
+              active={role === 'landlord'}
+              onClick={() => setRole('landlord')}
             />
           </div>
 

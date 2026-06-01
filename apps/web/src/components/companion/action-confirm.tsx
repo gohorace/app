@@ -1,6 +1,6 @@
 'use client'
 
-import { DoorOpen, ListPlus, X } from 'lucide-react'
+import { DoorOpen, ListPlus, Lock, Pencil, X } from 'lucide-react'
 import type { CompanionAction } from '@/lib/companion/types'
 
 /**
@@ -61,6 +61,37 @@ export function ActionConfirm({ action, onConfirm, onCancel }: ActionConfirmProp
             <span style={{ fontSize: 13, color: '#F5F0E8' }}>
               Dismiss <strong>{action.target}</strong> from today&rsquo;s digest.
             </span>
+          </div>
+        )}
+
+        {action.kind === 'edit-identity' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <Pencil size={14} color="#E8956D" aria-hidden />
+              <span style={{ fontSize: 13, color: '#F5F0E8' }}>
+                Set <strong>{action.target}</strong>&rsquo;s{' '}
+                <strong>{action.field === 'display_name' ? 'name' : 'phone'}</strong> to{' '}
+                <strong>{action.value}</strong>.
+              </span>
+            </div>
+            {/* Safety inset — the observed fact stays untouched. */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 7,
+                background: 'rgba(245,240,232,0.06)',
+                border: '1px solid rgba(245,240,232,0.14)',
+                borderRadius: 8,
+                padding: '8px 11px',
+                fontSize: 11,
+                color: 'rgba(245,240,232,0.75)',
+                fontFamily: 'var(--font-mono)',
+              }}
+            >
+              <Lock size={11} color="rgba(245,240,232,0.6)" aria-hidden />
+              {action.lockedNote ?? 'observed facts stay untouched'}
+            </div>
           </div>
         )}
 

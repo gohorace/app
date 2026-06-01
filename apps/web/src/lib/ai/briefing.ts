@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
+import { unstable_cache } from 'next/cache'
 
 export interface ContactEvent {
   event_type: string
@@ -215,4 +216,52 @@ function fallbackNarrative(count: number, windowLabel: string): string {
   console.log('[ai:fallback] narrative', { count, windowLabel })
   const key = `${count}:${windowLabel}`
   return pickVariant(FALLBACK_NARRATIVE, key)(count, windowLabel)
+}
+
+// ─── Cached single-contact insight (HOR-127 / HOR-246) ───────────────────────
+// Shared wrapper around `generateContactInsight`. The `/digest` roster and the
+// contact-detail page both want the same cached `why_now` for a contact, keyed
+// on the values that change when the contact's status changes (score,
+// score_change, last_seen) so new activity invalidates organically. Tagged
+// `digest:<agentId>` so the daily-briefing cron warms both surfaces at once.
+//
+// Best-effort: when `ANTHROPIC_API_KEY` is unset the Anthropic client never
+// constructs and the deterministic fallback insight is returned instead.
+
+export interface CachedInsightArgs {
+  agentId: string
+  agentName: string
+  contact: {
+    contact_id: string
+    first_name: string | null
+    last_name: string | null
+    email: string | null
+    score: number
+    score_change: number
+    last_seen_at: string | null
+  }
+  events: ContactEvent[]
+}
+
+export async function getCachedContactInsight(args: CachedInsightArgs): Promise<ContactInsight> {
+  const { agentId, agentName, contact, events } = args
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  const name = [contact.first_name, contact.last_name].filter(Boolean).join(' ') || contact.email || 'this contact'
+  if (!apiKey) return fallbackInsight(name, contact.contact_id)
+
+  const cached = unstable_cache(
+    async () => {
+      const client = new Anthropic({ apiKey })
+      return generateContactInsight(client, agentName, contact, events)
+    },
+    [
+      'contact-insight-v1',
+      contact.contact_id,
+      String(contact.score),
+      String(contact.score_change ?? 0),
+      contact.last_seen_at ?? '',
+    ],
+    { tags: [`digest:${agentId}`], revalidate: 86400 },
+  )
+  return cached()
 }

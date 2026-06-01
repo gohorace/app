@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { ArrowLeft, ArrowRight, Check, Home, KeyRound, CircleDashed, Loader2, Mail, Phone, Shield, X } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Building2, Check, Home, KeyRound, CircleDashed, Loader2, Mail, Phone, Shield, X } from 'lucide-react'
 import { PropertyThumb, RoleBadge, toneFor, type ContactRole } from '@/lib/design/badges'
 import { makeInitials } from '@/lib/contacts/identity'
 
@@ -13,7 +13,7 @@ interface PropertyOption {
 }
 
 type Step = 'input' | 'role' | 'confirm'
-type RoleChoice = 'seller' | 'buyer' | 'none'
+type RoleChoice = 'seller' | 'buyer' | 'landlord' | 'none'
 
 interface AddContactDialogProps {
   onClose: () => void
@@ -416,13 +416,13 @@ function RoleStep({
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: '1fr 1fr 1fr',
+          gridTemplateColumns: '1fr 1fr',
           gap: 8,
           marginBottom: 14,
         }}
       >
         <RoleCard
-          label="Seller"
+          label="Vendor"
           desc="You represented them on a sale"
           Icon={Home}
           active={roleChoice === 'seller'}
@@ -434,6 +434,13 @@ function RoleStep({
           Icon={KeyRound}
           active={roleChoice === 'buyer'}
           onClick={() => onRoleChange('buyer')}
+        />
+        <RoleCard
+          label="Landlord"
+          desc="They own a rental property"
+          Icon={Building2}
+          active={roleChoice === 'landlord'}
+          onClick={() => onRoleChange('landlord')}
         />
         <RoleCard
           label="Skip"

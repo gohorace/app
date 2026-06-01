@@ -5,6 +5,7 @@ import { CompanionTrigger } from './companion-trigger'
 import { CompanionDrawer, type ActionAck } from './companion-drawer'
 import type { CompanionAction } from '@/lib/companion/types'
 import { actionConfirmation } from '@/lib/companion/respond'
+import { splitDisplayName } from './identity-edit-form'
 
 /**
  * CompanionMount — single global mount for the Horace companion.
@@ -26,7 +27,7 @@ import { actionConfirmation } from '@/lib/companion/respond'
  */
 
 export function CompanionMount() {
-  const { open, prompt, signal, openToken, contextLabel, openCompanion, closeCompanion } =
+  const { open, prompt, signal, edit, openToken, contextLabel, openCompanion, closeCompanion } =
     useCompanionInternal()
 
   async function handleAction(action: CompanionAction): Promise<ActionAck> {
@@ -54,6 +55,30 @@ export function CompanionMount() {
       return { text: actionConfirmation(action), ok: true }
     }
 
+    if (action.kind === 'edit-identity') {
+      // HOR-246 Phase 2b: the spoken writer. Translate the parsed field to the
+      // PATCH shape — display_name → first/last, phone → phone. Email is never
+      // a writable field here (the grounding/prompt forbid it).
+      const body =
+        action.field === 'display_name'
+          ? splitDisplayName(action.value)
+          : { phone: action.value.trim() || null }
+      try {
+        const res = await fetch(`/api/contacts/${action.contactId}`, {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+        if (!res.ok) {
+          return { text: 'That update did not save — try again in a moment.', ok: false }
+        }
+      } catch (err) {
+        console.error('[companion] edit-identity failed:', err)
+        return { text: 'That update did not save — try again in a moment.', ok: false }
+      }
+      return { text: actionConfirmation(action), ok: true }
+    }
+
     // The other three actions render the confirm card today but don't
     // call backend services yet — those wire in alongside their host
     // surfaces (digest cards in v2-M3, contact/property detail in
@@ -71,6 +96,7 @@ export function CompanionMount() {
         contextLabel={contextLabel}
         prompt={prompt}
         signal={signal}
+        edit={edit}
         openToken={openToken}
         onClose={closeCompanion}
         onAction={handleAction}

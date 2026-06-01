@@ -157,7 +157,7 @@ export async function POST(req: NextRequest) {
   const { data: inspectionRow, error: inspectionErr } = await admin
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .from('inspections' as never)
-    .select('workspace_id, status, deleted_at')
+    .select('workspace_id, status, deleted_at, property_id')
     .eq('token', token)
     .maybeSingle()
 
@@ -212,6 +212,9 @@ export async function POST(req: NextRequest) {
         result.contact_id,
         result.contact_name,
         result.address,
+        // HOR-350: tag the moment with the inspection's property so the
+        // property page can link straight back to it.
+        inspection.property_id ?? null,
       )
     } catch (err) {
       // Don't fail the prospect's submit if push delivery hiccups.

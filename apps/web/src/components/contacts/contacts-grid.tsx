@@ -108,7 +108,7 @@ type TimeWindow = 'Active anytime' | 'Today' | 'This week' | 'This month' | 'Eve
 const TIME_WINDOWS: TimeWindow[] = ['Active anytime', 'Today', 'This week', 'This month', 'Ever']
 
 interface SecondaryFilters {
-  role: 'All' | 'Sellers' | 'Buyers' | 'Engaged only'
+  role: 'All' | 'Vendors' | 'Buyers' | 'Landlords' | 'Engaged only'
   list: 'All lists'
   intensity: 'Any' | 'High' | 'Medium' | 'Low'
   time: TimeWindow
@@ -395,10 +395,12 @@ export function ContactsGrid({ contacts, initialQ = '', agentId, appUrl, selecte
     }
 
     // Role filter (wired)
-    if (filters.role === 'Sellers') {
+    if (filters.role === 'Vendors') {
       rows = rows.filter((c) => c.roles.some((r) => r.type === 'seller'))
     } else if (filters.role === 'Buyers') {
       rows = rows.filter((c) => c.roles.some((r) => r.type === 'buyer'))
+    } else if (filters.role === 'Landlords') {
+      rows = rows.filter((c) => c.roles.some((r) => r.type === 'landlord'))
     } else if (filters.role === 'Engaged only') {
       rows = rows.filter((c) => c.roles.length === 0 && c.score >= 5)
     }
@@ -1182,7 +1184,7 @@ function SecondaryFilterBar({
         Icon={Tag}
         isActive={filters.role !== 'All'}
         current={filters.role}
-        options={['All', 'Sellers', 'Buyers', 'Engaged only']}
+        options={['All', 'Vendors', 'Buyers', 'Landlords', 'Engaged only']}
         onSelect={(v) => onChange({ role: v as SecondaryFilters['role'] })}
       />
       <FilterChip
@@ -1416,9 +1418,10 @@ const INTENT_BARS: Record<IntentLevel | 'none', { level: number; color: string; 
 
 function roleLabel(contact: ContactGridRow): string {
   const counts = roleCounts(contact.roles)
-  if (counts.seller > 0 && counts.buyer > 0) return 'Seller/Buyer'
-  if (counts.seller > 0) return 'Seller'
+  if (counts.seller > 0 && counts.buyer > 0) return 'Vendor/Buyer'
+  if (counts.seller > 0) return 'Vendor'
   if (counts.buyer > 0) return 'Buyer'
+  if (counts.landlord > 0) return 'Landlord'
   if (contact.score >= 5) return 'Engaged'
   return '—'
 }

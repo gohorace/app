@@ -144,6 +144,46 @@ describe('groundReply — action validation', () => {
     const msg = groundReply({ text: 'x', action: { kind: 'draft-email', target: 'Sarah' } }, grounding)
     expect(msg.action).toBeUndefined()
   })
+
+  it('grounds an edit-identity phone action and adds the locked-email note', () => {
+    const msg = groundReply(
+      { text: 'x', action: { kind: 'edit-identity', target: 'Sarah', contactId: 'c-sarah', field: 'phone', value: '0412 345 678' } },
+      grounding,
+    )
+    expect(msg.action).toEqual({
+      kind: 'edit-identity',
+      target: 'Sarah',
+      contactId: 'c-sarah',
+      field: 'phone',
+      value: '0412 345 678',
+      lockedNote: 'observed · sarah@example.com untouched',
+    })
+  })
+
+  it('omits the locked note when the contact has no observed email', () => {
+    const msg = groundReply(
+      { text: 'x', action: { kind: 'edit-identity', target: 'Marcus', contactId: 'c-marcus', field: 'display_name', value: 'Marcus Bell' } },
+      grounding,
+    )
+    expect(msg.action?.kind).toBe('edit-identity')
+    expect((msg.action as { lockedNote?: string }).lockedNote).toBeUndefined()
+  })
+
+  it('drops an edit-identity for an invented contact', () => {
+    const msg = groundReply(
+      { text: 'x', action: { kind: 'edit-identity', target: 'Ghost', contactId: 'c-ghost', field: 'phone', value: '0400 000 000' } },
+      grounding,
+    )
+    expect(msg.action).toBeUndefined()
+  })
+
+  it('refuses an edit-identity targeting a forbidden field (e.g. email)', () => {
+    const msg = groundReply(
+      { text: 'x', action: { kind: 'edit-identity', target: 'Sarah', contactId: 'c-sarah', field: 'email', value: 'new@x.com' } },
+      grounding,
+    )
+    expect(msg.action).toBeUndefined()
+  })
 })
 
 describe('fallbackReply', () => {

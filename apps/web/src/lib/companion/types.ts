@@ -8,7 +8,7 @@
  * wire shape shared across that boundary.
  */
 
-export type ActionKind = 'draft-email' | 'add-to-list' | 'dismiss' | 'create-inspection'
+export type ActionKind = 'draft-email' | 'add-to-list' | 'dismiss' | 'create-inspection' | 'edit-identity'
 
 interface BaseAction {
   kind: ActionKind
@@ -47,11 +47,33 @@ export interface CreateInspectionAction extends BaseAction {
   token: string
 }
 
+/**
+ * Spoken/NLU identity edit (HOR-246 amendment, Phase 2b). The agent says
+ * "set Dan's phone to 0412…"; Horace parses it into this action and the drawer
+ * shows a parse-confirmation before anything is written. Writes only
+ * agent-supplied fields — never the observed email.
+ *
+ * `field` is limited to `display_name` / `phone` (clean string writes).
+ * Suburb is intentionally excluded from the spoken path: it maps to a
+ * residence *address*, which a bare spoken string can't resolve — suburb edits
+ * stay in the structured form (Phase 2a), which uses AddressAutocomplete.
+ */
+export interface EditIdentityAction extends BaseAction {
+  kind: 'edit-identity'
+  contactId: string
+  field: 'display_name' | 'phone'
+  value: string
+  /** The observed email, echoed in the confirm card's safety inset so the
+   *  agent sees the locked fact stays untouched. Populated server-side. */
+  lockedNote?: string
+}
+
 export type CompanionAction =
   | DraftEmailAction
   | AddToListAction
   | DismissAction
   | CreateInspectionAction
+  | EditIdentityAction
 
 export interface MessageReference {
   label: string
@@ -117,6 +139,25 @@ export interface CompanionSignalContext {
   suburb?: string | null
 }
 
+/**
+ * Identity-edit context (HOR-246 amendment, Phase 2a). When the companion is
+ * opened with this, the drawer renders the structured `IdentityEditForm`
+ * instead of the conversation — the decided edit surface for agent-supplied
+ * identity. Observed facts (the email) are carried for display only and stay
+ * read-only; the form writes the agent-supplied fields via PATCH.
+ */
+export interface EditIdentityContext {
+  contactId: string
+  /** The field the agent arrived from — gets the focus ring. */
+  focusField?: 'name' | 'phone'
+  /** Current agent-supplied values (prefill). */
+  displayName: string | null
+  phone: string | null
+  /** Observed email + its provenance ("seen via …") — shown locked. */
+  email: string | null
+  seenLabel: string
+}
+
 export interface OpenCompanionOptions {
   /** Initial prompt to render as the agent's first message. Triggers an
    *  auto-response from Horace 600ms later. Omit to open with just the
@@ -132,6 +173,9 @@ export interface OpenCompanionOptions {
    *  No auto-reply fires; the read is already computed, so the opener is
    *  Horace-led and the agent drives from there. */
   signal?: CompanionSignalContext
+  /** When set, the drawer opens the identity-edit form (HOR-246 Phase 2a)
+   *  instead of the conversation. */
+  edit?: EditIdentityContext
 }
 
 export interface CompanionContextValue {
