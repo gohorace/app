@@ -202,7 +202,7 @@ export function AttachRoleDialog({
           {/* Role buttons */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16 }}>
             <RoleCard
-              label="Seller"
+              label="Vendor"
               desc="You represented them on a sale"
               Icon={Home}
               active={role === 'seller'}

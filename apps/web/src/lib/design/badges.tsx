@@ -244,7 +244,9 @@ export function AvatarStack({
 export type ContactRole = 'seller' | 'buyer' | 'engaged'
 
 const ROLE_STYLE: Record<ContactRole, { label: string; icon: typeof Home; fg: string; bg: string }> = {
-  seller:  { label: 'Seller',  icon: Home,     fg: '#C4622D', bg: 'rgba(196,98,45,0.12)' },
+  // HOR-246: display label is "Vendor" (AU real-estate vocabulary). The
+  // underlying ContactRole value stays 'seller' — only the label changed.
+  seller:  { label: 'Vendor',  icon: Home,     fg: '#C4622D', bg: 'rgba(196,98,45,0.12)' },
   buyer:   { label: 'Buyer',   icon: KeyRound, fg: '#3D5246', bg: 'rgba(61,82,70,0.12)' },
   engaged: { label: 'Engaged', icon: Eye,      fg: '#5E5246', bg: 'rgba(140,123,107,0.14)' },
 }

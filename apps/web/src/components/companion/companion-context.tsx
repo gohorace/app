@@ -6,6 +6,7 @@ import { deriveContextLabel } from '@/lib/companion/derive-context-label'
 import type {
   CompanionContextValue,
   CompanionSignalContext,
+  EditIdentityContext,
   OpenCompanionOptions,
 } from '@/lib/companion/types'
 
@@ -31,6 +32,9 @@ interface InternalCompanionState {
   /** Focused-signal context (the card's "Ask"). Undefined for the general
    *  header / floating-trigger entry. */
   signal: CompanionSignalContext | undefined
+  /** Identity-edit context (HOR-246 Phase 2a). When set, the drawer opens
+   *  the edit form rather than the conversation. */
+  edit: EditIdentityContext | undefined
   /** Token bumped on every `openCompanion(...)` so the drawer knows to
    *  rebuild the conversation even when called with the same arguments. */
   openToken: number
@@ -41,6 +45,8 @@ interface CompanionInternalValue extends CompanionContextValue {
   prompt: string | undefined
   /** Latest focused-signal context — consumed once by the drawer on open. */
   signal: CompanionSignalContext | undefined
+  /** Latest identity-edit context — consumed once by the drawer on open. */
+  edit: EditIdentityContext | undefined
   openToken: number
 }
 
@@ -53,6 +59,7 @@ export function CompanionProvider({ children }: { children: React.ReactNode }) {
     prompt: undefined,
     contextLabelOverride: undefined,
     signal: undefined,
+    edit: undefined,
     openToken: 0,
   })
 
@@ -62,6 +69,7 @@ export function CompanionProvider({ children }: { children: React.ReactNode }) {
       prompt: opts?.prompt,
       contextLabelOverride: opts?.contextLabel,
       signal: opts?.signal,
+      edit: opts?.edit,
       openToken: prev.openToken + 1,
     }))
   }, [])
@@ -83,12 +91,13 @@ export function CompanionProvider({ children }: { children: React.ReactNode }) {
       open: state.open,
       prompt: state.prompt,
       signal: state.signal,
+      edit: state.edit,
       openToken: state.openToken,
       contextLabel,
       openCompanion,
       closeCompanion,
     }),
-    [state.open, state.prompt, state.signal, state.openToken, contextLabel, openCompanion, closeCompanion],
+    [state.open, state.prompt, state.signal, state.edit, state.openToken, contextLabel, openCompanion, closeCompanion],
   )
 
   return (

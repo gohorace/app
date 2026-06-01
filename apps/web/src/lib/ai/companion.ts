@@ -210,6 +210,12 @@ Action objects (choose at most one):
 - { "kind": "add-to-list", "target": <contact's name>, "listName": <a name from LISTS>, "contactId": <id from CONTACTS>, "listId": <id from LISTS> }
 - { "kind": "create-inspection", "target": <address>, "when": <human-readable time>, "token": <kebab-case slug> }
 - { "kind": "dismiss", "target": <what to dismiss> }
+- { "kind": "edit-identity", "target": <contact's name>, "contactId": <id from CONTACTS>, "field": "display_name" | "phone", "value": <the literal new value> }
+
+Use edit-identity ONLY when the agent explicitly tells you to set or correct a contact's name or phone (e.g. "her name is Sarah Thompson", "set Dan's phone to 0412 345 678", "his number is 0407…"). The agent confirms before it saves.
+- "field" is "display_name" for a name, "phone" for a phone number — nothing else.
+- NEVER emit edit-identity for the email or suburb. The email is an observed fact and is read-only; a suburb edit goes through the form, not you. If the agent asks to change an email, say it's locked because it's how you recognised them. If they ask to change a suburb, tell them to tap the suburb field.
+- "value" is exactly what to store (the name as the agent said it, or the phone digits). Do not reformat or invent.
 
 You may be mid-conversation. CONVERSATION SO FAR (when present) shows the prior turns — read it for continuity and don't re-ask what the agent already told you.
 
@@ -358,7 +364,8 @@ export function groundReply(parsed: RawReply, g: Grounding): HoraceMessage {
     if (refs.length > 0) message.references = refs
   }
 
-  const action = groundAction(parsed.action, contactIds, listIds)
+  const emailById = new Map(g.contacts.map((c) => [c.id, c.email]))
+  const action = groundAction(parsed.action, contactIds, listIds, emailById)
   if (action) message.action = action
 
   return message
@@ -368,6 +375,7 @@ function groundAction(
   raw: unknown,
   contactIds: Set<string>,
   listIds: Set<string>,
+  emailById: Map<string, string | null>,
 ): CompanionAction | undefined {
   if (!raw || typeof raw !== 'object') return undefined
   const a = raw as Record<string, unknown>
@@ -394,6 +402,24 @@ function groundAction(
     case 'dismiss': {
       if (!target) return undefined
       return { kind: 'dismiss', target, ...(typeof a.reason === 'string' ? { reason: a.reason } : {}) }
+    }
+    case 'edit-identity': {
+      // Only real contacts, only the two agent-supplied string fields, never
+      // email/suburb. The observed email (from grounding) rides along as the
+      // confirm-card safety note.
+      const contactId = typeof a.contactId === 'string' && contactIds.has(a.contactId) ? a.contactId : undefined
+      const field = a.field === 'display_name' || a.field === 'phone' ? a.field : undefined
+      const value = typeof a.value === 'string' ? a.value.trim() : ''
+      if (!target || !contactId || !field || !value) return undefined
+      const email = emailById.get(contactId) ?? null
+      return {
+        kind: 'edit-identity',
+        target,
+        contactId,
+        field,
+        value,
+        ...(email ? { lockedNote: `observed · ${email} untouched` } : {}),
+      }
     }
     default:
       return undefined

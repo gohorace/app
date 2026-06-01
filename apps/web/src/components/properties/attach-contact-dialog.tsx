@@ -115,7 +115,7 @@ export function AttachContactDialog({
           {/* Role picker */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
             <RoleCard
-              label="Seller"
+              label="Vendor"
               desc="You represented them on a sale of this property"
               Icon={Home}
               active={role === 'seller'}
@@ -292,7 +292,7 @@ export function AttachContactDialog({
               ) : (
                 <>
                   <ArrowRight style={{ width: 13, height: 13 }} />
-                  Attach as {role === 'seller' ? 'Seller' : 'Buyer'}
+                  Attach as {role === 'seller' ? 'Vendor' : 'Buyer'}
                 </>
               )}
             </button>

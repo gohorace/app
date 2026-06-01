@@ -6,6 +6,7 @@ import { deriveIdentity, makeInitials } from '@/lib/contacts/identity'
 import { getRoles } from '@/lib/contacts/roles'
 import { mergeScrollDepth, collapseEmailOpens, type RawEvent } from '@/lib/contacts/events'
 import { getContactEmailSends } from '@/lib/contacts/email-engagement'
+import { getCachedContactInsight } from '@/lib/ai/briefing'
 
 export const dynamic = 'force-dynamic'
 
@@ -16,7 +17,7 @@ export default async function ContactDetailPage({ params }: { params: { id: stri
   const admin = createAdminClient()
   const { data: agent } = await admin
     .from('agents')
-    .select('id')
+    .select('id, first_name, last_name')
     .eq('user_id', user!.id)
     .maybeSingle()
 
@@ -159,6 +160,34 @@ export default async function ContactDetailPage({ params }: { params: { id: stri
   const identity = deriveIdentity(contact)
   const initials = makeInitials(contact)
 
+  // ── "Why now · Horace's read" ───────────────────────────────────────────
+  // HOR-246: the Signal block leads with a Horace-voiced read of why this
+  // contact is hot right now. Reuse the same cached insight pipeline the
+  // /digest roster uses (best-effort — falls back to a deterministic line
+  // when Anthropic is unavailable). No score_change column on the contact
+  // select, so we pass the trailing-week positive-delta as the change hint.
+  const agentName =
+    [agent.first_name, agent.last_name].filter(Boolean).join(' ') || 'Your agent'
+  const insight = await getCachedContactInsight({
+    agentId:   agent.id,
+    agentName,
+    contact: {
+      contact_id:   contact.id,
+      first_name:   contact.first_name,
+      last_name:    contact.last_name,
+      email:        contact.email,
+      score:        contact.score,
+      score_change: 0,
+      last_seen_at: contact.last_seen_at,
+    },
+    events: events.map((e) => ({
+      event_type:  e.event_type,
+      properties:  e.properties,
+      score_delta: e.score_delta,
+      occurred_at: e.occurred_at,
+    })),
+  }).catch(() => null)
+
   return (
     <ContactDetailView
       contact={{
@@ -177,6 +206,8 @@ export default async function ContactDetailPage({ params }: { params: { id: stri
         // metadata has been on contacts since the original schema so it's
         // the safe home).
         notes:        ((contact.metadata as Record<string, unknown> | null)?.notes as string | undefined) ?? null,
+        nudge:        insight?.why_now ?? null,
+        recommendation: insight?.action ?? null,
       }}
       identity={identity}
       initials={initials}
