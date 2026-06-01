@@ -44,19 +44,29 @@ Capture provenance every load via the `source` / `source_version` columns (defau
 
 ## Source options
 
-ABS ships ASGS natively as **Shapefile / GeoPackage**, not GeoJSON. Pick one path to a GeoJSON `SAL_GEOJSON_URL` (or a local `SAL_GEOJSON_PATH`):
+ABS ships ASGS natively as **Shapefile / GeoPackage**, not GeoJSON. Pick one path to a GeoJSON `SAL_GEOJSON_URL` (or a local `SAL_GEOJSON_PATH`). All three are the same ABS ASGS Edition 3 (2021) SAL dataset, CC BY 4.0.
 
-1. **Digital Atlas of Australia WFS (preferred — serves GeoJSON directly, scriptable).**
-   The ABS ASGS 2021 SAL layer is published on the Digital Atlas. Build a WFS `GetFeature` request with `outputFormat=application/json` and, optionally, a `CQL_FILTER`/`STATE`-code filter for QLD (state code `3`) to shrink the download. Confirm the exact `typeName` (layer id) from the Digital Atlas service catalogue before pinning it here — **TODO: paste the confirmed WFS URL once verified.**
-
-2. **data.gov.au ASGS 2021 SAL dataset → convert.**
-   Download the SAL GeoPackage/Shapefile from the [ABS ASGS Edition 3 (2021) dataset on data.gov.au](https://data.gov.au/), then convert to GeoJSON once:
+1. **ABS digital boundary files → convert (preferred — authoritative + complete).**
+   Download `SAL_2021_AUST_GDA2020` (GeoPackage or Shapefile) from the ABS [digital boundary files page](https://www.abs.gov.au/statistics/standards/australian-statistical-geography-standard-asgs/edition-3-july-2021-june-2026/access-and-downloads/digital-boundary-files), then convert + filter to QLD once:
    ```bash
-   ogr2ogr -f GeoJSON SAL_2021_AUST_GDA2020.geojson SAL_2021_AUST_GDA2020.gpkg
+   ogr2ogr -f GeoJSON -where "STATE_NAME_2021='Queensland'" -t_srs EPSG:4326 \
+     sal-qld.geojson SAL_2021_AUST_GDA2020.gpkg
    ```
-   Pass the result as `SAL_GEOJSON_PATH`.
+   Pass the result as `SAL_GEOJSON_PATH`. Full QLD set in one clean file, no pagination.
 
-Either way, the script reads `SAL_NAME21` / `STE_NAME21` (or `STE_CODE21`) tolerantly, strips any ABS state parenthetical (e.g. `New Farm (Qld)` → `NEW FARM`), and joins on uppercased name + state.
+2. **ABS ArcGIS REST query (scriptable, QLD GeoJSON direct).**
+   The ABS hosts SAL at [`geo.abs.gov.au/arcgis/rest/services/ASGS2021/SAL/MapServer`](https://geo.abs.gov.au/arcgis/rest/services/ASGS2021/SAL/MapServer). Query layer 0 as GeoJSON, filtered to QLD:
+   ```
+   https://geo.abs.gov.au/arcgis/rest/services/ASGS2021/SAL/MapServer/0/query?where=STATE_NAME_2021%3D%27Queensland%27&outFields=*&outSR=4326&f=geojson
+   ```
+   ⚠️ ArcGIS paginates (`maxRecordCount`, usually 2000). QLD is ~3,500 features, so a single request returns `exceededTransferLimit: true` with only the first page — add `&resultRecordCount=2000&resultOffset=0`, then `&resultOffset=2000`, and concatenate the `features`. For a one-shot file prefer option 1 or 3.
+
+3. **Digital Atlas of Australia (one-click GeoJSON).**
+   [SAL (2021) – ASGS Ed. 3](https://digital.atlas.gov.au/datasets/e3fe2ba8b18f48029b789297a27e8b41) → **Download → GeoJSON** (national; filter QLD after), or use the Hub filter/API. Handy for an ad-hoc pull.
+
+The script reads `SAL_NAME21` / `SAL_NAME_2021`, `STE_NAME21` / `STATE_NAME_2021`, and `STE_CODE21` / `STATE_CODE_2021` tolerantly, strips any ABS state parenthetical (e.g. `New Farm (Qld)` → `NEW FARM`), and joins on uppercased name + state. (ABS QLD `STATE_CODE_2021 = 3`.)
+
+> Note: `geo.abs.gov.au`, `data.gov.au`, and `digital.atlas.gov.au` all 403 from the Claude Code web sandbox, so the load runs from a laptop — or fetch the QLD GeoJSON locally and drop it on a sandbox-reachable host (a GitHub raw URL works) for an MCP-driven load.
 
 ---
 
