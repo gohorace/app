@@ -31,6 +31,7 @@ import { generate as generateToken } from '@/lib/inspections/tokens'
 import { createInspection } from '@/lib/inspections/repo'
 import { inspectionPublicUrl } from '@/lib/inspections/origin'
 import { getVerifiedDomainForWorkspace } from '@/lib/domains/lookup'
+import { resolvePrimaryAgent } from '@/lib/seats/resolve-agent'
 
 // Token collisions at 60^8 (~1.68e14 combos) are astronomically rare,
 // but the schema's UNIQUE constraint will still raise 23505 if it
@@ -56,11 +57,7 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const admin = createAdminClient()
-  const { data: agent } = await admin
-    .from('agents')
-    .select('id, workspace_id')
-    .eq('user_id', user.id)
-    .maybeSingle()
+  const agent = await resolvePrimaryAgent(admin, user.id)
 
   if (!agent || !agent.workspace_id) {
     return NextResponse.json({ error: 'No workspace for user' }, { status: 400 })

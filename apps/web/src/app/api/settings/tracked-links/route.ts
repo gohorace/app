@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { resolvePrimaryAgent } from '@/lib/seats/resolve-agent'
 
 // PATCH /api/settings/tracked-links
 // Updates the agent's default destination URL for per-contact tracked links.
@@ -49,11 +50,7 @@ export async function PATCH(request: NextRequest) {
   }
 
   const admin = createAdminClient()
-  const { data: agent } = await admin
-    .from('agents')
-    .select('id')
-    .eq('user_id', user.id)
-    .maybeSingle()
+  const agent = await resolvePrimaryAgent(admin, user.id)
 
   if (!agent) return NextResponse.json({ error: 'No agent found' }, { status: 400 })
 

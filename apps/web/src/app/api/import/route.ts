@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { parseCsv, type FieldMapping, type CsvContact } from '@/lib/crm/csv-parser'
+import { resolvePrimaryAgent } from '@/lib/seats/resolve-agent'
 
 /**
  * CSV import — V1 brief alignment (HOR-107 Phase 2c).
@@ -32,12 +33,7 @@ export async function POST(request: NextRequest) {
 
   const admin = createAdminClient()
 
-  const { data: agent } = await admin
-    .from('agents')
-    .select('id, workspace_id')
-    .eq('user_id', user.id)
-    .not('workspace_id', 'is', null)
-    .maybeSingle()
+  const agent = await resolvePrimaryAgent(admin, user.id, { requireWorkspace: true })
 
   if (!agent || !agent.workspace_id) {
     return NextResponse.json({ error: 'No agent found' }, { status: 400 })

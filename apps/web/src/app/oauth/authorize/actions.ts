@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { generateAuthCode, AUTH_CODE_TTL_SECONDS } from '@/lib/oauth/helpers'
+import { resolvePrimaryAgent } from '@/lib/seats/resolve-agent'
 
 function withParams(uri: string, params: Record<string, string | undefined>): string {
   const u = new URL(uri)
@@ -24,6 +25,13 @@ export async function authorizeAction(formData: FormData) {
 
   if (!clientId || !redirectUri || !codeChallenge) {
     throw new Error('Missing required parameters')
+  }
+
+  // We only support S256 PKCE (the token endpoint verifies S256). Reject any
+  // other method up front rather than silently recording it as S256 and
+  // failing later at the token exchange with a misleading invalid_grant.
+  if (codeChallengeMethod !== 'S256') {
+    throw new Error('Unsupported code_challenge_method (S256 required)')
   }
 
   if (decision !== 'approve') {
@@ -49,12 +57,7 @@ export async function authorizeAction(formData: FormData) {
   if (!client) throw new Error('Unknown client')
   if (!client.redirect_uris.includes(redirectUri)) throw new Error('redirect_uri mismatch')
 
-  const { data: agent } = await admin
-    .from('agents')
-    .select('id, workspace_id')
-    .eq('user_id', user.id)
-    .not('workspace_id', 'is', null)
-    .maybeSingle()
+  const agent = await resolvePrimaryAgent(admin, user.id, { requireWorkspace: true })
   if (!agent || !agent.workspace_id) throw new Error('No workspace for user')
 
   const code = generateAuthCode()
@@ -68,7 +71,7 @@ export async function authorizeAction(formData: FormData) {
     workspace_id: agent.workspace_id,
     redirect_uri: redirectUri,
     code_challenge: codeChallenge,
-    code_challenge_method: codeChallengeMethod === 'S256' ? 'S256' : 'S256',
+    code_challenge_method: codeChallengeMethod,
     scope,
     expires_at: expiresAt,
   })

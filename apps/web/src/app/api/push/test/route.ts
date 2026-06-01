@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { vapidSubject } from '@/lib/notifications/vapid'
+import { resolvePrimaryAgent } from '@/lib/seats/resolve-agent'
 
 export async function POST() {
   const supabase = await createClient()
@@ -9,11 +10,7 @@ export async function POST() {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const admin = createAdminClient()
-  const { data: agent } = await admin
-    .from('agents')
-    .select('id')
-    .eq('user_id', user.id)
-    .maybeSingle()
+  const agent = await resolvePrimaryAgent(admin, user.id)
 
   if (!agent) return NextResponse.json({ error: 'No agent found' }, { status: 400 })
 
@@ -105,11 +102,7 @@ export async function GET() {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const admin = createAdminClient()
-  const { data: agent } = await admin
-    .from('agents')
-    .select('id')
-    .eq('user_id', user.id)
-    .maybeSingle()
+  const agent = await resolvePrimaryAgent(admin, user.id)
 
   if (!agent) return NextResponse.json({ error: 'No agent found' }, { status: 400 })
 

@@ -34,6 +34,7 @@ import {
   isTimeWindow,
 } from '@/lib/map/rpc-types'
 import { generateMapSummary } from '@/lib/ai/map-summary'
+import { resolvePrimaryAgent } from '@/lib/seats/resolve-agent'
 import {
   bucketPropertiesBySuburb,
   composePropertyStory,
@@ -42,11 +43,7 @@ import {
 
 async function resolveAgent(userId: string) {
   const admin = createAdminClient()
-  const { data: agent } = await admin
-    .from('agents')
-    .select('id, workspace_id')
-    .eq('user_id', userId)
-    .maybeSingle()
+  const agent = await resolvePrimaryAgent(admin, userId)
   return { admin, agent }
 }
 

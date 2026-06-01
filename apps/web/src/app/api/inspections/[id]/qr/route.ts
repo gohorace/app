@@ -22,6 +22,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { qrPngBuffer, buildQrFilename } from '@/lib/inspections/qr'
 import { doorstepOrigin, inspectionPublicUrl } from '@/lib/inspections/origin'
+import { resolvePrimaryAgent } from '@/lib/seats/resolve-agent'
 
 export const dynamic = 'force-dynamic'
 
@@ -41,11 +42,7 @@ export async function GET(req: NextRequest, ctx: Ctx) {
 
   const admin = createAdminClient()
 
-  const { data: agent } = await admin
-    .from('agents')
-    .select('id, workspace_id')
-    .eq('user_id', user.id)
-    .maybeSingle()
+  const agent = await resolvePrimaryAgent(admin, user.id)
 
   if (!agent) return NextResponse.json({ error: 'No agent record' }, { status: 401 })
 

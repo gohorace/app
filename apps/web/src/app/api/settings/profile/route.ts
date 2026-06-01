@@ -13,6 +13,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { resolvePrimaryAgent } from '@/lib/seats/resolve-agent'
 import { z } from 'zod'
 
 const schema = z
@@ -44,11 +45,7 @@ export async function PATCH(request: NextRequest) {
   }
 
   const admin = createAdminClient()
-  const { data: agentRow } = await admin
-    .from('agents')
-    .select('id')
-    .eq('user_id', user.id)
-    .maybeSingle()
+  const agentRow = await resolvePrimaryAgent(admin, user.id)
   if (!agentRow) return NextResponse.json({ error: 'No agent found' }, { status: 400 })
 
   const { error } = await admin

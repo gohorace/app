@@ -24,6 +24,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { authenticateRequest } from '@/lib/mcp/auth'
 import { loadProfile } from '@/lib/mcp/profile'
+import { resolvePrimaryAgent } from '@/lib/seats/resolve-agent'
 import {
   derivePretext,
   fetchRecentSoldBySuburb,
@@ -143,17 +144,17 @@ async function resolveAuth(req: NextRequest): Promise<DraftAuth> {
   }
 
   const admin = createAdminClient()
-  const { data: agent } = await admin
-    .from('agents')
-    .select('id, first_name, last_name, workspace_id')
-    .eq('user_id', user.id)
-    .not('workspace_id', 'is', null)
-    .maybeSingle()
-
-  if (!agent) {
+  const resolved = await resolvePrimaryAgent(admin, user.id, { requireWorkspace: true })
+  if (!resolved) {
     throw NextResponse.json({ error: 'No workspace found' }, { status: 400 })
   }
-  return { agentId: agent.id, agentName: fullName(agent) }
+  // Re-fetch the agent's name by resolved id (resolvePrimaryAgent only returns id/workspace_id/seat_type).
+  const { data: agent } = await admin
+    .from('agents')
+    .select('id, first_name, last_name')
+    .eq('id', resolved.id)
+    .maybeSingle()
+  return { agentId: resolved.id, agentName: fullName(agent) }
 }
 
 function fullName(agent: { first_name?: string | null; last_name?: string | null } | null): string {

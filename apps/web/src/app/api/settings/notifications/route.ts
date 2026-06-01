@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { z } from 'zod'
+import { resolvePrimaryAgent } from '@/lib/seats/resolve-agent'
 
 const schema = z.object({
   push_alert_mode:     z.enum(['threshold', 'all', 'hourly_digest']),
@@ -23,11 +24,7 @@ export async function POST(request: NextRequest) {
   }
 
   const admin = createAdminClient()
-  const { data: agentRow } = await admin
-    .from('agents')
-    .select('id')
-    .eq('user_id', user.id)
-    .maybeSingle()
+  const agentRow = await resolvePrimaryAgent(admin, user.id)
 
   if (!agentRow) return NextResponse.json({ error: 'No agent found' }, { status: 400 })
 
@@ -75,11 +72,7 @@ export async function PATCH(request: NextRequest) {
   }
 
   const admin = createAdminClient()
-  const { data: agentRow } = await admin
-    .from('agents')
-    .select('id')
-    .eq('user_id', user.id)
-    .maybeSingle()
+  const agentRow = await resolvePrimaryAgent(admin, user.id)
   if (!agentRow) return NextResponse.json({ error: 'No agent found' }, { status: 400 })
 
   const { error } = await admin

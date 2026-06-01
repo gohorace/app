@@ -28,6 +28,23 @@ export async function POST(req: NextRequest) {
 
   const admin = createAdminClient()
 
+  // Idempotency: Stripe redelivers the same event.id (retries / at-least-once).
+  // Record it first and skip if already handled, so a replay — or a stale
+  // `subscription.updated` arriving after a `subscription.deleted` is replayed —
+  // can't re-apply and resurrect a canceled subscription. Fail OPEN on any
+  // non-duplicate error (e.g. the table not yet existing during rollout) so the
+  // idempotency ledger can never drop a real billing event.
+  const { error: dedupeErr } = await admin
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .from('stripe_webhook_events' as any)
+    .insert({ event_id: event.id, event_type: event.type } as never)
+  if (dedupeErr) {
+    if (dedupeErr.code === '23505') {
+      return NextResponse.json({ received: true, duplicate: true })
+    }
+    console.error('stripe webhook: idempotency insert failed (continuing):', dedupeErr)
+  }
+
   try {
     switch (event.type) {
       case 'checkout.session.completed': {
@@ -67,6 +84,19 @@ export async function POST(req: NextRequest) {
         }
         break
       }
+      case 'invoice.payment_succeeded':
+      case 'invoice.paid': {
+        // Recovery: a failed-then-recovered payment doesn't always emit a fresh
+        // subscription.updated, so re-sync here to flip `past_due` back to active
+        // rather than leaving the workspace stuck past_due indefinitely.
+        const invoice = event.data.object as Stripe.Invoice & { subscription?: string | Stripe.Subscription | null }
+        const subId = typeof invoice.subscription === 'string' ? invoice.subscription : invoice.subscription?.id
+        if (subId) {
+          const sub = await stripe.subscriptions.retrieve(subId)
+          await syncSubscription(admin, sub)
+        }
+        break
+      }
     }
   } catch (err) {
     console.error('Webhook handler error:', err)
@@ -88,7 +118,12 @@ async function syncSubscription(
 
   const item = sub.items.data[0]
   const plan = item?.price?.lookup_key ?? item?.price?.id ?? 'unknown'
-  const periodEndUnix = item?.current_period_end ?? null
+  // current_period_end is item-level on newer API shapes but subscription-level
+  // on others; fall back so we don't null out the period on an active sub.
+  const periodEndUnix =
+    item?.current_period_end ??
+    (sub as { current_period_end?: number }).current_period_end ??
+    null
 
   await admin
     .from('workspaces')

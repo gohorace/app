@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { resolvePrimaryAgent } from '@/lib/seats/resolve-agent'
 
 /**
  * PATCH /api/notes/[id] — edit body or toggle resolved (HOR-252).
@@ -26,11 +27,7 @@ export async function PATCH(
   if (!user) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 })
 
   const admin = createAdminClient()
-  const { data: agent } = await admin
-    .from('agents')
-    .select('id, workspace_id')
-    .eq('user_id', user.id)
-    .maybeSingle()
+  const agent = await resolvePrimaryAgent(admin, user.id)
   if (!agent?.workspace_id) return NextResponse.json({ error: 'no_workspace' }, { status: 401 })
 
   // Fetch the note (workspace-scoped) to authorise.
@@ -70,6 +67,10 @@ export async function PATCH(
     .from('notes' as any)
     .update(patch as never)
     .eq('id', params.id)
+    // Defense-in-depth: scope the write to the caller's workspace so the
+    // mutation can't reach another workspace's note even if the read above
+    // is ever refactored away.
+    .eq('workspace_id', agent.workspace_id)
   if (error) {
     console.error('[notes] PATCH failed:', error)
     return NextResponse.json({ error: 'update_failed' }, { status: 500 })

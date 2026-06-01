@@ -117,6 +117,12 @@ export function CompanionDrawer({
   // applied if it still matches — so a close/reopen or a newer send discards
   // any in-flight reply rather than appending it to the wrong thread.
   const reqIdRef = useRef(0)
+  // Holds the latest entry context so the reset effect can read it without
+  // taking prompt/signal/edit/contextLabel as deps — those change under an
+  // already-open drawer (contextLabel tracks the route) and must NOT wipe the
+  // live thread. Updated every render; read only when a fresh open fires.
+  const entryRef = useRef({ prompt, signal, edit, contextLabel })
+  entryRef.current = { prompt, signal, edit, contextLabel }
 
   const runReply = useCallback(
     async (text: string, ctx: string | undefined, history: ConversationTurn[]) => {
@@ -133,9 +139,13 @@ export function CompanionDrawer({
 
   // Reset conversation whenever the agent opens the drawer fresh. The
   // openToken changes on every `openCompanion` call, so even identical
-  // (prompt, contextLabel) re-keys the thread — matches prototype UX.
+  // (prompt, contextLabel) re-keys the thread — matches prototype UX. We key
+  // ONLY on [open, openToken] and read the entry context from a ref, so
+  // navigating while the drawer is open (which changes contextLabel) no longer
+  // wipes the live thread.
   useEffect(() => {
     if (!open) return
+    const { prompt, signal, edit, contextLabel } = entryRef.current
     setPendingAction(null)
     setEditDone(false)
     setTyping(false)
@@ -154,7 +164,9 @@ export function CompanionDrawer({
     } else {
       setMessages(emptyConversation(contextLabel))
     }
-  }, [open, openToken, prompt, signal, edit, contextLabel, runReply])
+    // entryRef is a ref (stable); runReply is stable (useCallback []).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, openToken, runReply])
 
   // Scroll to bottom whenever messages change or the action card appears.
   useEffect(() => {

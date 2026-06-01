@@ -13,6 +13,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { resolvePrimaryAgent } from '@/lib/seats/resolve-agent'
 import { authenticateRequest } from '@/lib/mcp/auth'
 
 export const runtime = 'nodejs'
@@ -29,12 +30,7 @@ async function resolveAgentId(req: NextRequest): Promise<string | null> {
   if (!user) return null
 
   const admin = createAdminClient()
-  const { data: agent } = await admin
-    .from('agents')
-    .select('id')
-    .eq('user_id', user.id)
-    .not('workspace_id', 'is', null)
-    .maybeSingle()
+  const agent = await resolvePrimaryAgent(admin, user.id, { requireWorkspace: true })
   return agent?.id ?? null
 }
 

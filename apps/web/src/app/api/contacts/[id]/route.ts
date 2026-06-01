@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveResidence, type SelectedAddressInput } from '@/lib/contacts/residence'
 import { getRoles, withRoleAdded, withRoleRemoved } from '@/lib/contacts/roles'
+import { resolvePrimaryAgent } from '@/lib/seats/resolve-agent'
 
 // Body shape for role mutations. Caller sends one of:
 //   - `{ add_role: { type, property_id, date? } }`         — append/replace
@@ -23,11 +24,7 @@ export async function GET(
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const admin = createAdminClient()
-  const { data: agent } = await admin
-    .from('agents')
-    .select('id')
-    .eq('user_id', user.id)
-    .maybeSingle()
+  const agent = await resolvePrimaryAgent(admin, user.id)
 
   if (!agent) return NextResponse.json({ error: 'Agent not found' }, { status: 404 })
 
@@ -126,11 +123,7 @@ export async function PATCH(
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const admin = createAdminClient()
-  const { data: agent } = await admin
-    .from('agents')
-    .select('id, workspace_id')
-    .eq('user_id', user.id)
-    .maybeSingle()
+  const agent = await resolvePrimaryAgent(admin, user.id)
 
   if (!agent) return NextResponse.json({ error: 'Agent not found' }, { status: 404 })
 
@@ -294,11 +287,7 @@ export async function DELETE(
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const admin = createAdminClient()
-  const { data: agent } = await admin
-    .from('agents')
-    .select('id')
-    .eq('user_id', user.id)
-    .maybeSingle()
+  const agent = await resolvePrimaryAgent(admin, user.id)
 
   if (!agent) return NextResponse.json({ error: 'Agent not found' }, { status: 404 })
 

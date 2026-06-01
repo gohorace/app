@@ -44,14 +44,15 @@ describe('tierForScore', () => {
 })
 
 describe('weeklyDelta', () => {
-  it('sums positive score deltas inside the trailing week', () => {
+  it('counts positive engagements inside the trailing week (tally, not score points)', () => {
     const events = [
       ev({ event_type: 'page_view', score_delta: 5, occurred_at: HOURS(2) }),
       ev({ event_type: 'return_visit', score_delta: 9, occurred_at: DAYS(3) }),
       ev({ event_type: 'page_view', score_delta: 4, occurred_at: DAYS(10) }), // out of window
       ev({ event_type: 'scroll_depth', score_delta: -2, occurred_at: HOURS(1) }), // negative ignored
     ]
-    expect(weeklyDelta(events, NOW)).toBe(14)
+    // Two in-window positive events → +2 (a single high-value event is +1, not +50).
+    expect(weeklyDelta(events, NOW)).toBe(2)
   })
 
   it('returns null when there is no positive movement', () => {

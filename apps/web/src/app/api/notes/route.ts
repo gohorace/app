@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { Note, NoteTeammate } from '@/lib/notes/types'
+import { resolvePrimaryAgent } from '@/lib/seats/resolve-agent'
 
 /**
  * /api/notes — HOR-252 NotesThread backend.
@@ -52,11 +53,7 @@ function nameOf(a: AgentRow | undefined): { name: string; initials: string } {
 
 async function resolveAgent(userId: string) {
   const admin = createAdminClient()
-  const { data: agent } = await admin
-    .from('agents')
-    .select('id, workspace_id')
-    .eq('user_id', userId)
-    .maybeSingle()
+  const agent = await resolvePrimaryAgent(admin, userId)
   return { admin, agent }
 }
 

@@ -13,6 +13,7 @@ import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getRoles } from '@/lib/contacts/roles'
+import { resolvePrimaryAgent } from '@/lib/seats/resolve-agent'
 
 // HOR-135 — V1 relationship-first vocabulary. Migration
 // 20260514000001_property_state_v1.sql tightens the CHECK constraint to
@@ -28,11 +29,7 @@ const PatchSchema = z.object({
 
 async function resolveAgent(userId: string) {
   const admin = createAdminClient()
-  const { data: agent } = await admin
-    .from('agents')
-    .select('id, workspace_id')
-    .eq('user_id', userId)
-    .maybeSingle()
+  const agent = await resolvePrimaryAgent(admin, userId)
   return { admin, agent }
 }
 

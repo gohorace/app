@@ -74,6 +74,17 @@ export async function POST(req: NextRequest) {
   if (outcome.kind === 'error') {
     return NextResponse.json({ error: outcome.error }, { status: 500 })
   }
+  // The address matched a real agent but the body wasn't fetched yet (transient
+  // Resend API timeout/4xx/5xx). Ask Resend to retry the whole capture — the
+  // pipeline is idempotent on Message-ID — rather than ack'ing 2xx and silently
+  // dropping the enquiry (no body would ever load). `no_match` stays 2xx: that's
+  // a permanent "not our address" and must NOT be retried.
+  if (outcome.kind === 'pending_body') {
+    return NextResponse.json(
+      { error: 'email body not yet available — retry', outcome: outcome.kind },
+      { status: 503 },
+    )
+  }
   return NextResponse.json({ received: true, outcome: outcome.kind })
 }
 

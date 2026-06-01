@@ -16,6 +16,7 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { resolvePrimaryAgent } from './resolve-agent'
 
 export interface SeatPermissions {
   /** The caller's own agent row id (always 1, even for support seats). */
@@ -33,18 +34,10 @@ export async function getSeatPermissions(
   admin: SupabaseClient,
   userId: string,
 ): Promise<SeatPermissions> {
-  const { data: agent } = await admin
-    .from('agents')
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    .select('id, seat_type' as any)
-    .eq('user_id', userId)
-    .neq('status', 'departed')
-    .maybeSingle()
+  const agent = await resolvePrimaryAgent(admin, userId, { excludeDeparted: true })
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const callerAgentId: string | null = (agent as any)?.id ?? null
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const seatType: 'agent' | 'support' = (agent as any)?.seat_type ?? 'agent'
+  const callerAgentId: string | null = agent?.id ?? null
+  const seatType: 'agent' | 'support' = agent?.seat_type ?? 'agent'
 
   if (!callerAgentId) {
     return { callerAgentId: null, isSupport: false, allowedAgentIds: [] }

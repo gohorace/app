@@ -8,6 +8,7 @@
  * not-yet-regenerated generated types.
  */
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { resolvePrimaryAgent } from '@/lib/seats/resolve-agent'
 
 export interface AdminContext {
   workspaceId: string
@@ -19,12 +20,7 @@ export async function resolveAdminContext(
   db: SupabaseClient,
   userId: string,
 ): Promise<AdminContext | null> {
-  const { data: agent } = await db
-    .from('agents')
-    .select('id, workspace_id')
-    .eq('user_id', userId)
-    .not('workspace_id', 'is', null)
-    .maybeSingle()
+  const agent = await resolvePrimaryAgent(db, userId, { requireWorkspace: true })
   if (!agent?.workspace_id) return null
 
   const { data: membership } = await db

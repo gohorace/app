@@ -305,7 +305,7 @@ export function ContactDetailView({
             >
               {!hasName && contact.email ? 'Email-only visitor' : displayName}
             </span>
-            <Link href="#notifications" aria-label="Notifications" style={iconBtnStyle}>
+            <Link href="/digest" aria-label="Stream" style={iconBtnStyle}>
               <Bell style={{ width: 17, height: 17, color: '#8C7B6B' }} />
             </Link>
           </div>
@@ -456,7 +456,7 @@ export function ContactDetailView({
               builtFrom={builtFrom}
               changes={changes}
               chipColor={tier.color}
-              streamHref={!isAnon && contact.lastSeenAt ? '#notifications' : null}
+              streamHref={!isAnon && contact.lastSeenAt ? '/digest' : null}
               streamWhen={!isAnon && contact.lastSeenAt ? lastSeenLabel : null}
               onAsk={openAsk}
               compact={isMobile}

@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { Resend } from 'resend'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { resolvePrimaryAgent } from '@/lib/seats/resolve-agent'
 
 const schema = z.object({
   to: z.string().email().max(254),
@@ -34,11 +35,15 @@ export async function POST(req: NextRequest) {
   }
 
   const admin = createAdminClient()
-  const { data: agent } = await admin
-    .from('agents')
-    .select('first_name, last_name, email, workspace_id')
-    .eq('user_id', user.id)
-    .maybeSingle()
+  const resolved = await resolvePrimaryAgent(admin, user.id)
+  // Re-fetch the agent's name/email by resolved id (resolvePrimaryAgent only returns id/workspace_id/seat_type).
+  const { data: agent } = resolved
+    ? await admin
+        .from('agents')
+        .select('first_name, last_name, email, workspace_id')
+        .eq('id', resolved.id)
+        .maybeSingle()
+    : { data: null }
 
   const { data: workspace } = agent?.workspace_id
     ? await admin.from('workspaces').select('name').eq('id', agent.workspace_id).maybeSingle()

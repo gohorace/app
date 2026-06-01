@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { resolvePrimaryAgent } from '@/lib/seats/resolve-agent'
 
 // HOR-142  /api/lists/[id]
 //
@@ -19,11 +20,7 @@ const PatchSchema = z.object({
 
 async function resolveAgentWorkspace(userId: string) {
   const admin = createAdminClient()
-  const { data: agent } = await admin
-    .from('agents')
-    .select('id, workspace_id')
-    .eq('user_id', userId)
-    .maybeSingle()
+  const agent = await resolvePrimaryAgent(admin, userId)
   return { admin, agent }
 }
 

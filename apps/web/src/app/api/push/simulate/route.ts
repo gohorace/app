@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { scoreEventsForContact, getAgentScoringOverrides } from '@/lib/scoring/engine'
+import { resolvePrimaryAgent } from '@/lib/seats/resolve-agent'
 
 /**
  * POST /api/push/simulate
@@ -16,11 +17,7 @@ export async function POST() {
 
   const admin = createAdminClient()
 
-  const { data: agent } = await admin
-    .from('agents')
-    .select('id')
-    .eq('user_id', user.id)
-    .maybeSingle()
+  const agent = await resolvePrimaryAgent(admin, user.id)
 
   if (!agent) return NextResponse.json({ error: 'No agent found' }, { status: 400 })
 

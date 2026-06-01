@@ -375,7 +375,12 @@ function buildRead(agg: ContactAgg, delta: number): string {
     if (enquiry) {
       return ['Enquired via a portal', visitsPhrase].filter(Boolean).join(' · ')
     }
-    return ['Requested an appraisal', visitsPhrase].filter(Boolean).join(' · ')
+    // Only claim "appraisal" when the data actually says so — a generic
+    // (non-appraisal) form submit must not fabricate appraisal intent.
+    if (agg.types.has('doorstep_appraisal_request')) {
+      return ['Requested an appraisal', visitsPhrase].filter(Boolean).join(' · ')
+    }
+    return ['Sent an enquiry', visitsPhrase].filter(Boolean).join(' · ')
   }
   if (agg.types.has('doorstep_buyer_enquiry')) {
     return ['Enquired at an inspection', visitsPhrase].filter(Boolean).join(' · ')

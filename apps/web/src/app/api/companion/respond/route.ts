@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { generateCompanionReply } from '@/lib/ai/companion'
 import type { ConversationTurn, HoraceMessage } from '@/lib/companion/types'
+import { resolvePrimaryAgent } from '@/lib/seats/resolve-agent'
 
 const MAX_HISTORY_TURNS = 12
 const MAX_TURN_CHARS = 1000
@@ -67,11 +68,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'unauthenticated' }, { status: 401 })
   }
 
-  const { data: agent } = await supabase
-    .from('agents')
-    .select('id, workspace_id')
-    .eq('user_id', user.id)
-    .maybeSingle()
+  const agent = await resolvePrimaryAgent(supabase, user.id)
   if (!agent?.workspace_id) {
     return NextResponse.json({ error: 'no_workspace' }, { status: 401 })
   }

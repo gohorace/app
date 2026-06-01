@@ -39,15 +39,17 @@ export async function POST(request: NextRequest) {
   const { name, email, first_name, last_name } = parsed.data
   const admin = createAdminClient()
 
-  // Check if user already has a workspace (prevent duplicates on retry)
+  // Check if user already has a workspace (prevent duplicates on retry).
+  // A user can be a member of multiple workspaces (support seats), so this is
+  // an existence check over a set — `.maybeSingle()` would throw PGRST116.
   const { data: existing } = await admin
     .from('workspace_members')
     .select('workspace_id')
     .eq('user_id', user.id)
-    .maybeSingle()
+    .limit(1)
 
-  if (existing) {
-    return NextResponse.json({ workspaceId: existing.workspace_id })
+  if (existing && existing.length > 0) {
+    return NextResponse.json({ workspaceId: existing[0].workspace_id })
   }
 
   // Generate a unique slug

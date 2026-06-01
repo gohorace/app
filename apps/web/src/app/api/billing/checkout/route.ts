@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getStripe } from '@/lib/stripe/client'
+import { resolvePrimaryAgent } from '@/lib/seats/resolve-agent'
 
 const bodySchema = z.object({
   plan: z.enum(['pro_monthly', 'pro_annual']),
@@ -35,12 +36,7 @@ export async function POST(req: NextRequest) {
 
   const admin = createAdminClient()
 
-  const { data: agent } = await admin
-    .from('agents')
-    .select('id, workspace_id')
-    .eq('user_id', user.id)
-    .not('workspace_id', 'is', null)
-    .maybeSingle()
+  const agent = await resolvePrimaryAgent(admin, user.id, { requireWorkspace: true })
 
   if (!agent || !agent.workspace_id) {
     return NextResponse.json({ error: 'No workspace found' }, { status: 400 })

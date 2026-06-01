@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { markStepComplete, type OnboardingStep } from '@/lib/onboarding/state'
+import { resolvePrimaryAgent } from '@/lib/seats/resolve-agent'
 
 const ALLOWED: OnboardingStep[] = ['profile', 'script', 'core_markets', 'contacts', 'notify', 'pair', 'done']
 const schema = z.object({
@@ -21,11 +22,7 @@ export async function POST(req: NextRequest) {
   }
 
   const admin = createAdminClient()
-  const { data: agent } = await admin
-    .from('agents')
-    .select('id')
-    .eq('user_id', user.id)
-    .maybeSingle()
+  const agent = await resolvePrimaryAgent(admin, user.id)
 
   if (!agent) return NextResponse.json({ error: 'Agent not found' }, { status: 404 })
 

@@ -50,7 +50,9 @@ export function weeklyDelta(events: MergedEvent[], now: number = Date.now()): nu
   for (const e of events) {
     const t = new Date(e.occurred_at).getTime()
     if (Number.isNaN(t) || t < since) continue
-    if (e.score_delta > 0) delta += e.score_delta
+    // Count engagements, not score points — the "+N this wk" pill reads as a
+    // tally of touches this week, so a single high-value event is +1, not +50.
+    if (e.score_delta > 0) delta += 1
   }
   return delta > 0 ? delta : null
 }
@@ -72,9 +74,13 @@ function sessionsThisWeek(events: MergedEvent[], now: number): number {
   const since = now - WEEK_MS
   const days = new Set<string>()
   for (const e of events) {
-    const t = new Date(e.occurred_at).getTime()
+    const d = new Date(e.occurred_at)
+    const t = d.getTime()
     if (Number.isNaN(t) || t < since) continue
-    days.add(new Date(e.occurred_at).toISOString().slice(0, 10))
+    // Key on the LOCAL calendar day (runs client-side, so this is the agent's
+    // own timezone). toISOString() keys on UTC, which rolls late-evening AU
+    // activity into the wrong day and skews the distinct-day count.
+    days.add(`${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`)
   }
   return days.size
 }

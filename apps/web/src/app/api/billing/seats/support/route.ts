@@ -18,6 +18,7 @@ import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { adjustSupportSeats } from '@/lib/stripe/support-seats'
+import { resolvePrimaryAgent } from '@/lib/seats/resolve-agent'
 
 const bodySchema = z.object({
   delta: z.number().int(),
@@ -44,13 +45,8 @@ export async function POST(req: NextRequest) {
 
   const admin = createAdminClient()
 
-  // Resolve the caller's workspace via agents (matches the start-trial pattern).
-  const { data: agent } = await admin
-    .from('agents')
-    .select('id, workspace_id')
-    .eq('user_id', user.id)
-    .not('workspace_id', 'is', null)
-    .maybeSingle()
+  // Resolve the caller's own workspace via their agent seat.
+  const agent = await resolvePrimaryAgent(admin, user.id, { requireWorkspace: true })
 
   if (!agent || !agent.workspace_id) {
     return NextResponse.json({ error: 'No workspace found' }, { status: 400 })

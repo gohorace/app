@@ -18,6 +18,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { resolvePrimaryAgent } from '@/lib/seats/resolve-agent'
 
 export const dynamic = 'force-dynamic'
 
@@ -34,11 +35,7 @@ export async function GET(_req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const admin = createAdminClient()
-  const { data: agent } = await admin
-    .from('agents')
-    .select('id')
-    .eq('user_id', user.id)
-    .maybeSingle()
+  const agent = await resolvePrimaryAgent(admin, user.id)
   if (!agent) return NextResponse.json({ error: 'Agent not found' }, { status: 404 })
 
   const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.gohorace.com').replace(/\/$/, '')

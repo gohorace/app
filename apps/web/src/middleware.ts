@@ -192,10 +192,20 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  // Redirect logged-in users away from login to the dashboard
+  // Redirect logged-in users away from login — back to their intended
+  // destination if one was carried through, otherwise the dashboard.
   if (user && pathname === '/login') {
     const url = request.nextUrl.clone()
-    url.pathname = '/dashboard'
+    const redirectTo = request.nextUrl.searchParams.get('redirectTo')
+    // Only honour same-origin relative paths (block '//host' open redirects).
+    if (redirectTo && redirectTo.startsWith('/') && !redirectTo.startsWith('//')) {
+      const [path, query] = redirectTo.split('?')
+      url.pathname = path
+      url.search = query ? `?${query}` : ''
+    } else {
+      url.pathname = '/dashboard'
+      url.search = ''
+    }
     return NextResponse.redirect(url)
   }
 

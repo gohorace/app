@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { Json } from '@/types/database.types'
+import { resolvePrimaryAgent } from '@/lib/seats/resolve-agent'
 
 // HOR-142  /api/lists
 // Workspace-shared lists. Every member of the workspace sees everyone's lists.
@@ -25,11 +26,7 @@ export async function GET(req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const admin = createAdminClient()
-  const { data: agent } = await admin
-    .from('agents')
-    .select('id, workspace_id')
-    .eq('user_id', user.id)
-    .maybeSingle()
+  const agent = await resolvePrimaryAgent(admin, user.id)
 
   if (!agent || !agent.workspace_id) {
     return NextResponse.json({ error: 'Agent not found' }, { status: 404 })
@@ -90,11 +87,7 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const admin = createAdminClient()
-  const { data: agent } = await admin
-    .from('agents')
-    .select('id, workspace_id')
-    .eq('user_id', user.id)
-    .maybeSingle()
+  const agent = await resolvePrimaryAgent(admin, user.id)
 
   if (!agent || !agent.workspace_id) {
     return NextResponse.json({ error: 'Agent not found' }, { status: 404 })

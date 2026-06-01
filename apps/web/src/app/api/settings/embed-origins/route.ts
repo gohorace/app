@@ -18,6 +18,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { resolvePrimaryAgent } from '@/lib/seats/resolve-agent'
 import { normalizeHost } from '@/lib/doorstep/embed-origin'
 
 export const runtime = 'nodejs'
@@ -34,12 +35,7 @@ async function resolveWorkspaceId(): Promise<string | NextResponse> {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const admin = createAdminClient()
-  const { data: agent } = await admin
-    .from('agents')
-    .select('workspace_id')
-    .eq('user_id', user.id)
-    .not('workspace_id', 'is', null)
-    .maybeSingle()
+  const agent = await resolvePrimaryAgent(admin, user.id, { requireWorkspace: true })
   if (!agent?.workspace_id) return NextResponse.json({ error: 'No workspace found' }, { status: 400 })
   return agent.workspace_id as string
 }

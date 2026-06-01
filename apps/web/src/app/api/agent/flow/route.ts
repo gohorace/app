@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { resolvePrimaryAgent } from '@/lib/seats/resolve-agent'
 
 /**
  * POST /api/agent/flow  { flow: 'agentic' | 'classic' }
@@ -36,11 +37,7 @@ export async function POST(req: NextRequest) {
   }
 
   const admin = createAdminClient()
-  const { data: agent } = await admin
-    .from('agents')
-    .select('id')
-    .eq('user_id', user.id)
-    .maybeSingle()
+  const agent = await resolvePrimaryAgent(admin, user.id)
   if (!agent) return NextResponse.json({ error: 'Agent not found' }, { status: 404 })
 
   // database.types.ts lags the 20260518000040 migration. Cast at the

@@ -12,6 +12,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { resolvePrimaryAgent } from '@/lib/seats/resolve-agent'
 import {
   buildGmailConsentRedirect,
   STATE_COOKIE_NAME,
@@ -27,12 +28,7 @@ export async function GET() {
   // (agent_integrations.workspace_id is NOT NULL — surface this before we
   // bounce out to Google, not after).
   const admin = createAdminClient()
-  const { data: agent } = await admin
-    .from('agents')
-    .select('id, workspace_id')
-    .eq('user_id', user.id)
-    .not('workspace_id', 'is', null)
-    .maybeSingle()
+  const agent = await resolvePrimaryAgent(admin, user.id, { requireWorkspace: true })
 
   if (!agent || !agent.workspace_id) {
     return NextResponse.json(

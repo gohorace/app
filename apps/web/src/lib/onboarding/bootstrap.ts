@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { postToSignupsChannel } from '@/lib/notifications/slack'
+import { resolvePrimaryAgent } from '@/lib/seats/resolve-agent'
 import { redirect } from 'next/navigation'
 import type { OnboardingStep } from './state'
 
@@ -134,11 +135,19 @@ export async function bootstrapOnboardingContext(): Promise<OnboardingContext> {
   // database.types.ts lags the 20260518000040 migration that adds
   // agents.onboarding_flow. Cast at the boundary until next
   // `supabase gen types` regen — same pattern as lib/onboarding/state.ts:57.
+  // HOR-203: resolve the user's primary seat deterministically (a user can
+  // hold multiple agents rows once support seats exist), then re-fetch the
+  // full row by id (resolvePrimaryAgent only returns id/workspace_id/seat_type).
+  const resolved = await resolvePrimaryAgent(admin, user.id)
+  if (!resolved) {
+    // Workspace creation must have failed silently — bounce back to signup.
+    redirect('/signup')
+  }
   const { data: agent } = await admin
     .from('agents')
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .select('id, workspace_id, first_name, last_completed_step, onboarding_flow' as any)
-    .eq('user_id', user.id)
+    .eq('id', resolved.id)
     .maybeSingle()
 
   if (!agent) {

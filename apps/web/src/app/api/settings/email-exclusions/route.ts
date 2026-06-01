@@ -15,6 +15,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { resolvePrimaryAgent } from '@/lib/seats/resolve-agent'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -40,12 +41,7 @@ export async function GET() {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const admin = createAdminClient()
-  const { data: agent } = await admin
-    .from('agents')
-    .select('id')
-    .eq('user_id', user.id)
-    .not('workspace_id', 'is', null)
-    .maybeSingle()
+  const agent = await resolvePrimaryAgent(admin, user.id, { requireWorkspace: true })
   if (!agent) {
     return NextResponse.json({ error: 'No workspace found' }, { status: 400 })
   }
@@ -77,11 +73,15 @@ export async function POST(req: NextRequest) {
   }
 
   const admin = createAdminClient()
+  const resolved = await resolvePrimaryAgent(admin, user.id, { requireWorkspace: true })
+  if (!resolved) {
+    return NextResponse.json({ error: 'No workspace found' }, { status: 400 })
+  }
+  // Re-fetch the email by resolved id (resolvePrimaryAgent only returns id/workspace_id/seat_type).
   const { data: agent } = await admin
     .from('agents')
     .select('id, email')
-    .eq('user_id', user.id)
-    .not('workspace_id', 'is', null)
+    .eq('id', resolved.id)
     .maybeSingle()
   if (!agent) {
     return NextResponse.json({ error: 'No workspace found' }, { status: 400 })

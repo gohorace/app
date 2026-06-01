@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { resolvePrimaryAgent } from '@/lib/seats/resolve-agent'
 import { buildDailyBriefingEmail } from '@/lib/notifications/email'
 import { generateContactInsight, generateBriefingNarrative } from '@/lib/ai/briefing'
 import type { LeadWithInsight, ContactEvent } from '@/lib/ai/briefing'
@@ -28,11 +29,13 @@ export async function GET(request: NextRequest) {
   const admin = createAdminClient()
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://horace.app'
 
-  // Fetch agent
+  // Fetch agent (resolve primary seat, then re-fetch name/email by id)
+  const resolved = await resolvePrimaryAgent(admin, user.id)
+  if (!resolved) return NextResponse.json({ error: 'Agent not found' }, { status: 404 })
   const { data: agent } = await admin
     .from('agents')
     .select('id, first_name, last_name, email')
-    .eq('user_id', user.id)
+    .eq('id', resolved.id)
     .maybeSingle()
 
   if (!agent) return NextResponse.json({ error: 'Agent not found' }, { status: 404 })

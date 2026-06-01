@@ -167,7 +167,7 @@ export function PropertyDetailView({ property, signal, read, roleAttached }: Pro
             <span style={{ fontSize: 13, fontWeight: 600, color: '#1A1612', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {shortAddr}
             </span>
-            <Link href="#notifications" aria-label="Notifications" style={iconBtnStyle}>
+            <Link href="/digest" aria-label="Stream" style={iconBtnStyle}>
               <Bell style={{ width: 17, height: 17, color: '#8C7B6B' }} />
             </Link>
           </div>
@@ -272,9 +272,9 @@ export function PropertyDetailView({ property, signal, read, roleAttached }: Pro
           </div>
         )}
 
-        {/* d) Surfaced in Stream — interim #notifications link (PR3 adds the permalink) */}
+        {/* d) Surfaced in Stream — links to the feed; per-card permalink (/stream/[id]) is the PR3 follow-up */}
         {read.updatedAt && (
-          <Link href="#notifications" style={streamLinkStyle}>
+          <Link href="/digest" style={streamLinkStyle}>
             <Sun style={{ width: 13, height: 13, color: '#C4622D' }} />
             Surfaced in your Stream · {relativeWhen(read.updatedAt)}
             <ArrowUpRight style={{ width: 12, height: 12, color: '#8C7B6B' }} />

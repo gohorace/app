@@ -50,10 +50,12 @@ export async function scoreEventsForContact(
     // Sum events of this type across all sessions (capped per session)
     let totalCapped = 0
     for (const sessionId of Object.keys(sessionCounts)) {
-      const count = sessionCounts[sessionId][rule.event_type] ?? 0
+      let count = sessionCounts[sessionId][rule.event_type] ?? 0
       if (count === 0) continue
 
-      // Check conditions (e.g. scroll depth threshold)
+      // Check conditions (e.g. scroll depth threshold). Only events that
+      // actually satisfy the condition may score — otherwise a single deep
+      // scroll would let every shallow scroll in the session earn points too.
       if (rule.conditions?.pct_gte !== undefined) {
         const matchingEvents = events.filter(
           (e) =>
@@ -66,6 +68,7 @@ export async function scoreEventsForContact(
             ((e.properties as Record<string, unknown>).pct as number) >= rule.conditions!.pct_gte!,
         )
         if (matchingEvents.length === 0) continue
+        count = matchingEvents.length
       }
 
       const capped = rule.max_per_session != null ? Math.min(count, rule.max_per_session) : count
