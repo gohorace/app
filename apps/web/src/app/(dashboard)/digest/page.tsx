@@ -5,6 +5,7 @@ import { DigestView, type DigestViewModel } from '@/components/digest/digest-vie
 import { type DigestSignal } from '@/components/digest/signal-card'
 import { type DigestRailData } from '@/components/digest/digest-rail'
 import { intentForScore } from '@/lib/design/intent'
+import { getRoles } from '@/lib/contacts/roles'
 import { fetchAttentionCount } from '@/lib/notifications/attention-count'
 import {
   generateContactInsight,
@@ -100,14 +101,37 @@ export default async function DigestPage({
     anthropic = new Anthropic({ apiKey: anthropicKey })
   }
 
-  // Suburbs in one shot, keyed by contact id.
+  // Suburbs + role metadata in one shot, keyed by contact id.
   const { data: suburbRows } = await admin
     .from('contacts')
-    .select('id, suburb')
+    .select('id, suburb, metadata')
     .in('id', leads.map((l) => l.contact_id))
   const suburbByContact = new Map<string, string | null>(
     (suburbRows ?? []).map((r) => [r.id, r.suburb ?? null]),
   )
+
+  // Property-association line (HOR-364): the contact's most-recent durable
+  // role (seller/buyer/landlord) + that property's short address. Two bulk
+  // SELECTs for the whole lead set — no N+1.
+  const roleByContact = new Map<string, { type: 'seller' | 'buyer' | 'landlord'; propertyId: string }>()
+  for (const r of suburbRows ?? []) {
+    const roles = getRoles(r.metadata)
+    if (roles.length === 0) continue
+    const latest = roles.reduce((a, b) => (a.date >= b.date ? a : b))
+    roleByContact.set(r.id, { type: latest.type, propertyId: latest.property_id })
+  }
+  const rolePropertyIds = Array.from(new Set(Array.from(roleByContact.values()).map((v) => v.propertyId)))
+  const addressByProperty = new Map<string, string>()
+  if (rolePropertyIds.length > 0) {
+    const { data: propRows } = await admin
+      .from('properties')
+      .select('id, street_number, street_name, suburb')
+      .in('id', rolePropertyIds)
+    for (const p of propRows ?? []) {
+      const street = [p.street_number, p.street_name].filter(Boolean).join(' ')
+      addressByProperty.set(p.id, [street, p.suburb].filter(Boolean).join(', ') || 'Address pending')
+    }
+  }
 
   // Bulk "recent sold per suburb" lookup — fed into derivePretext below so
   // per-contact pretext sourcing is a cheap Map hit, not an N+1 SELECT.
@@ -227,12 +251,17 @@ export default async function DigestPage({
   // count toward the Stream counter (signal-card §isWorkableSignal).
   const signals: DigestSignal[] = enriched.map((l, i) => {
     const intent = intentForScore(l.score) ?? 'low'
+    const roleInfo = roleByContact.get(l.contactId)
     return {
       contactId: l.contactId,
       name: [l.firstName, l.lastName].filter(Boolean).join(' ') || l.email || 'A contact',
       initials: makeInitials(l.firstName, l.lastName, l.email),
       suburb: l.suburb,
       timing: formatTiming(l.lastSeenAt),
+      lastSeenAt: l.lastSeenAt,
+      // Property-association line (HOR-364): durable role + its property address.
+      role: roleInfo?.type,
+      property: roleInfo ? addressByProperty.get(roleInfo.propertyId) : undefined,
       identity: 'known',
       // The lone top-of-roster high-intent lead leads "Act now"; the rest sit
       // in "Worth a look". Urgency-based tiering is refined in Phase 4.
@@ -293,6 +322,9 @@ function demoModel(scenario: 'live' | 'quiet'): DigestViewModel {
     initials: 'MB',
     suburb: 'Glebe, NSW',
     timing: 'Active this morning',
+    lastSeenAt: new Date(Date.now() - 3 * 3_600_000).toISOString(),
+    role: 'seller',
+    property: '14 Bourke St, Glebe',
     identity: 'known',
     tier: 'act-now',
     intent: 'high',
@@ -313,6 +345,9 @@ function demoModel(scenario: 'live' | 'quiet'): DigestViewModel {
     initials: 'ST',
     suburb: 'Paddington, NSW',
     timing: 'Active 2h ago',
+    lastSeenAt: new Date(Date.now() - 2 * 3_600_000).toISOString(),
+    role: 'buyer',
+    property: '8 Cascade St, Paddington',
     identity: 'known',
     tier: 'worth-a-look',
     intent: 'high',
@@ -333,6 +368,9 @@ function demoModel(scenario: 'live' | 'quiet'): DigestViewModel {
     initials: 'PR',
     suburb: 'Paddington, NSW',
     timing: 'Identified 12 min ago',
+    lastSeenAt: new Date(Date.now() - 12 * 60_000).toISOString(),
+    role: 'landlord',
+    property: '5 Elizabeth St, Paddington',
     identity: 'known',
     tier: 'worth-a-look',
     intent: 'high',
@@ -354,6 +392,7 @@ function demoModel(scenario: 'live' | 'quiet'): DigestViewModel {
     initials: 'TO',
     suburb: 'Balmain, NSW',
     timing: 'Active 1h ago',
+    lastSeenAt: new Date(Date.now() - 1 * 3_600_000).toISOString(),
     identity: 'probable',
     tier: 'worth-a-look',
     intent: 'mid',

@@ -19,6 +19,7 @@
  */
 
 import { User, Feather, Mail, Phone, MessageSquare } from 'lucide-react'
+import { RoleBadge } from '@/lib/design/badges'
 
 const INK = '#1A1612'
 const STONE = '#8C7B6B'
@@ -101,6 +102,11 @@ export interface StreamCardData {
   place: string | null
   /** Pre-computed recency string for the subtitle timestamp. */
   when: string
+  /** Durable role tying this contact to a property — renders the role chip +
+   *  address subtitle. Falls back to `place · when` when absent. */
+  role?: 'seller' | 'buyer' | 'landlord'
+  /** Short property address shown beside the role chip. */
+  property?: string | null
   /** `tel:` target; Phone CTA is disabled when absent. */
   phone?: string | null
 }
@@ -292,17 +298,32 @@ export function StreamCardMini({ data, onAsk }: StreamCardMiniProps) {
           >
             {data.name}
           </div>
-          {/* Fallback subtitle (place · time). Role chip + address → HOR-364. */}
-          <div style={{ display: 'flex', alignItems: 'center', marginTop: 3, minWidth: 0 }}>
-            {data.place && (
+          {/* Property-association line: role chip + address when the contact
+            * has a durable role on a property; otherwise the place·time
+            * fallback (e.g. an Unknown visitor). Address truncates before it
+            * pushes the right-aligned timestamp. */}
+          {data.role && data.property ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4, minWidth: 0 }}>
+              <RoleBadge role={data.role} />
               <span style={{ fontSize: 13, color: STONE, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
-                {data.place}
+                {data.property}
               </span>
-            )}
-            <span style={{ marginLeft: data.place ? 'auto' : 0, paddingLeft: 8, flexShrink: 0 }}>
-              <TimeStamp when={data.when} />
-            </span>
-          </div>
+              <span style={{ marginLeft: 'auto', paddingLeft: 8, flexShrink: 0 }}>
+                <TimeStamp when={data.when} />
+              </span>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', marginTop: 3, minWidth: 0 }}>
+              {data.place && (
+                <span style={{ fontSize: 13, color: STONE, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
+                  {data.place}
+                </span>
+              )}
+              <span style={{ marginLeft: data.place ? 'auto' : 0, paddingLeft: 8, flexShrink: 0 }}>
+                <TimeStamp when={data.when} />
+              </span>
+            </div>
+          )}
         </div>
       </div>
 

@@ -85,6 +85,12 @@ export interface DigestSignal {
   draft?: SignalDraft
   /** Sent → Opened → Replied history (known only). */
   outcome?: SignalOutcome
+  /** Stream V2 property-association line — the contact's durable role on a
+   *  property + that property's short address. Absent → suburb·time fallback. */
+  role?: 'seller' | 'buyer' | 'landlord'
+  property?: string | null
+  /** Raw last-seen ISO, for the recency-coded Stream timestamp. */
+  lastSeenAt?: string | null
 }
 
 /**

@@ -79,6 +79,23 @@ function identityFor(identity: SignalIdentity): { identityLabel: string; isUnkno
   }
 }
 
+// Compact recency for the Stream timestamp: ≤24h reads by the hour/minute
+// (rendered live-green by TimeStamp), older as a plain day interval. Falls
+// back to the verbose `timing` string when there's no raw last-seen.
+function formatRecency(iso: string | null | undefined): string | null {
+  if (!iso) return null
+  const then = new Date(iso).getTime()
+  if (Number.isNaN(then)) return null
+  const diffMs = Date.now() - then
+  if (diffMs < 60_000) return 'just now'
+  const minutes = Math.floor(diffMs / 60_000)
+  if (minutes < 60) return `${minutes}m`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h`
+  const days = Math.floor(hours / 24)
+  return `${days}d`
+}
+
 function toStreamCardData(signal: DigestSignal): StreamCardData {
   return {
     contactId: signal.contactId,
@@ -88,7 +105,9 @@ function toStreamCardData(signal: DigestSignal): StreamCardData {
     tier: streamTierFor(signal),
     observation: signal.insight,
     place: signal.suburb,
-    when: signal.timing,
+    when: formatRecency(signal.lastSeenAt) ?? signal.timing,
+    role: signal.role,
+    property: signal.property,
   }
 }
 
