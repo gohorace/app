@@ -63,7 +63,7 @@ export default async function SettingsPage() {
 
       {/* Brand voice + signature — powers Horace's email drafting and the
         * composer dock's setup gate. (HOR-356 follow-up) */}
-      <div id="brand-voice" className="mt-10 scroll-mt-6 border-t border-[var(--border-subtle)] pt-8">
+      <div className="border-t border-[var(--border-subtle)]">
         <BrandVoiceSettings
           brandVoice={settings?.brand_voice ?? null}
           emailSignature={settings?.email_signature ?? null}
