@@ -1,6 +1,7 @@
-import { createClient } from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/admin'
-import { resolvePrimaryAgent } from '@/lib/seats/resolve-agent'
+import 'server-only'
+import type { createAdminClient } from '@/lib/supabase/admin'
+
+type Admin = ReturnType<typeof createAdminClient>
 
 /**
  * Workspace name for the reference-tables breadcrumb (`horace_intel / <name>`).
@@ -9,26 +10,19 @@ import { resolvePrimaryAgent } from '@/lib/seats/resolve-agent'
  * schema name from the design prototype) — but to a user "public" reads as
  * "this data is public", which it is not. We show the workspace name instead.
  *
- * Uses `resolvePrimaryAgent` rather than a bare `.eq('user_id').maybeSingle()`
- * so support-seat / multi-workspace users don't trip the PGRST116 crash.
- * Falls back to a neutral `workspace` label if anything is missing.
+ * Takes the already-resolved workspace id (the page resolves the primary agent
+ * once via `resolvePrimaryAgent`) so we don't re-derive it. Falls back to a
+ * neutral `workspace` label.
  */
-export async function getWorkspaceName(): Promise<string> {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) return 'workspace'
-
-  const admin = createAdminClient()
-  const agent = await resolvePrimaryAgent(admin, user.id, { requireWorkspace: true })
-  if (!agent?.workspace_id) return 'workspace'
-
-  const { data: ws } = await admin
+export async function getWorkspaceName(
+  admin: Admin,
+  workspaceId: string | null,
+): Promise<string> {
+  if (!workspaceId) return 'workspace'
+  const { data } = await admin
     .from('workspaces')
     .select('name')
-    .eq('id', agent.workspace_id)
+    .eq('id', workspaceId)
     .maybeSingle()
-
-  return ws?.name?.trim() || 'workspace'
+  return data?.name?.trim() || 'workspace'
 }

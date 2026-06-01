@@ -362,7 +362,8 @@ const CONTACT_COLUMNS: Column<ContactRow>[] = [
   { key: 'sessions_7d', type: 'int2', w: 112, num: true, skelW: '34%',
     sortVal: (r) => r.sessions_7d, render: (r) => r.sessions_7d },
   { key: 'last_seen', type: 'timestamptz', w: 190, skelW: '88%', defaultSort: true,
-    sortVal: (r) => r.last_seen, render: (r) => <span className={styles.vTs}>{r.last_seen}</span> },
+    sortVal: (r) => r.last_seen, title: (r) => r.last_seen ?? 'null',
+    render: (r) => (r.last_seen ? <span className={styles.vTs}>{r.last_seen}</span> : <NullCell field="last_seen" />) },
 ]
 
 const PROPERTY_COLUMNS: Column<PropertyRow>[] = [
@@ -376,7 +377,8 @@ const PROPERTY_COLUMNS: Column<PropertyRow>[] = [
   { key: 'top_signal', type: 'enum', w: 134, skelW: '70%',
     sortVal: (r) => SIGNAL_ORDER[r.top_signal], render: (r) => <Signal value={r.top_signal} /> },
   { key: 'last_viewed', type: 'timestamptz', w: 190, skelW: '88%', defaultSort: true,
-    sortVal: (r) => r.last_viewed, render: (r) => <span className={styles.vTs}>{r.last_viewed}</span> },
+    sortVal: (r) => r.last_viewed, title: (r) => r.last_viewed ?? 'null',
+    render: (r) => (r.last_viewed ? <span className={styles.vTs}>{r.last_viewed}</span> : <NullCell field="last_viewed" />) },
 ]
 
 // ── page shell ────────────────────────────────────────────────────────
