@@ -106,6 +106,10 @@ async function logAlert(
   contactId: string | null,
   type: AlertType,
   display?: { title: string; body: string; url: string },
+  // HOR-350: optional property this moment is about. Tagged at flag time for
+  // property-subject moments (e.g. inspection capture) so the property detail
+  // "Surfaced in your Stream" link resolves precisely.
+  propertyId?: string | null,
 ): Promise<void> {
   const admin = createAdminClient()
   await admin.from('notification_log').insert({
@@ -118,7 +122,9 @@ async function logAlert(
     title: display?.title ?? null,
     body: display?.body ?? null,
     url: display?.url ?? null,
-  })
+    // Cast: property_id (HOR-350) lands in database.types.ts on the next regen.
+    ...(propertyId ? { property_id: propertyId } : {}),
+  } as never)
 }
 
 /**
@@ -199,8 +205,10 @@ async function dispatchPushAlert(args: {
   contactId: string
   type: AlertType
   payload: PushPayload
+  /** HOR-350: property this moment is about, when known at flag time. */
+  propertyId?: string | null
 }): Promise<void> {
-  const { agentId, contactId, type, payload } = args
+  const { agentId, contactId, type, payload, propertyId } = args
 
   if (await isRecentlySent(agentId, contactId, type)) return
 
@@ -209,7 +217,7 @@ async function dispatchPushAlert(args: {
     title: payload.title,
     body: payload.body,
     url: payload.url,
-  })
+  }, propertyId)
 
   const countAfter = await pushesInLast24h(agentId)
   if (countAfter > VOLUME_CAP_PER_24H) {
@@ -317,6 +325,12 @@ export async function sendInspectionCaptureAlert(
    * verbatim.
    */
   address: string,
+  /**
+   * HOR-350: the inspection's property. An inspection capture is the clearest
+   * property-subject moment ("Horace just met X at <address>"), so we tag it so
+   * the property page links straight back to this row.
+   */
+  propertyId?: string | null,
 ): Promise<void> {
   const firstName = contactName.split(' ')[0]
   await dispatchPushAlert({
@@ -329,6 +343,7 @@ export async function sendInspectionCaptureAlert(
       url: `/contacts/${contactId}`,
       tag: `inspection-capture-${contactId}`,
     },
+    propertyId,
   })
 }
 
