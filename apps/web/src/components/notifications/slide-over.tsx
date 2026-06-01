@@ -1,40 +1,36 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState, useTransition } from 'react'
+import { useCallback, useEffect, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { AddToListSheet } from '@/components/lists/add-to-list-sheet'
-import type { ListRecord } from '@/lib/lists/use-lists'
-import { NotificationStream } from './notification-stream'
+import { NotificationsDropdown } from './notifications-dropdown'
 import type { StreamMoment } from './moment-types'
 
 /**
- * Notifications slide-over. Mounted once at the dashboard layout level,
- * so any surface (digest, contacts, properties, lists, market) can open
- * it via the bell in its page header.
+ * Notifications dropdown host. Mounted once at the dashboard layout level,
+ * so any surface (digest/stream, contacts, properties, lists, market) can
+ * open it via the bell in its page header.
  *
  * Open/close is driven by `location.hash === '#notifications'`. The
- * BellButton sets/clears the hash; this component listens for changes
- * and toggles. ESC closes, scrim click closes, the close button in the
- * stream header closes.
+ * BellButton sets/clears the hash; this component listens for changes and
+ * toggles. ESC closes, a click outside the panel closes, the close button
+ * in the dropdown header closes.
  *
- * v2-M1 (HOR-242) — this is the only notifications surface. The dedicated
- * `/notifications` page was removed; on mobile the panel takes the full
- * viewport width and on desktop it's a 420px right-anchored aside.
+ * v2 (Refactor V1) — the surface is a compact floating dropdown anchored
+ * under the topbar bell (see `NotificationsDropdown`), not a full-height
+ * slide-over. The dedicated `/notifications` page was removed; this is the
+ * only notifications surface.
  *
  * Data is fetched client-side via `GET /api/notifications` whenever the
  * panel opens. No SSR — the panel is decoupled from the underlying page.
  */
-
-const RESOLVED_HOLD_MS = 5_000
 
 export function NotificationsSlideOver() {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [items, setItems] = useState<StreamMoment[]>([])
   const [loading, setLoading] = useState(false)
-  const [resolvedIds, setResolvedIds] = useState<Set<string>>(new Set())
-  const [sheet, setSheet] = useState<{ moment: StreamMoment } | null>(null)
   const [, startTransition] = useTransition()
+  const panelRef = useRef<HTMLDivElement>(null)
 
   // Sync open-state with the URL hash on mount + every hashchange.
   useEffect(() => {
@@ -53,14 +49,24 @@ export function NotificationsSlideOver() {
     window.dispatchEvent(new HashChangeEvent('hashchange'))
   }, [])
 
-  // Esc-to-close.
+  // Esc-to-close + click-outside-to-close.
   useEffect(() => {
     if (!open) return
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') close()
     }
+    function onPointer(e: MouseEvent) {
+      if (panelRef.current && !panelRef.current.contains(e.target as Node)) close()
+    }
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    // Defer the pointer listener a tick so the click that opened the panel
+    // (the bell) doesn't immediately close it.
+    const id = window.setTimeout(() => document.addEventListener('mousedown', onPointer), 0)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      window.clearTimeout(id)
+      document.removeEventListener('mousedown', onPointer)
+    }
   }, [open, close])
 
   // Fetch on open. Refetch any time we go from closed→open.
@@ -89,36 +95,6 @@ export function NotificationsSlideOver() {
     setItems((prev) => prev.map((m) => (m.id === id ? { ...m, unread: false } : m)))
   }, [])
 
-  const markUnreadLocal = useCallback((id: string) => {
-    setItems((prev) => prev.map((m) => (m.id === id ? { ...m, unread: true } : m)))
-  }, [])
-
-  // HOR-234 kebab: mark a single item read/unread. Optimistic local update +
-  // POST, then refresh so the server-rendered bell badge (HOR-231) re-counts.
-  const handleMarkRead = useCallback(
-    (moment: StreamMoment) => {
-      markReadLocal(moment.id)
-      void fetch(`/api/notifications/${moment.id}/read`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ read: true }),
-      }).then(() => startTransition(() => router.refresh()))
-    },
-    [markReadLocal, router],
-  )
-
-  const handleMarkUnread = useCallback(
-    (moment: StreamMoment) => {
-      markUnreadLocal(moment.id)
-      void fetch(`/api/notifications/${moment.id}/read`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ read: false }),
-      }).then(() => startTransition(() => router.refresh()))
-    },
-    [markUnreadLocal, router],
-  )
-
   const handleMarkAllRead = useCallback(() => {
     setItems((prev) => prev.map((m) => (m.unread ? { ...m, unread: false } : m)))
     void fetch('/api/notifications/mark-all-read', { method: 'POST' }).then(() =>
@@ -126,128 +102,41 @@ export function NotificationsSlideOver() {
     )
   }, [router])
 
-  const handleOpen = useCallback(
+  // Whole-row tap: mark read, refresh the bell badge, navigate to the subject,
+  // and close. Property subjects navigate to the property detail page; contacts
+  // to the contact detail page. HOR-231 — refresh decrements the bell badge.
+  const handleRowClick = useCallback(
     (moment: StreamMoment) => {
       markReadLocal(moment.id)
-      // Refresh so the bell badge decrements even when we don't navigate
-      // (e.g. property subjects just close the panel). HOR-231.
       void fetch(`/api/notifications/${moment.id}/read`, { method: 'POST' }).then(() =>
         startTransition(() => router.refresh()),
       )
       close()
       if (moment.subject.kind === 'contact') {
         router.push(`/contacts/${moment.subject.id}`)
+      } else if (moment.subject.kind === 'property') {
+        router.push(`/properties/${moment.subject.id}`)
       }
     },
     [markReadLocal, close, router],
   )
 
-  const handlePrimary = useCallback(
-    (moment: StreamMoment) => {
-      if (moment.subject.kind === 'contact') {
-        setSheet({ moment })
-        return
-      }
-      handleOpen(moment)
-    },
-    [handleOpen],
-  )
+  const handleSettings = useCallback(() => {
+    close()
+    router.push('/settings/notifications')
+  }, [close, router])
 
-  const handleAddedToList = useCallback(
-    (_list: ListRecord) => {
-      const id = sheet?.moment.id
-      if (!id) return
-      setResolvedIds((prev) => new Set(prev).add(id))
-      markReadLocal(id)
-      void fetch(`/api/notifications/${id}/read`, { method: 'POST' })
-      window.setTimeout(() => {
-        setResolvedIds((prev) => {
-          if (!prev.has(id)) return prev
-          const next = new Set(prev)
-          next.delete(id)
-          return next
-        })
-      }, RESOLVED_HOLD_MS)
-    },
-    [sheet?.moment.id, markReadLocal],
-  )
-
-  const sheetSubjectLabel = useMemo(() => {
-    if (!sheet) return undefined
-    return sheet.moment.subject.kind === 'contact'
-      ? sheet.moment.subject.name
-      : sheet.moment.subject.address
-  }, [sheet])
-
-  // Always render the markup — the inner display:none gates visibility.
-  // This keeps the hashchange listener alive without re-mounting.
   if (!open) return null
 
   return (
-    <>
-      {/* Scrim — covers everything LEFT of the panel. Hidden on mobile,
-        * where the panel itself takes the full viewport width. */}
-      <div
-        onClick={close}
-        className="hidden md:block"
-        style={{
-          position: 'fixed',
-          top: 0,
-          bottom: 0,
-          left: 0,
-          right: 420,
-          background: 'rgba(26,22,18,0.18)',
-          backdropFilter: 'blur(1px)',
-          WebkitBackdropFilter: 'blur(1px)',
-          zIndex: 50,
-        }}
-        aria-hidden
-      />
-
-      {/* Panel — full-width on mobile, 420px right-anchored on desktop. */}
-      <aside
-        role="dialog"
-        aria-label="Notifications"
-        className="flex w-full md:w-[420px]"
-        style={{
-          position: 'fixed',
-          top: 0,
-          right: 0,
-          bottom: 0,
-          background: '#F5F0E8',
-          boxShadow: '-12px 0 32px rgba(26,22,18,0.18)',
-          borderLeft: '1px solid rgba(140,123,107,0.18)',
-          flexDirection: 'column',
-          zIndex: 51,
-        }}
-      >
-        <NotificationStream
-          items={items}
-          isEmpty={!loading && items.length === 0}
-          resolvedIds={resolvedIds}
-          container="desktop"
-          onMarkAllRead={handleMarkAllRead}
-          onPrimary={handlePrimary}
-          onMarkRead={handleMarkRead}
-          onMarkUnread={handleMarkUnread}
-          onOpen={handleOpen}
-          onSettings={() => {
-            close()
-            router.push('/settings/notifications')
-          }}
-          onClose={close}
-        />
-      </aside>
-
-      {sheet?.moment.subject.kind === 'contact' && (
-        <AddToListSheet
-          open={!!sheet}
-          onClose={() => setSheet(null)}
-          contactId={sheet.moment.subject.id}
-          subjectLabel={sheetSubjectLabel}
-          onAdded={handleAddedToList}
-        />
-      )}
-    </>
+    <NotificationsDropdown
+      items={items}
+      isEmpty={!loading && items.length === 0}
+      panelRef={panelRef}
+      onClose={close}
+      onRowClick={handleRowClick}
+      onMarkAllRead={handleMarkAllRead}
+      onSettings={handleSettings}
+    />
   )
 }
