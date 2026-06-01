@@ -24,11 +24,13 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import {
   type GetMapHeatCellsRow,
   type GetPropertySignalsRow,
+  type GetSuburbBoundariesRow,
   type GetSuburbSignalsRow,
   type HeatCell,
   type MapCounters,
   type MapPayload,
   type PropertySignal,
+  type SuburbBoundary,
   type SuburbSignal,
   type TimeWindow,
   isTimeWindow,
@@ -60,10 +62,10 @@ export async function GET(req: NextRequest) {
   const rawTimeWindow = req.nextUrl.searchParams.get('timeWindow')
   const timeWindow: TimeWindow = isTimeWindow(rawTimeWindow) ? rawTimeWindow : '7d'
 
-  // Three RPCs in parallel. They each scope to workspace + (where relevant)
+  // Four RPCs in parallel. They each scope to workspace + (where relevant)
   // agent internally. Errors bubble up as 500s with the Postgres message —
   // matches the convention in /api/properties/[id]/route.ts.
-  const [propsRes, suburbsRes, heatRes] = await Promise.all([
+  const [propsRes, suburbsRes, heatRes, boundariesRes] = await Promise.all([
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     admin.rpc('get_property_signals' as any, {
       p_workspace_id: agent.workspace_id,
@@ -81,17 +83,26 @@ export async function GET(req: NextRequest) {
       p_workspace_id: agent.workspace_id,
       p_time_window:  timeWindow,
     }),
+    // HOR-369: city-zoom choropleth geometry, keyed by the same suburb id as
+    // get_suburb_signals. Returns [] until suburb_boundaries is populated.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    admin.rpc('get_suburb_boundaries' as any, {
+      p_workspace_id: agent.workspace_id,
+      p_agent_id:     agent.id,
+      p_time_window:  timeWindow,
+    }),
   ])
 
-  const anyError = propsRes.error ?? suburbsRes.error ?? heatRes.error
+  const anyError = propsRes.error ?? suburbsRes.error ?? heatRes.error ?? boundariesRes.error
   if (anyError) {
     console.error('[api/properties/map-payload] RPC failure:', anyError)
     return NextResponse.json({ error: anyError.message }, { status: 500 })
   }
 
-  const propRows    = (propsRes.data   as GetPropertySignalsRow[] | null) ?? []
-  const suburbRows  = (suburbsRes.data as GetSuburbSignalsRow[]   | null) ?? []
-  const heatRows    = (heatRes.data    as GetMapHeatCellsRow[]    | null) ?? []
+  const propRows     = (propsRes.data      as GetPropertySignalsRow[]   | null) ?? []
+  const suburbRows   = (suburbsRes.data    as GetSuburbSignalsRow[]     | null) ?? []
+  const heatRows     = (heatRes.data       as GetMapHeatCellsRow[]      | null) ?? []
+  const boundaryRows = (boundariesRes.data as GetSuburbBoundariesRow[]  | null) ?? []
 
   // ─── snake_case → camelCase, the route's only translation responsibility ──
   //
@@ -147,6 +158,14 @@ export async function GET(req: NextRequest) {
     intensity: Number(r.intensity),
   }))
 
+  // HOR-369: choropleth geometry, keyed by suburb id (parallel to suburbs[]).
+  const boundaries: SuburbBoundary[] = boundaryRows.map((r) => ({
+    id:       r.id,
+    geometry: r.boundary_geojson,
+    lat:      r.centroid_lat != null ? Number(r.centroid_lat) : null,
+    lng:      r.centroid_lng != null ? Number(r.centroid_lng) : null,
+  }))
+
   // ─── Counters — mixed units by design (see rpc-types.ts MapCounters) ──────
 
   const counters: MapCounters = {
@@ -189,6 +208,7 @@ export async function GET(req: NextRequest) {
     timeWindow,
     heat,
     suburbs,
+    boundaries,
     properties,
     summary,
     counters,
