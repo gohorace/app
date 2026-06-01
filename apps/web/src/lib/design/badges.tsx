@@ -7,7 +7,7 @@
  * to diverge, generalise with a prop, don't fork.
  */
 
-import { Home, KeyRound, Eye } from 'lucide-react'
+import { Home, KeyRound, Eye, Building2 } from 'lucide-react'
 
 // ── Identity gradient (contacts only) ─────────────────────────────────────────
 // 'anonymous' → 'email' → 'partial' → 'known'. Four-dot mini scale fills left to
@@ -237,18 +237,20 @@ export function AvatarStack({
 }
 
 // ── Role badge (contacts) ─────────────────────────────────────────────────────
-// Three roles: Seller (durable past sale), Buyer (durable past purchase),
-// Engaged (transient — recent property_view events). Optional count when the
-// contact holds the same role on multiple properties.
+// Durable roles — Seller (past sale), Buyer (past purchase), Landlord (owns a
+// rental) — are stored against a property in contact metadata. Engaged is
+// transient (derived from recent property_view events), never stored. Optional
+// count when the contact holds the same role on multiple properties.
 
-export type ContactRole = 'seller' | 'buyer' | 'engaged'
+export type ContactRole = 'seller' | 'buyer' | 'landlord' | 'engaged'
 
 const ROLE_STYLE: Record<ContactRole, { label: string; icon: typeof Home; fg: string; bg: string }> = {
   // HOR-246: display label is "Vendor" (AU real-estate vocabulary). The
   // underlying ContactRole value stays 'seller' — only the label changed.
-  seller:  { label: 'Vendor',  icon: Home,     fg: '#C4622D', bg: 'rgba(196,98,45,0.12)' },
-  buyer:   { label: 'Buyer',   icon: KeyRound, fg: '#3D5246', bg: 'rgba(61,82,70,0.12)' },
-  engaged: { label: 'Engaged', icon: Eye,      fg: '#5E5246', bg: 'rgba(140,123,107,0.14)' },
+  seller:   { label: 'Vendor',   icon: Home,      fg: '#C4622D', bg: 'rgba(196,98,45,0.12)' },
+  buyer:    { label: 'Buyer',    icon: KeyRound,  fg: '#3D5246', bg: 'rgba(61,82,70,0.12)' },
+  landlord: { label: 'Landlord', icon: Building2, fg: '#3F5A73', bg: 'rgba(63,90,115,0.12)' },
+  engaged:  { label: 'Engaged',  icon: Eye,       fg: '#5E5246', bg: 'rgba(140,123,107,0.14)' },
 }
 
 export function RoleBadge({
