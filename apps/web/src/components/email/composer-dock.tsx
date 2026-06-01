@@ -1034,7 +1034,28 @@ function ScheduleMenu({ onSendNow, onSchedule }: { onSendNow: () => void; onSche
 
 function SchedulePopover({ onConfirm, onCancel }: { onConfirm: (iso: string) => void; onCancel: () => void }) {
   const presets = useMemo(() => buildSchedulePresets(), [])
-  const [selected, setSelected] = useState(presets[1]?.iso ?? presets[0]?.iso ?? '')
+  // Selection is either a preset iso, or 'custom' (driven by the date/time row).
+  const [selected, setSelected] = useState<string>(presets[1]?.iso ?? presets[0]?.iso ?? 'custom')
+  // Custom inputs default to tomorrow 08:00 local.
+  const customDefault = useMemo(() => {
+    const d = new Date()
+    d.setDate(d.getDate() + 1)
+    d.setHours(8, 0, 0, 0)
+    return d
+  }, [])
+  const [date, setDate] = useState(() => toDateInput(customDefault))
+  const [time, setTime] = useState(() => toTimeInput(customDefault))
+
+  const isCustom = selected === 'custom'
+  const customIso = useMemo(() => {
+    if (!date || !time) return null
+    const d = new Date(`${date}T${time}`)
+    return Number.isNaN(d.getTime()) ? null : d
+  }, [date, time])
+  const customValid = !!customIso && customIso.getTime() > Date.now()
+
+  const chosenIso = isCustom ? (customValid ? customIso!.toISOString() : null) : selected
+  const canSchedule = !!chosenIso
 
   return (
     <div
@@ -1045,7 +1066,7 @@ function SchedulePopover({ onConfirm, onCancel }: { onConfirm: (iso: string) => 
         <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--color-ink)', fontFamily: 'var(--font-body)' }}>Schedule send</span>
       </div>
       {presets.map((p) => {
-        const active = p.iso === selected
+        const active = !isCustom && p.iso === selected
         return (
           <button
             key={p.iso}
@@ -1058,11 +1079,57 @@ function SchedulePopover({ onConfirm, onCancel }: { onConfirm: (iso: string) => 
           </button>
         )
       })}
-      <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+
+      {/* Custom date + time — selecting/editing it switches to a custom send time. */}
+      <div
+        style={{
+          display: 'flex',
+          gap: 7,
+          margin: '4px 0 0',
+          padding: 7,
+          borderRadius: 8,
+          border: `1px solid ${isCustom ? 'rgba(196,98,45,0.4)' : 'var(--border-default)'}`,
+          background: isCustom ? 'rgba(196,98,45,0.06)' : 'transparent',
+        }}
+        onFocusCapture={() => setSelected('custom')}
+      >
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6, padding: '7px 9px', background: '#FFFFFF', border: '1px solid var(--border-default)', borderRadius: 8 }}>
+          <Clock size={12} color="var(--color-stone)" style={{ flexShrink: 0 }} />
+          <input
+            type="date"
+            value={date}
+            min={toDateInput(new Date())}
+            onChange={(e) => {
+              setDate(e.target.value)
+              setSelected('custom')
+            }}
+            style={{ border: 'none', outline: 'none', background: 'transparent', fontSize: 12, color: 'var(--color-ink)', fontFamily: 'var(--font-mono)', width: '100%' }}
+          />
+        </div>
+        <div style={{ width: 96, display: 'flex', alignItems: 'center', padding: '7px 9px', background: '#FFFFFF', border: '1px solid var(--border-default)', borderRadius: 8 }}>
+          <input
+            type="time"
+            value={time}
+            onChange={(e) => {
+              setTime(e.target.value)
+              setSelected('custom')
+            }}
+            style={{ border: 'none', outline: 'none', background: 'transparent', fontSize: 12, color: 'var(--color-ink)', fontFamily: 'var(--font-mono)', width: '100%' }}
+          />
+        </div>
+      </div>
+      {isCustom && !customValid && (
+        <p style={{ margin: '6px 2px 0', fontSize: 11, color: '#A5511E', fontFamily: 'var(--font-body)' }}>
+          Pick a time in the future.
+        </p>
+      )}
+
+      <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
         <button
           type="button"
-          onClick={() => selected && onConfirm(selected)}
-          style={{ flex: 1, padding: '9px 12px', background: 'var(--color-terracotta)', color: 'var(--color-cream)', border: 'none', borderRadius: 8, fontSize: 12.5, fontWeight: 600, fontFamily: 'var(--font-body)', cursor: 'pointer' }}
+          disabled={!canSchedule}
+          onClick={() => chosenIso && onConfirm(chosenIso)}
+          style={{ flex: 1, padding: '9px 12px', background: canSchedule ? 'var(--color-terracotta)' : 'rgba(196,98,45,0.4)', color: 'var(--color-cream)', border: 'none', borderRadius: 8, fontSize: 12.5, fontWeight: 600, fontFamily: 'var(--font-body)', cursor: canSchedule ? 'pointer' : 'not-allowed' }}
         >
           Schedule
         </button>
@@ -1125,6 +1192,16 @@ function fmtDate(d: Date): string {
 function formatScheduleLabel(iso: string): string {
   const d = new Date(iso)
   return `Scheduled — ${d.toLocaleString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' })}, ${fmtTime(d)}`
+}
+/** Local YYYY-MM-DD for <input type="date">. */
+function toDateInput(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+/** Local HH:MM for <input type="time">. */
+function toTimeInput(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
 // ── Scoped styles ──────────────────────────────────────────────────────────────
