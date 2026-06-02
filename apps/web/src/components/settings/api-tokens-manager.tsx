@@ -11,9 +11,31 @@ import { formatDistanceToNow, format } from 'date-fns'
 interface TokenRow {
   id: string
   name: string
+  client_id?: string | null
+  client_name?: string | null
   last_used_at: string | null
   revoked_at: string | null
   created_at: string
+}
+
+/**
+ * Turn the stored token name into something a human recognises.
+ *
+ * OAuth-minted tokens are stored as `OAuth: mcp_<random>` where the suffix is
+ * the public OAuth client_id (NOT a secret). On its own that's meaningless to
+ * the user, so we prefer the client_name the app registered (e.g. "Claude")
+ * and keep a short client_id hint to disambiguate two connectors. Manually
+ * minted tokens keep their user-chosen name as-is.
+ */
+function tokenDisplay(t: TokenRow): { label: string; hint: string | null } {
+  if (t.client_id) {
+    const tail = t.client_id.replace(/^mcp_/, '').slice(-5)
+    return {
+      label: t.client_name ?? 'MCP connector',
+      hint: `MCP connector · …${tail}`,
+    }
+  }
+  return { label: t.name, hint: null }
 }
 
 interface Props {
@@ -124,11 +146,14 @@ export function ApiTokensManager({ initialTokens, mcpUrl }: Props) {
           <p className="text-sm text-muted-foreground">No active tokens.</p>
         ) : (
           <ul className="divide-y border rounded-md">
-            {activeTokens.map((t) => (
+            {activeTokens.map((t) => {
+              const { label, hint } = tokenDisplay(t)
+              return (
               <li key={t.id} className="flex items-center justify-between gap-3 px-3 py-2">
                 <div className="min-w-0">
-                  <p className="text-sm font-medium truncate">{t.name}</p>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-sm font-medium truncate">{label}</p>
+                  <p className="text-xs text-muted-foreground truncate">
+                    {hint && <>{hint}{' · '}</>}
                     Created {format(new Date(t.created_at), 'd MMM yyyy')}
                     {' · '}
                     {t.last_used_at
@@ -140,7 +165,8 @@ export function ApiTokensManager({ initialTokens, mcpUrl }: Props) {
                   Revoke
                 </Button>
               </li>
-            ))}
+              )
+            })}
           </ul>
         )}
       </div>
@@ -152,7 +178,7 @@ export function ApiTokensManager({ initialTokens, mcpUrl }: Props) {
             {revokedTokens.map((t) => (
               <li key={t.id} className="flex items-center justify-between gap-3 px-3 py-2">
                 <div className="min-w-0">
-                  <p className="text-sm truncate text-muted-foreground">{t.name}</p>
+                  <p className="text-sm truncate text-muted-foreground">{tokenDisplay(t).label}</p>
                   <p className="text-xs text-muted-foreground">
                     Revoked {formatDistanceToNow(new Date(t.revoked_at!), { addSuffix: true })}
                   </p>

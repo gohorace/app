@@ -25,6 +25,8 @@ export const dynamic = 'force-dynamic'
 interface McpTokenRow {
   id: string
   name: string
+  client_id: string | null
+  client_name: string | null
   last_used_at: string | null
   revoked_at: string | null
   created_at: string
@@ -49,11 +51,29 @@ export default async function ApiAndDataPage() {
   const admin = createAdminClient()
   const { data: mcpTokensRaw } = await admin
     .from('workspace_api_tokens')
-    .select('id, name, last_used_at, revoked_at, created_at')
+    .select('id, name, client_id, last_used_at, revoked_at, created_at')
     .eq('user_id', user!.id)
     .eq('kind', 'mcp')
     .order('created_at', { ascending: false })
-  const mcpTokens = (mcpTokensRaw as McpTokenRow[]) ?? []
+  const mcpTokensRows = (mcpTokensRaw as Array<Omit<McpTokenRow, 'client_name'>>) ?? []
+
+  // Resolve the human-friendly client name registered by the OAuth client
+  // (e.g. "Claude") so the list shows that instead of the opaque client_id.
+  const clientIds = [...new Set(mcpTokensRows.map((t) => t.client_id).filter(Boolean))] as string[]
+  const clientNames = new Map<string, string>()
+  if (clientIds.length > 0) {
+    const { data: clients } = await admin
+      .from('oauth_clients')
+      .select('client_id, client_name')
+      .in('client_id', clientIds)
+    for (const c of (clients as Array<{ client_id: string; client_name: string | null }> | null) ?? []) {
+      if (c.client_name) clientNames.set(c.client_id, c.client_name)
+    }
+  }
+  const mcpTokens: McpTokenRow[] = mcpTokensRows.map((t) => ({
+    ...t,
+    client_name: t.client_id ? clientNames.get(t.client_id) ?? null : null,
+  }))
 
   // REST keys + export — workspace admin only.
   const db = createApiV1Db()
