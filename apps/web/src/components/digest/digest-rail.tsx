@@ -12,9 +12,9 @@
  *  - One cell per day, columns aligned between strips, so signal visibly
  *    trails activity by ~a day. Shaded by OPACITY of one colour (not a hex
  *    ramp) so it reads on cream and inverts correctly in dark mode.
- *  - Today is the OPEN cell on the Activity strip — a dashed "+". Clicking
- *    it opens Ask Horace to start a real action. The cell only fills once a
- *    real tracked send is recorded (wired from email_sends in Phase 2).
+ *  - Today is the last cell on the Activity strip. It renders empty until a
+ *    real tracked send is recorded (wired from email_sends in Phase 2) — no
+ *    interactive affordance; the cell fills only from a real action.
  *
  * Live (non-demo) data series — tracked sends from `email_sends`, returning
  * signal from `events` — wires in Phases 2–4. Phase 0 renders the demo series
@@ -22,7 +22,6 @@
  */
 
 import { useEffect, useState } from 'react'
-import { useCompanion } from '@/components/companion/companion-context'
 
 export interface DigestRailData {
   /** Activity strip colour (coral). */
@@ -58,7 +57,6 @@ function alphaHex(op: number): string {
 }
 
 export function DigestRail({ data }: DigestRailProps) {
-  const { openCompanion } = useCompanion()
   const [hovered, setHovered] = useState<Hover>(null)
 
   const ctxKey = data.days.join('|')
@@ -80,15 +78,6 @@ export function DigestRail({ data }: DigestRailProps) {
     }
   }
 
-  // The "+" opens Ask Horace prompting a real tracked send. The cell itself
-  // fills only once a real action is recorded — never from a UI tap.
-  function onTodayOpen() {
-    openCompanion({
-      prompt: 'Who should I send a tracked note to today?',
-      contextLabel: 'Digest',
-    })
-  }
-
   return (
     <aside className="hidden lg:flex" style={railStyles.aside}>
       <div style={railStyles.card}>
@@ -107,7 +96,6 @@ export function DigestRail({ data }: DigestRailProps) {
             stripKey="activity"
             hovered={hovered}
             setHovered={setHovered}
-            onTodayOpen={onTodayOpen}
           />
           <Strip
             label="Signal"
@@ -148,7 +136,6 @@ function Strip({
   stripKey,
   hovered,
   setHovered,
-  onTodayOpen,
 }: {
   label: string
   sub: string
@@ -158,7 +145,6 @@ function Strip({
   stripKey: 'activity' | 'signal'
   hovered: Hover
   setHovered: (h: Hover) => void
-  onTodayOpen?: () => void
 }) {
   return (
     <div>
@@ -169,31 +155,9 @@ function Strip({
       </div>
       <div style={railStyles.grid}>
         {counts.map((c, i) => {
-          const isToday = i === counts.length - 1 && stripKey === 'activity'
-          const open = c === null && isToday
           const op = shade(c, max)
           const isHov = hovered?.strip === stripKey && hovered?.i === i
 
-          if (open) {
-            return (
-              <button
-                key={i}
-                type="button"
-                onClick={onTodayOpen}
-                onMouseEnter={() => setHovered({ strip: stripKey, i })}
-                onMouseLeave={() => setHovered(null)}
-                title="Send a tracked note to fill today"
-                aria-label="Send a tracked note to fill today"
-                style={{
-                  ...railStyles.cell,
-                  ...railStyles.openCell,
-                  outline: isHov ? '1px solid rgba(196,98,45,0.5)' : 'none',
-                }}
-              >
-                <span style={{ fontSize: 13, color: '#C4622D', lineHeight: 1, marginTop: -1 }}>+</span>
-              </button>
-            )
-          }
           return (
             <div
               key={i}
@@ -220,14 +184,6 @@ const railStyles = {
   readout: { fontSize: 11, color: '#9C4A1F', fontFamily: 'var(--font-mono)', minHeight: 16, marginBottom: 10 },
   grid: { display: 'grid', gridTemplateColumns: 'repeat(14, 1fr)', gap: 3 },
   cell: { height: 18, borderRadius: 3, border: 'none', padding: 0, transition: 'box-shadow 140ms' },
-  openCell: {
-    background: 'transparent',
-    border: '1.5px dashed rgba(196,98,45,0.6)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    cursor: 'pointer',
-  },
   stripHead: { display: 'flex', alignItems: 'baseline', gap: 7, marginBottom: 7 },
   stripLabel: { fontSize: 12, fontWeight: 600, color: '#2E2823' },
   stripSub: { fontSize: 11, color: '#8C7B6B' },
