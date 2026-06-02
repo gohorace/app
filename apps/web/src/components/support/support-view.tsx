@@ -2,7 +2,8 @@
 
 import Image from 'next/image'
 import Link from 'next/link'
-import { ArrowUpRight, Calendar, Mail, MessageCircle } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { ArrowUpRight, Calendar, Mail, MessageCircle, X } from 'lucide-react'
 import { useCompanion } from '@/components/companion/companion-context'
 import { QuillIcon } from '@/components/ui/quill-icon'
 import { BellButton } from '@/components/dashboard/bell-button'
@@ -29,6 +30,7 @@ const CHANNEL_ICON = {
 export function SupportView({ attentionCount }: { attentionCount: number }) {
   const { openCompanion } = useCompanion()
   const askHorace = () => openCompanion({ contextLabel: 'Support' })
+  const [bookingUrl, setBookingUrl] = useState<string | null>(null)
 
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: '28px 32px 80px' }}>
@@ -203,7 +205,12 @@ export function SupportView({ attentionCount }: { attentionCount: number }) {
             <h2 style={panelHeadingStyle}>Talk to a human</h2>
             <p style={panelSubStyle}>When the quill isn&rsquo;t enough.</p>
             {SUPPORT_CHANNELS.map((c, i) => (
-              <SupportChannel key={c.title} channel={c} isLast={i === SUPPORT_CHANNELS.length - 1} />
+              <SupportChannel
+                key={c.title}
+                channel={c}
+                isLast={i === SUPPORT_CHANNELS.length - 1}
+                onBook={c.embed ? () => setBookingUrl(c.href) : undefined}
+              />
             ))}
           </section>
         </div>
@@ -249,11 +256,101 @@ export function SupportView({ attentionCount }: { attentionCount: number }) {
           </a>
         </div>
       </div>
+
+      {bookingUrl && <BookingModal href={bookingUrl} onClose={() => setBookingUrl(null)} />}
     </div>
   )
 }
 
-function SupportChannel({ channel, isLast }: { channel: SupportChannelDef; isLast: boolean }) {
+function BookingModal({ href, onClose }: { href: string; onClose: () => void }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', onKey)
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.body.style.overflow = ''
+    }
+  }, [onClose])
+
+  const sep = href.includes('?') ? '&' : '?'
+  const embedSrc = `${href}${sep}embed=true&layout=month_view`
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Book a 1:1"
+      onClick={onClose}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 1000,
+        background: 'rgba(26,22,18,0.55)',
+        backdropFilter: 'blur(2px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 20,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          position: 'relative',
+          width: '100%',
+          maxWidth: 820,
+          height: 'min(80vh, 720px)',
+          background: '#FAF7F2',
+          border: '1px solid rgba(140,123,107,0.25)',
+          borderRadius: 14,
+          overflow: 'hidden',
+          boxShadow: '0 24px 60px rgba(26,22,18,0.3)',
+        }}
+      >
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close"
+          style={{
+            position: 'absolute',
+            top: 12,
+            right: 12,
+            zIndex: 1,
+            width: 32,
+            height: 32,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'rgba(250,247,242,0.9)',
+            border: '1px solid rgba(140,123,107,0.25)',
+            borderRadius: 8,
+            color: '#5E5246',
+            cursor: 'pointer',
+          }}
+        >
+          <X style={{ width: 16, height: 16 }} aria-hidden />
+        </button>
+        <iframe
+          src={embedSrc}
+          title="Book a 1:1"
+          loading="lazy"
+          style={{ width: '100%', height: '100%', border: 'none' }}
+        />
+      </div>
+    </div>
+  )
+}
+
+function SupportChannel({
+  channel,
+  isLast,
+  onBook,
+}: {
+  channel: SupportChannelDef
+  isLast: boolean
+  onBook?: () => void
+}) {
   const Icon = CHANNEL_ICON[channel.icon]
   return (
     <div
@@ -284,24 +381,19 @@ function SupportChannel({ channel, isLast }: { channel: SupportChannelDef; isLas
         <div style={{ fontSize: 13, fontWeight: 500, color: '#1A1612' }}>{channel.title}</div>
         <div style={{ fontSize: 11.5, color: '#8C7B6B', marginTop: 2, lineHeight: 1.4 }}>{channel.sub}</div>
       </div>
-      <a
-        href={channel.href}
-        {...(channel.external ? { target: '_blank', rel: 'noreferrer' } : {})}
-        style={{
-          padding: '6px 12px',
-          fontSize: 11.5,
-          fontWeight: 500,
-          color: '#1A1612',
-          background: 'transparent',
-          border: '1px solid rgba(140,123,107,0.3)',
-          borderRadius: 7,
-          textDecoration: 'none',
-          whiteSpace: 'nowrap',
-          flexShrink: 0,
-        }}
-      >
-        {channel.cta}
-      </a>
+      {onBook ? (
+        <button type="button" onClick={onBook} style={{ ...ctaStyle, cursor: 'pointer' }}>
+          {channel.cta}
+        </button>
+      ) : (
+        <a
+          href={channel.href}
+          {...(channel.external ? { target: '_blank', rel: 'noreferrer' } : {})}
+          style={{ ...ctaStyle, textDecoration: 'none' }}
+        >
+          {channel.cta}
+        </a>
+      )}
     </div>
   )
 }
@@ -324,4 +416,16 @@ const panelSubStyle: React.CSSProperties = {
   fontSize: 12.5,
   color: '#8C7B6B',
   margin: '0 0 14px',
+}
+const ctaStyle: React.CSSProperties = {
+  padding: '6px 12px',
+  fontSize: 11.5,
+  fontWeight: 500,
+  color: '#1A1612',
+  background: 'transparent',
+  border: '1px solid rgba(140,123,107,0.3)',
+  borderRadius: 7,
+  whiteSpace: 'nowrap',
+  flexShrink: 0,
+  fontFamily: 'var(--font-body)',
 }
