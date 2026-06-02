@@ -21,8 +21,6 @@
  * and an empty placeholder in live mode.
  */
 
-import { useEffect, useState } from 'react'
-
 export interface DigestRailData {
   /** Activity strip colour (coral). */
   activityColor: string
@@ -42,8 +40,6 @@ interface DigestRailProps {
   data: DigestRailData
 }
 
-type Hover = { strip: 'activity' | 'signal'; i: number } | null
-
 /** Cell opacity for a count. `null` → open cell (handled by caller). */
 function shade(count: number | null | undefined, max: number): number | null {
   if (count === null || count === undefined) return null
@@ -57,26 +53,8 @@ function alphaHex(op: number): string {
 }
 
 export function DigestRail({ data }: DigestRailProps) {
-  const [hovered, setHovered] = useState<Hover>(null)
-
-  const ctxKey = data.days.join('|')
-  useEffect(() => { setHovered(null) }, [ctxKey])
-
   const aMax = Math.max(1, ...data.activity.filter((n): n is number => n !== null))
   const sMax = Math.max(1, ...data.signal.filter((n): n is number => n !== null))
-
-  let readout = 'Last 14 days · hover any day'
-  if (hovered) {
-    const arr = hovered.strip === 'activity' ? data.activity : data.signal
-    const c = arr[hovered.i]
-    const day = data.days[hovered.i]
-    if (c === null || c === undefined) readout = `${day} · today — send something to fill it`
-    else if (c === 0) readout = `${day} · ${hovered.strip === 'activity' ? 'no actions' : 'no signal'} — that's alright`
-    else {
-      const noun = hovered.strip === 'activity' ? (c === 1 ? 'action' : 'actions') : c === 1 ? 'signal' : 'signals'
-      readout = `${day} · ${c} ${noun}`
-    }
-  }
 
   return (
     <aside className="hidden lg:flex" style={railStyles.aside}>
@@ -84,7 +62,7 @@ export function DigestRail({ data }: DigestRailProps) {
         <div style={railStyles.eyebrow}>Your rhythm</div>
         <p style={railStyles.lede}>Your action is what makes the signal. Watch it trail by a day.</p>
 
-        <div style={railStyles.readout}>{readout}</div>
+        <div style={railStyles.readout}>Last 14 days</div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 4 }}>
           <Strip
@@ -93,9 +71,6 @@ export function DigestRail({ data }: DigestRailProps) {
             color={data.activityColor}
             counts={data.activity}
             max={aMax}
-            stripKey="activity"
-            hovered={hovered}
-            setHovered={setHovered}
           />
           <Strip
             label="Signal"
@@ -103,9 +78,6 @@ export function DigestRail({ data }: DigestRailProps) {
             color={data.signalColor}
             counts={data.signal}
             max={sMax}
-            stripKey="signal"
-            hovered={hovered}
-            setHovered={setHovered}
           />
         </div>
 
@@ -133,18 +105,12 @@ function Strip({
   color,
   counts,
   max,
-  stripKey,
-  hovered,
-  setHovered,
 }: {
   label: string
   sub: string
   color: string
   counts: Array<number | null>
   max: number
-  stripKey: 'activity' | 'signal'
-  hovered: Hover
-  setHovered: (h: Hover) => void
 }) {
   return (
     <div>
@@ -156,17 +122,12 @@ function Strip({
       <div style={railStyles.grid}>
         {counts.map((c, i) => {
           const op = shade(c, max)
-          const isHov = hovered?.strip === stripKey && hovered?.i === i
-
           return (
             <div
               key={i}
-              onMouseEnter={() => setHovered({ strip: stripKey, i })}
-              onMouseLeave={() => setHovered(null)}
               style={{
                 ...railStyles.cell,
                 background: op === null ? 'transparent' : `${color}${alphaHex(op)}`,
-                boxShadow: isHov ? '0 0 0 1.5px rgba(26,22,18,0.45)' : 'none',
               }}
             />
           )
@@ -183,7 +144,7 @@ const railStyles = {
   lede: { margin: '0 0 12px', fontSize: 12, lineHeight: 1.45, color: '#8C7B6B' },
   readout: { fontSize: 11, color: '#9C4A1F', fontFamily: 'var(--font-mono)', minHeight: 16, marginBottom: 10 },
   grid: { display: 'grid', gridTemplateColumns: 'repeat(14, 1fr)', gap: 3 },
-  cell: { height: 18, borderRadius: 3, border: 'none', padding: 0, transition: 'box-shadow 140ms' },
+  cell: { height: 18, borderRadius: 3, border: 'none', padding: 0 },
   stripHead: { display: 'flex', alignItems: 'baseline', gap: 7, marginBottom: 7 },
   stripLabel: { fontSize: 12, fontWeight: 600, color: '#2E2823' },
   stripSub: { fontSize: 11, color: '#8C7B6B' },
