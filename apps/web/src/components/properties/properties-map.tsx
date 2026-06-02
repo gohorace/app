@@ -4,36 +4,33 @@
  * Properties map — Google Maps signal layer (HOR-218 base, HOR-370 hero re-skin).
  *
  * Consumes the `MapPayload` from `/api/properties/map-payload` (HOR-216) and
- * renders the market substrate on top of the Google base. The `/market` view
- * (`components/market/market-view.tsx`) frames it full-bleed and drives the
- * two-state zoom (city ↔ neighbourhood) + selection through props/hash.
+ * renders the market substrate on top of a warm parchment basemap. The
+ * `/market` view (`components/market/market-view.tsx`) frames it full-bleed and
+ * drives the two-state zoom (city ↔ neighbourhood) + selection through props/hash.
+ *
+ * Basemap styling: applied in code via the inline `styles` array below. We do
+ * NOT set a `mapId` — a Map ID would (a) require Cloud-console setup and (b)
+ * make Google ignore `styles`. Dropping the mapId means pins render as custom
+ * `OverlayView` DOM (not AdvancedMarkerElement, which requires a mapId) — same
+ * DOM-rich treatment (hover ring, address chip, selection, keyboard a11y) the
+ * suburb labels already use.
  *
  * Layers:
  *   1. **City choropleth (HOR-369).** At city zoom, suburb boundary polygons
  *      (`payload.boundaries`) load into the Google **Data layer**, filled
  *      terracotta with opacity ∝ the joined `SuburbSignal.intensity` (cap
- *      0.85 × `heatOpacity`). Polygons are clickable only where intensity >
- *      0.10 → `#suburb=<id>`. Suburbs with no boundary fall back to radial heat.
- *   2. **Radial heat.** At neighbourhood zoom, the terracotta HeatmapLayer,
- *      radius banded by zoom, weighted by intensity.
- *   3. **Suburb labels** as `OverlayView` DOM at the GNAF centroid — weight +
- *      colour by `state`; stirring suburbs get a pulsing terracotta dot
- *      (gated by `showStirring`). Click → `#suburb=<id>`.
- *   4. **Property pins** in three editorial ink tiers (design spec):
- *        hot ≥0.65 (ink dot + ink ring + terracotta halo + specular),
- *        active ≥0.25 (medium ink dot + thin ring), quiet <0.25 (small dimmed
- *        dot). The selected pin gets a terracotta ring.
- *   5. **Clustering** above 200 pins via `@googlemaps/markerclusterer`.
+ *      0.85 × `heatOpacity`). Clickable where intensity > 0.10 → `#suburb=<id>`.
+ *   2. **Radial heat.** At neighbourhood zoom, the terracotta HeatmapLayer.
+ *   3. **Suburb labels** as `OverlayView` DOM at the GNAF centroid.
+ *   4. **Property pins** as `OverlayView` DOM in three editorial ink tiers, with
+ *      an address-label chip on hover/select and a terracotta selection ring.
  *
  * Click → hash: a pin writes `#signal=<id>`; a suburb polygon/label writes
- * `#suburb=<id>`; an empty-map click clears either. `MarketView` reads the
- * hash and mounts the matching detail panel.
+ * `#suburb=<id>`; an empty-map click clears either.
  */
 
 import { useEffect, useRef, useState } from 'react'
 import { Loader } from '@googlemaps/js-api-loader'
-import { MarkerClusterer } from '@googlemaps/markerclusterer'
-import type { Cluster, ClusterStats } from '@googlemaps/markerclusterer'
 import { MapPin } from 'lucide-react'
 import type {
   MapPayload,
@@ -48,7 +45,10 @@ const API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
 // centroid (e.g. a fresh agent before any import). Sydney CBD.
 const HORACE_HQ_FALLBACK = { lat: -33.8688, lng: 151.2093 }
 
-const CLUSTER_THRESHOLD = 200  // brief: cluster only when > 200 visible
+// No clusterer (it needs AdvancedMarkerElement/Marker, which need a mapId).
+// Pins are OverlayView DOM; cap the rendered count by intensity so a very
+// dense window can't spawn thousands of DOM nodes. Surfaced, never silent.
+const MAX_PINS = 600
 
 // Two curated Google zoom levels for the city ↔ neighbourhood toggle.
 const CITY_ZOOM = 11
@@ -65,10 +65,52 @@ const COLOR = {
   stone:       '#8C7B6B',
 }
 
+// ─── Warm parchment basemap style (HOR-370) ─────────────────────────────────
+// Flat parchment land, white streets w/ stone casing, POIs + transit stripped,
+// muted parks + water, and Google's own admin/locality labels off (we render
+// editorial Playfair suburb labels ourselves — don't double them up). The
+// terracotta "wash" in the design is the HeatmapLayer, not the basemap.
+// Version-controlled twin: docs/market-map-style.md.
+const HORACE_MAP_STYLE: google.maps.MapTypeStyle[] = [
+  { elementType: 'geometry', stylers: [{ color: '#EFE7D7' }] },
+  { elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#8C7B6B' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#EFE7D7' }, { weight: 2 }] },
+
+  { featureType: 'administrative', elementType: 'geometry', stylers: [{ visibility: 'off' }] },
+  { featureType: 'administrative.land_parcel', stylers: [{ visibility: 'off' }] },
+  { featureType: 'administrative.neighborhood', elementType: 'labels', stylers: [{ visibility: 'off' }] },
+  { featureType: 'administrative.locality', elementType: 'labels', stylers: [{ visibility: 'off' }] },
+  { featureType: 'administrative.province', elementType: 'labels', stylers: [{ visibility: 'off' }] },
+  { featureType: 'administrative.country', elementType: 'labels', stylers: [{ visibility: 'off' }] },
+
+  { featureType: 'poi', stylers: [{ visibility: 'off' }] },
+  { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#C9D2BD' }, { visibility: 'on' }] },
+  { featureType: 'poi.park', elementType: 'labels.text.fill', stylers: [{ color: '#7C8A72' }] },
+
+  { featureType: 'landscape.natural', elementType: 'geometry', stylers: [{ color: '#EFE7D7' }] },
+  { featureType: 'landscape.man_made', elementType: 'geometry', stylers: [{ color: '#EFE7D7' }] },
+
+  { featureType: 'road', elementType: 'geometry.fill', stylers: [{ color: '#FBF8F3' }] },
+  { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#E2D8C8' }] },
+  { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#9C8E7D' }] },
+  { featureType: 'road', elementType: 'labels.text.stroke', stylers: [{ color: '#FBF8F3' }, { weight: 2 }] },
+  { featureType: 'road.highway', elementType: 'geometry.fill', stylers: [{ color: '#FFFFFF' }] },
+  { featureType: 'road.highway', elementType: 'geometry.stroke', stylers: [{ color: '#E2D8C8' }] },
+  { featureType: 'road.local', elementType: 'labels', stylers: [{ visibility: 'off' }] },
+  { featureType: 'road.arterial', elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },
+
+  { featureType: 'transit', stylers: [{ visibility: 'off' }] },
+
+  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#CFC3B0' }] },
+  { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#9C8E7D' }] },
+  { featureType: 'water', elementType: 'labels.text.stroke', stylers: [{ color: '#CFC3B0' }, { weight: 2 }] },
+]
+
 // ─── Property pins — three editorial ink tiers (HOR-370 design spec) ────────
-// Tiers by intensity: hot ≥0.65, active ≥0.25, quiet <0.25. Pins are INK
-// (not terracotta — that reads as cartography); the warmth is the halo on
-// hot pins + the heat layer beneath. SVG sizes leave room for the hot halo.
+// Tiers by intensity: hot ≥0.65, active ≥0.25, quiet <0.25. Pins are INK (not
+// terracotta — that reads as cartography); the warmth is the halo on hot pins
+// + the heat layer beneath. SVG sizes leave room for the hot halo.
 
 function tierFor(intensity: number): PropertyState {
   if (intensity >= 0.65) return 'hot'
@@ -81,7 +123,6 @@ function pinSvg(intensity: number): string {
   const tier = tierFor(i)
 
   if (tier === 'hot') {
-    // ink dot + ink ring + soft terracotta halo + specular highlight
     return `
       <svg width="48" height="48" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" style="overflow:visible">
         <circle cx="24" cy="24" r="20" fill="${COLOR.terracotta}" opacity="0.12"/>
@@ -91,14 +132,12 @@ function pinSvg(intensity: number): string {
       </svg>`
   }
   if (tier === 'active') {
-    // medium ink dot + thin ink ring
     return `
       <svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
         <circle cx="16" cy="16" r="8" fill="none" stroke="${COLOR.ink}" stroke-width="0.9" opacity="0.5"/>
         <circle cx="16" cy="16" r="4.5" fill="${COLOR.ink}"/>
       </svg>`
   }
-  // quiet — small dimmed dot
   return `
     <svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
       <circle cx="16" cy="16" r="3" fill="${COLOR.ink}" opacity="0.55"/>
@@ -106,9 +145,9 @@ function pinSvg(intensity: number): string {
 }
 
 /**
- * Resolve the pin wrapper's ring from its dataset flags so selection (solid
- * terracotta) and hover/focus (soft terracotta) compose without clobbering
- * each other. Selection wins.
+ * Resolve the pin wrapper's ring + address label from its dataset flags so
+ * selection (solid terracotta) and hover/focus (soft terracotta) compose
+ * without clobbering each other. Selection wins.
  */
 function applyPinRing(wrap: HTMLElement) {
   const selected = wrap.dataset.selected === 'true'
@@ -343,46 +382,6 @@ function suburbLabelOpacityForZoom(z: number): number {
   return 0.6
 }
 
-// ─── Cluster renderer ───────────────────────────────────────────────────────
-//
-// Brief: "cluster bubble uses the same pin treatment, not a numbered circle".
-
-function clusterRenderer(
-  cluster: Cluster,
-  _stats: ClusterStats,
-  map: google.maps.Map,
-): google.maps.marker.AdvancedMarkerElement {
-  const c = cluster.count
-  const halo = Math.min(64, Math.max(34, 24 + Math.sqrt(c) * 2.2))
-  const dot  = Math.min(20, Math.max(8,  4  + Math.sqrt(c) * 0.7))
-
-  const el = document.createElement('div')
-  el.style.cursor = 'pointer'
-  el.style.transform = 'translate(0, 0)'
-  el.innerHTML = `
-    <svg width="${halo}" height="${halo}" viewBox="0 0 ${halo} ${halo}" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="${halo/2}" cy="${halo/2}" r="${halo/2}" fill="${COLOR.terracotta}" opacity="0.14"/>
-      <circle cx="${halo/2}" cy="${halo/2}" r="${halo*0.32}" fill="none" stroke="${COLOR.ink}" stroke-width="1.4" opacity="0.85"/>
-      <circle cx="${halo/2}" cy="${halo/2}" r="${dot/2}" fill="${COLOR.ink}"/>
-    </svg>
-  `
-  el.title = `${c} properties`
-  el.setAttribute('aria-label', `${c} properties clustered here`)
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const G = (window as any).google
-  const marker = new G.maps.marker.AdvancedMarkerElement({
-    map,
-    position: cluster.position,
-    content: el,
-    title: `${c} properties`,
-  })
-  marker.addListener('click', () => {
-    if (cluster.bounds) map.fitBounds(cluster.bounds, 64)
-  })
-  return marker
-}
-
 // ─── Component ──────────────────────────────────────────────────────────────
 
 interface Props {
@@ -414,17 +413,17 @@ export function PropertiesMap({
 }: Props) {
   const hostRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<google.maps.Map | null>(null)
-  const markersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([])
+  const pinOverlaysRef = useRef<google.maps.OverlayView[]>([])
   const pinElsRef = useRef<Map<string, HTMLElement>>(new Map())
-  const clustererRef = useRef<MarkerClusterer | null>(null)
   const heatRef = useRef<google.maps.visualization.HeatmapLayer | null>(null)
   const suburbOverlaysRef = useRef<google.maps.OverlayView[]>([])
   const initialFitRef = useRef(false)
   const zoomModeInitRef = useRef(false)
   const [degraded, setDegraded] = useState<string | null>(null)
   const [ready, setReady] = useState(false)
+  const [pinNote, setPinNote] = useState<string | null>(null)
 
-  // ── Mount: load Maps + visualization + marker libs, create the map ──────
+  // ── Mount: load Maps + visualization libs, create the styled map ────────
   useEffect(() => {
     if (!API_KEY) {
       setDegraded('Map view requires a Google Maps key (NEXT_PUBLIC_GOOGLE_MAPS_API_KEY).')
@@ -439,7 +438,6 @@ export function PropertiesMap({
 
     Promise.all([
       loader.importLibrary('maps'),
-      loader.importLibrary('marker'),
       loader.importLibrary('visualization'),
     ])
       .then(([mapsLib]) => {
@@ -450,12 +448,10 @@ export function PropertiesMap({
         const map = new GMap(hostRef.current, {
           center: initialCenter,
           zoom: NEIGH_ZOOM,
-          // Required for AdvancedMarkerElement. NOTE: with a mapId set, Google
-          // IGNORES the inline `styles` array — the warm parchment basemap is a
-          // Cloud-based map style attached to this Map ID. See
-          // docs/market-map-style.md for the style JSON + how to apply it.
-          mapId: 'horace-properties-map',
-          disableDefaultUI: true,         // /market floats its own glass controls
+          // No mapId: it would make Google ignore `styles` (and we don't use
+          // AdvancedMarkerElement — pins are OverlayView DOM). See header.
+          styles: HORACE_MAP_STYLE,
+          disableDefaultUI: true, // /market floats its own glass controls
           clickableIcons: false,
         })
         mapRef.current = map
@@ -481,7 +477,7 @@ export function PropertiesMap({
           }
         })
 
-        // City choropleth click → open the suburb panel. Listener is attached
+        // City choropleth click → open the suburb panel. Listener attached
         // once; features are added/removed per zoom mode below. Gated to
         // intensity > 0.10 (matches the design's hit-target rule).
         map.data.addListener('click', (e: google.maps.Data.MouseEvent) => {
@@ -503,13 +499,9 @@ export function PropertiesMap({
 
     return () => {
       cancelled = true
-      for (const m of markersRef.current) m.map = null
-      markersRef.current = []
+      for (const o of pinOverlaysRef.current) o.setMap(null)
+      pinOverlaysRef.current = []
       pinElsRef.current.clear()
-      if (clustererRef.current) {
-        clustererRef.current.clearMarkers()
-        clustererRef.current = null
-      }
       if (heatRef.current) {
         heatRef.current.setMap(null)
         heatRef.current = null
@@ -536,19 +528,15 @@ export function PropertiesMap({
     mapRef.current.setZoom(zoomMode === 'city' ? CITY_ZOOM : NEIGH_ZOOM)
   }, [ready, zoomMode])
 
-  // ── Sync property pins (with optional clustering) on payload change ─────
+  // ── Sync property pins (OverlayView DOM) on payload change ───────────────
   useEffect(() => {
     if (!ready || !mapRef.current) return
     const map = mapRef.current
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const G = (window as any).google as typeof google
 
-    if (clustererRef.current) {
-      clustererRef.current.clearMarkers()
-      clustererRef.current = null
-    }
-    for (const m of markersRef.current) m.map = null
-    markersRef.current = []
+    for (const o of pinOverlaysRef.current) o.setMap(null)
+    pinOverlaysRef.current = []
     pinElsRef.current.clear()
 
     const props = payload?.properties ?? []
@@ -556,37 +544,78 @@ export function PropertiesMap({
       typeof p.lat === 'number' && typeof p.lng === 'number',
     )
 
-    // HOR-220 tab order: hot → active → quiet. Paint order (hot on top) via zIndex.
+    // Cap rendered pins by intensity (no silent truncation — surfaced below).
+    let render = plottable
+    if (plottable.length > MAX_PINS) {
+      render = [...plottable].sort((a, b) => b.intensity - a.intensity).slice(0, MAX_PINS)
+      console.warn(
+        `[properties-map] ${plottable.length} plottable pins; rendering the strongest ${MAX_PINS}.`,
+      )
+      setPinNote(`Showing the ${MAX_PINS} strongest of ${plottable.length} signals — zoom in for the rest.`)
+    } else {
+      setPinNote(null)
+    }
+
+    // HOR-220 tab order: hot → active → quiet (DOM insertion order). Paint
+    // order (hot on top) is controlled independently via the positioner zIndex.
     const tabOrder:  Record<PropertyState, number> = { hot: 0, active: 1, quiet: 2 }
     const paintZIdx: Record<PropertyState, number> = { quiet: 1, active: 2, hot: 3 }
-    const sorted = [...plottable].sort((a, b) => tabOrder[a.state] - tabOrder[b.state])
-    const markers = sorted.map((p) => {
-      const el = pinElement(p)
-      pinElsRef.current.set(p.id, el)
-      const marker = new G.maps.marker.AdvancedMarkerElement({
-        position: { lat: p.lat, lng: p.lng },
-        content: el,
-        title:   p.address,
-        zIndex:  paintZIdx[p.state],
-      })
-      marker.addListener('click', () => {
-        if (typeof window === 'undefined') return
-        const url = new URL(window.location.href)
-        url.hash = `signal=${encodeURIComponent(p.id)}`
-        window.location.replace(url.toString())
-      })
-      return marker
-    })
-    markersRef.current = markers
+    const sorted = [...render].sort((a, b) => tabOrder[a.state] - tabOrder[b.state])
 
-    if (markers.length >= CLUSTER_THRESHOLD) {
-      clustererRef.current = new MarkerClusterer({
-        map,
-        markers,
-        renderer: { render: (cluster, stats) => clusterRenderer(cluster, stats, map) },
-      })
-    } else {
-      for (const m of markers) m.map = map
+    class PinOverlay extends G.maps.OverlayView {
+      private positioner: HTMLElement | null = null
+      constructor(private p: PropertySignal & { lat: number; lng: number }) { super() }
+
+      onAdd() {
+        const el = pinElement(this.p)
+        pinElsRef.current.set(this.p.id, el)
+        // Re-apply the selection ring in case this pin is the current selection
+        // (onAdd can run after the selection effect on a fresh payload).
+        el.dataset.selected = this.p.id === selectedPinId ? 'true' : 'false'
+        applyPinRing(el)
+        el.addEventListener('click', (e) => {
+          e.stopPropagation()
+          if (typeof window === 'undefined') return
+          const url = new URL(window.location.href)
+          url.hash = `signal=${encodeURIComponent(this.p.id)}`
+          window.location.replace(url.toString())
+        })
+
+        const pos = document.createElement('div')
+        pos.style.position = 'absolute'
+        pos.style.transform = 'translate(-50%, -50%)'
+        pos.style.zIndex = String(paintZIdx[this.p.state])
+        pos.appendChild(el)
+        this.positioner = pos
+        // overlayMouseTarget receives DOM events → pins stay clickable/focusable.
+        this.getPanes()?.overlayMouseTarget.appendChild(pos)
+      }
+
+      draw() {
+        if (!this.positioner) return
+        const projection = this.getProjection()
+        if (!projection) return
+        const pt = projection.fromLatLngToDivPixel(
+          new G.maps.LatLng(this.p.lat, this.p.lng),
+        )
+        if (pt) {
+          this.positioner.style.left = `${pt.x}px`
+          this.positioner.style.top  = `${pt.y}px`
+        }
+      }
+
+      onRemove() {
+        if (this.positioner && this.positioner.parentNode) {
+          this.positioner.parentNode.removeChild(this.positioner)
+        }
+        this.positioner = null
+      }
+    }
+
+    for (const p of sorted) {
+      const overlay = new PinOverlay(p)
+      overlay.setMap(map)
+      pinOverlaysRef.current.push(overlay)
     }
 
     // First payload after mount: fit to the active pins.
@@ -601,10 +630,10 @@ export function PropertiesMap({
       }
       initialFitRef.current = true
     }
-  }, [ready, payload?.properties])
+  }, [ready, payload?.properties]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Selection ring — toggle the terracotta ring on the selected pin
-  //   without rebuilding markers.
+  //   without rebuilding overlays.
   useEffect(() => {
     if (!ready) return
     for (const [id, el] of pinElsRef.current) {
@@ -839,6 +868,28 @@ export function PropertiesMap({
           }}
         >
           Horace is watching. Nothing stirring yet.
+        </div>
+      )}
+      {pinNote && (
+        <div
+          style={{
+            position: 'absolute',
+            bottom: 14,
+            left: 14,
+            padding: '7px 11px',
+            background: 'rgba(250,247,242,0.92)',
+            backdropFilter: 'blur(6px)',
+            WebkitBackdropFilter: 'blur(6px)',
+            border: '1px solid rgba(140,123,107,0.22)',
+            color: '#5E5246',
+            fontSize: 11,
+            fontFamily: 'var(--font-mono)',
+            borderRadius: 7,
+            maxWidth: 260,
+            lineHeight: 1.4,
+          }}
+        >
+          {pinNote}
         </div>
       )}
     </div>
