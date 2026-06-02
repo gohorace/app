@@ -34,6 +34,7 @@ import {
 } from '@/lib/notifications/email'
 import { getAppUrl } from '@/lib/url'
 import { reconcileSupportSeats } from '@/lib/stripe/support-seats'
+import { logAudit, AuditAction } from '@/lib/audit/log'
 
 const INVITE_TTL_DAYS = 7
 const TOKEN_PREFIX = 'inv_'
@@ -247,6 +248,19 @@ export async function POST(
     [inviterAgent?.first_name, inviterAgent?.last_name].filter(Boolean).join(' ') ||
     user.email ||
     'A teammate'
+
+  // HOR-374/377: audit the invite (a role-grant action). The invite vocabulary
+  // excludes 'admin', so no invite can escalate to Admin — the ceiling is
+  // structural. Logged regardless of whether the email send below succeeds.
+  await logAudit(admin, {
+    workspaceId,
+    actorUserId: user.id,
+    actorAgentId: inviterAgent?.id ?? null,
+    action: AuditAction.MemberInvite,
+    resourceType: 'invite',
+    resourceId: invite.id,
+    metadata: { email, role, resent: Boolean(existing && stillValid && resendFlag) },
+  })
 
   // 6. Send the email via Resend (HTML + plain-text fallback per HOR-103).
   const inviteUrl = `${getAppUrl()}/invite/accept?token=${plaintext}`

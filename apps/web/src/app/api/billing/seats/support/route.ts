@@ -52,16 +52,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'No workspace found' }, { status: 400 })
   }
 
-  // ACL: owner or admin.
-  const { data: membership } = await admin
-    .from('workspace_members')
-    .select('role')
-    .eq('workspace_id', agent.workspace_id)
-    .eq('user_id', user.id)
-    .maybeSingle()
-
-  if (!membership || (membership.role !== 'owner' && membership.role !== 'admin')) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  // ACL: billing/seat management is Admin-only (HOR-377; canonical agents.role).
+  if (agent.role !== 'admin') {
+    return NextResponse.json({ error: 'Billing is managed by an admin.' }, { status: 403 })
   }
 
   try {

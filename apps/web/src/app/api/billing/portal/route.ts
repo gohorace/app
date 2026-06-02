@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getStripe } from '@/lib/stripe/client'
-import { resolvePrimaryAgent } from '@/lib/seats/resolve-agent'
+import { getActor } from '@/lib/auth/capabilities'
 
 export async function POST() {
   const supabase = await createClient()
@@ -11,16 +11,19 @@ export async function POST() {
 
   const admin = createAdminClient()
 
-  const agent = await resolvePrimaryAgent(admin, user.id, { requireWorkspace: true })
-
-  if (!agent?.workspace_id) {
+  // HOR-377: billing is Admin-only.
+  const actor = await getActor(admin, user.id, { requireWorkspace: true })
+  if (!actor?.workspaceId) {
     return NextResponse.json({ error: 'No workspace found' }, { status: 400 })
+  }
+  if (!actor.isAdmin) {
+    return NextResponse.json({ error: 'Billing is managed by an admin.' }, { status: 403 })
   }
 
   const { data: workspace } = await admin
     .from('workspaces')
     .select('stripe_customer_id')
-    .eq('id', agent.workspace_id)
+    .eq('id', actor.workspaceId)
     .single()
 
   if (!workspace?.stripe_customer_id) {

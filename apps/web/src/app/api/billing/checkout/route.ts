@@ -42,6 +42,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'No workspace found' }, { status: 400 })
   }
 
+  // HOR-377: billing is Admin-only.
+  if (agent.role !== 'admin') {
+    return NextResponse.json({ error: 'Billing is managed by an admin.' }, { status: 403 })
+  }
+
   const { data: workspace } = await admin
     .from('workspaces')
     .select('stripe_customer_id')

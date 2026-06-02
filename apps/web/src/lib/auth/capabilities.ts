@@ -40,6 +40,51 @@ import { resolvePrimaryAgent } from '@/lib/seats/resolve-agent'
 export type AgentRole = 'agent' | 'manager' | 'admin'
 export type SeatType = 'agent' | 'support'
 
+/** Role seniority for the invite/grant ceiling. Higher = more senior. */
+export const ROLE_RANK: Record<AgentRole, number> = { agent: 1, manager: 2, admin: 3 }
+
+/**
+ * HOR-377 — may `actorRole` grant/assign `targetRole`? The spec's invite bound:
+ * "a user can only grant a role at or below their own". Agents (rank 1) cannot
+ * grant at all (no manage_team).
+ */
+export function canGrantRole(actorRole: AgentRole, targetRole: AgentRole): boolean {
+  if (actorRole === 'agent') return false // agents have no team-management power
+  return ROLE_RANK[targetRole] <= ROLE_RANK[actorRole]
+}
+
+/**
+ * HOR-377 — full guard for a role-change action. Encodes the grant ceiling and
+ * the no-self-escalation rule. The last-admin invariant is enforced at the DB
+ * layer (enforce_last_admin trigger); this only blocks self-escalation + ceiling.
+ *
+ * Returns a discriminated result so callers can map the reason to an HTTP status.
+ */
+export function checkRoleChange(input: {
+  actorRole: AgentRole
+  actorIsSelf: boolean
+  currentRole: AgentRole
+  nextRole: AgentRole
+}): { ok: true } | { ok: false; reason: 'forbidden' | 'self_escalation' | 'ceiling' } {
+  const { actorRole, actorIsSelf, currentRole, nextRole } = input
+
+  // Must be able to manage team at all.
+  if (actorRole !== 'admin' && actorRole !== 'manager') return { ok: false, reason: 'forbidden' }
+
+  // No self-escalation: you cannot raise your own rank.
+  if (actorIsSelf && ROLE_RANK[nextRole] > ROLE_RANK[currentRole]) {
+    return { ok: false, reason: 'self_escalation' }
+  }
+
+  // Ceiling: cannot grant a role above your own, and cannot act on someone whose
+  // current role is above your own (a Manager can't demote an Admin either).
+  if (!canGrantRole(actorRole, nextRole) || ROLE_RANK[currentRole] > ROLE_RANK[actorRole]) {
+    return { ok: false, reason: 'ceiling' }
+  }
+
+  return { ok: true }
+}
+
 /**
  * The "what" axis. Each capability is a coarse, role-gated permission. The "whose"
  * axis (scope) is answered separately by `canActOnAgentScope` / `canViewAgentScope`.
