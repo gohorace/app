@@ -120,6 +120,11 @@ function applyPinRing(wrap: HTMLElement) {
   } else {
     wrap.style.boxShadow = 'none'
   }
+  // Address label rides along with the ring — shown on hover/focus + when
+  // selected. (Labelling every pin at once would clutter dense markets; the
+  // design's all-labelled look assumed a sparse curated set.)
+  const label = wrap.querySelector('[data-pin-label]') as HTMLElement | null
+  if (label) label.style.display = selected || hovered ? 'block' : 'none'
 }
 
 function pinElement(p: PropertySignal): HTMLElement {
@@ -128,6 +133,7 @@ function pinElement(p: PropertySignal): HTMLElement {
   // box with the SVG centred; the hot halo overflows it harmlessly.
   const wrap = document.createElement('div')
   wrap.style.cursor = 'pointer'
+  wrap.style.position = 'relative'
   wrap.style.width = '32px'
   wrap.style.height = '32px'
   wrap.style.display = 'flex'
@@ -140,6 +146,33 @@ function pinElement(p: PropertySignal): HTMLElement {
   wrap.innerHTML = pinSvg(p.intensity)
   wrap.title = p.address
   wrap.setAttribute('aria-label', `${p.address} — ${p.state} signal`)
+
+  // Address label chip (design) — cream pill to the right of the dot. Hidden
+  // until hover/focus/select (toggled in applyPinRing); pointer-events off so
+  // it never steals the pin's click/hit target.
+  const label = document.createElement('span')
+  label.setAttribute('data-pin-label', '')
+  label.textContent = p.address
+  label.style.cssText = [
+    'display:none',
+    'position:absolute',
+    'left:calc(50% + 12px)',
+    'top:50%',
+    'transform:translateY(-50%)',
+    'white-space:nowrap',
+    'pointer-events:none',
+    'padding:2px 7px',
+    'background:rgba(250,247,242,0.95)',
+    'border:1px solid rgba(140,123,107,0.25)',
+    'border-radius:5px',
+    'font-family:var(--font-body)',
+    'font-size:11px',
+    'font-weight:500',
+    'color:#1A1612',
+    'box-shadow:0 1px 3px rgba(26,22,18,0.12)',
+    'z-index:1',
+  ].join(';')
+  wrap.appendChild(label)
 
   const show = () => { wrap.dataset.hovered = 'true'; applyPinRing(wrap) }
   const hide = () => { wrap.dataset.hovered = 'false'; applyPinRing(wrap) }
@@ -302,11 +335,12 @@ function heatRadiusForZoom(z: number): number {
   return 18
 }
 
-/** Suburb labels are primary at city zoom, recede at street zoom. */
+/** Suburb labels are primary at city zoom, recede only slightly at street zoom
+ *  (the design keeps the editorial suburb names readable in the neigh read). */
 function suburbLabelOpacityForZoom(z: number): number {
   if (z < 12) return 1
-  if (z <= 14) return 0.7
-  return 0.25
+  if (z <= 14) return 0.85
+  return 0.6
 }
 
 // ─── Cluster renderer ───────────────────────────────────────────────────────
@@ -416,7 +450,11 @@ export function PropertiesMap({
         const map = new GMap(hostRef.current, {
           center: initialCenter,
           zoom: NEIGH_ZOOM,
-          mapId: 'horace-properties-map', // required for AdvancedMarkerElement
+          // Required for AdvancedMarkerElement. NOTE: with a mapId set, Google
+          // IGNORES the inline `styles` array — the warm parchment basemap is a
+          // Cloud-based map style attached to this Map ID. See
+          // docs/market-map-style.md for the style JSON + how to apply it.
+          mapId: 'horace-properties-map',
           disableDefaultUI: true,         // /market floats its own glass controls
           clickableIcons: false,
         })
