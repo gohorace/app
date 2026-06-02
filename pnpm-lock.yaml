@@ -106,6 +106,9 @@ importers:
       date-fns:
         specifier: ^4.1.0
         version: 4.1.0
+      featurebase-js:
+        specifier: ^1.0.3
+        version: 1.0.3(react@18.3.1)
       html-to-text:
         specifier: ^9.0.5
         version: 9.0.5
@@ -3393,6 +3396,14 @@ packages:
       picomatch: ^3 || ^4
     peerDependenciesMeta:
       picomatch:
+        optional: true
+
+  featurebase-js@1.0.3:
+    resolution: {integrity: sha512-Q52xH6KEy6mYpxBl0ZRDzCaxW8EhoUjUxLbgG5e2GIMeiaS4uhKGHPK44yTRUmD+PTBgJ79/dc1GDFSwzz/sgg==}
+    peerDependencies:
+      react: '>=17'
+    peerDependenciesMeta:
+      react:
         optional: true
 
   file-entry-cache@6.0.1:
@@ -8409,6 +8420,10 @@ snapshots:
   fdir@6.5.0(picomatch@4.0.4):
     optionalDependencies:
       picomatch: 4.0.4
+
+  featurebase-js@1.0.3(react@18.3.1):
+    optionalDependencies:
+      react: 18.3.1
 
   file-entry-cache@6.0.1:
     dependencies:

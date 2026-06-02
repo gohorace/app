@@ -4,6 +4,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { ArrowUpRight, Calendar, Mail, MessageCircle, X } from 'lucide-react'
+import { showNewMessage } from 'featurebase-js'
 import { useCompanion } from '@/components/companion/companion-context'
 import { QuillIcon } from '@/components/ui/quill-icon'
 import { BellButton } from '@/components/dashboard/bell-button'
@@ -252,7 +253,7 @@ export function SupportView({ attentionCount }: { attentionCount: number }) {
             rel="noreferrer"
             style={{ marginLeft: 'auto', fontSize: 11.5, color: '#3D5246', fontWeight: 500, textDecoration: 'none' }}
           >
-            status.gohorace.com ↗
+            horace.instatus.com ↗
           </a>
         </div>
       </div>
@@ -381,7 +382,11 @@ function SupportChannel({
         <div style={{ fontSize: 13, fontWeight: 500, color: '#1A1612' }}>{channel.title}</div>
         <div style={{ fontSize: 11.5, color: '#8C7B6B', marginTop: 2, lineHeight: 1.4 }}>{channel.sub}</div>
       </div>
-      {onBook ? (
+      {channel.messenger && MESSENGER_ENABLED ? (
+        <button type="button" onClick={() => showNewMessage()} style={{ ...ctaStyle, cursor: 'pointer' }}>
+          {channel.cta}
+        </button>
+      ) : onBook ? (
         <button type="button" onClick={onBook} style={{ ...ctaStyle, cursor: 'pointer' }}>
           {channel.cta}
         </button>
@@ -397,6 +402,11 @@ function SupportChannel({
     </div>
   )
 }
+
+// The Live-chat CTA opens the Featurebase messenger only when an appId is
+// configured; otherwise it stays on its mailto fallback. NEXT_PUBLIC_* vars
+// are inlined by Next at build, so this is a static check in the client bundle.
+const MESSENGER_ENABLED = !!process.env.NEXT_PUBLIC_FEATUREBASE_APP_ID
 
 const panelStyle: React.CSSProperties = {
   background: '#FAF7F2',
