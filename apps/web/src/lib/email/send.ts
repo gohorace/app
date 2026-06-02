@@ -81,8 +81,20 @@ export class SendTrackedEmailError extends Error {
 export interface SendTrackedEmailContext {
   /** Admin client (service-role). All writes go through this — RLS is bypassed deliberately. */
   admin: SupabaseClient
+  /**
+   * The agent the email is sent AS — the vendor-facing / Gmail identity and the
+   * value written to email_sends.agent_id. For a Support seat acting on behalf of
+   * a linked agent this is the LINKED agent (resolved + authorized by the caller),
+   * not the support seat. For a normal agent it's themselves.
+   */
   agentId: string
   workspaceId: string
+  /**
+   * HOR-378: the human who actually performed the send. Differs from the agent's
+   * owning user when a Support seat sends on behalf of a linked agent. Null on the
+   * MCP path (the bearer token IS the agent). Never collapsed into agentId.
+   */
+  actingUserId?: string | null
   /** Where the request came from. Defaults to 'ui'. */
   source?: EmailSendSource
 }
@@ -224,6 +236,9 @@ async function insertEmailSendRow(
       scheduled_at: scheduledAt,
       links: [],
       source: ctx.source ?? 'ui',
+      // HOR-378: acting_user_id isn't in the generated types yet (regen deferred).
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ...({ acting_user_id: ctx.actingUserId ?? null } as any),
     })
     .select('id')
     .single()
