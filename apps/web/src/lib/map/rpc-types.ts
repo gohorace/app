@@ -90,6 +90,39 @@ export interface SuburbSignal {
   story:        SuburbStory
 }
 
+// ─── Suburb boundary (HOR-369) ───────────────────────────────────────────────
+//
+// City-zoom choropleth geometry. Served as a parallel array on MapPayload keyed
+// by suburb `id` (same id as SuburbSignal.id) rather than fattening every
+// SuburbSignal — keeps geometry out of the summary cache key and lets the FE
+// join boundaries to signals only when it renders the city read. Suburbs with
+// no matched boundary are simply absent; the FE falls back to radial heat.
+
+/**
+ * Minimal GeoJSON geometry — the SAL polygons are always Polygon or
+ * MultiPolygon. Coordinates are [lng, lat] (WGS84), GeoJSON axis order.
+ * Typed structurally (not `unknown`) so the FE can switch on `type` without a
+ * cast; kept tolerant of either geometry kind the ingestion may emit.
+ */
+export interface GeoJsonPolygon {
+  type: 'Polygon'
+  coordinates: number[][][]
+}
+export interface GeoJsonMultiPolygon {
+  type: 'MultiPolygon'
+  coordinates: number[][][][]
+}
+export type SuburbBoundaryGeometry = GeoJsonPolygon | GeoJsonMultiPolygon
+
+export interface SuburbBoundary {
+  /** Matches SuburbSignal.id (gnaf locality_pid, or lowercase-name fallback). */
+  id:       string
+  geometry: SuburbBoundaryGeometry
+  /** Representative point for label placement / fit. Null only if source lacked one. */
+  lat:      number | null
+  lng:      number | null
+}
+
 // ─── Heat cell ──────────────────────────────────────────────────────────────
 
 export interface HeatCell {
@@ -118,6 +151,13 @@ export interface MapPayload {
   timeWindow: TimeWindow
   heat:       HeatCell[]
   suburbs:    SuburbSignal[]
+  /**
+   * HOR-369: city-zoom choropleth polygons, keyed by suburb `id`. Parallel to
+   * `suburbs[]` (a suburb may appear in `suburbs` with no boundary here, in
+   * which case the FE falls back to radial heat). Empty until the SAL ingestion
+   * has populated `suburb_boundaries`.
+   */
+  boundaries: SuburbBoundary[]
   properties: PropertySignal[]
   /** Horace-voiced summary line composed server-side. Filled by HOR-217; empty until then. */
   summary:    string
@@ -160,4 +200,11 @@ export interface GetMapHeatCellsRow {
   latitude:  number
   longitude: number
   intensity: number
+}
+
+export interface GetSuburbBoundariesRow {
+  id:               string
+  boundary_geojson: SuburbBoundaryGeometry
+  centroid_lat:     number | null
+  centroid_lng:     number | null
 }
