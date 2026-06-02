@@ -56,7 +56,7 @@ export default async function DigestPage({
   const admin = createAdminClient()
   const { data: agent } = await admin
     .from('agents')
-    .select('id, first_name, last_name, email')
+    .select('id, first_name, last_name, email, created_at')
     .eq('user_id', user.id)
     .maybeSingle()
 
@@ -90,8 +90,24 @@ export default async function DigestPage({
   // attentionCount are the real values; everything else is illustrative.
   // isDemo:'preview' renders a "SAMPLE DATA" chip (vs "DEMO DATA" for ?demo=1)
   // so agents understand this is showing them what's coming, not their real data.
+  //
+  // Two gates on the sample stream:
+  //   1. Global kill switch — set DEMO_STREAM_ENABLED=false to turn the sample
+  //      stream off for everyone instantly (unset/anything-else = on).
+  //   2. Onboarding window — only show it for the agent's first
+  //      DEMO_STREAM_WINDOW_DAYS (default 7) after signup. After that a quiet
+  //      agent gets the real empty state, not the demo cast.
+  // Either way, the moment real leads arrive this whole branch is skipped.
   if (leads.length === 0) {
-    return <DigestView model={{ ...demoModel('live'), websiteUrl, attentionCount, isDemo: 'preview' }} />
+    const demoEnabled = process.env.DEMO_STREAM_ENABLED !== 'false'
+    const windowDays = Number(process.env.DEMO_STREAM_WINDOW_DAYS ?? 7)
+    const ageMs = Date.now() - new Date(agent.created_at).getTime()
+    const withinDemoWindow = ageMs < windowDays * 24 * 60 * 60 * 1000
+
+    if (demoEnabled && withinDemoWindow) {
+      return <DigestView model={{ ...demoModel('live'), websiteUrl, attentionCount, isDemo: 'preview' }} />
+    }
+    return <DigestView model={{ ...emptyModel(websiteUrl), attentionCount }} />
   }
 
   // ── Enrich each lead in parallel: events + suburb + AI insight ───────────
