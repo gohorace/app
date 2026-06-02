@@ -7,7 +7,7 @@ import { Sun, Users, MapPin, MoreHorizontal } from 'lucide-react'
 const TABS = [
   { href: '/digest',     label: 'Today',      icon: Sun            },
   { href: '/contacts',   label: 'Contacts',   icon: Users          },
-  { href: '/properties', label: 'Properties', icon: MapPin         },
+  { href: '/market',     label: 'Market',     icon: MapPin         },
   { href: '/settings',   label: 'More',       icon: MoreHorizontal },
 ]
 

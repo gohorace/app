@@ -1,19 +1,20 @@
 'use client'
 
-import { useId, useRef } from 'react'
+import { useRef } from 'react'
 import type { TimeWindow } from '@/lib/map/rpc-types'
+import styles from './market-map.module.css'
 
 /**
- * TimeSlider — the v2 `/market` time control. Replaces the HOR-217
- * scrubber (kept its keyboard model from HOR-220 — radiogroup ARIA,
- * arrow keys step between stops, Home / End jump to the ends).
+ * TimeSlider — the `/market` time scrubber (HOR-370 hero re-skin).
  *
- * Visual: thin parchment rail with a terracotta fill that animates to
- * the active stop's position; three stop dots with `Today / This week /
- * This month` labels and DM Mono sub-captions.
+ * Renders the design's scrubber *contents* (track with rail + progress +
+ * three dots, and a labels row); `MarketView` wraps this in the
+ * bottom-center glass pill (`styles.timeScrubber`). Keeps the HOR-220
+ * keyboard model — radiogroup ARIA on the dots, arrow keys step between
+ * stops, Home / End jump to the ends.
  *
- * URL: the parent owns `?timeWindow=` (or another mechanism); this
- * component is presentational + accessible.
+ * Label ↔ window map (design → payload): Today→24h, This week→7d,
+ * This month→30d. Default = This week.
  */
 
 interface TimeSliderProps {
@@ -34,7 +35,6 @@ const STOPS: Stop[] = [
 ]
 
 export function TimeSlider({ value, onChange }: TimeSliderProps) {
-  const groupId = useId()
   const dotRefs = useRef<Array<HTMLButtonElement | null>>([])
   const idx = STOPS.findIndex((s) => s.id === value)
   const safeIdx = idx === -1 ? 1 : idx // default to "This week" when unknown
@@ -74,48 +74,11 @@ export function TimeSlider({ value, onChange }: TimeSliderProps) {
   }
 
   return (
-    <div
-      role="radiogroup"
-      aria-labelledby={`${groupId}-label`}
-      onKeyDown={onKeyDown}
-      style={{ position: 'relative', padding: '0 6px' }}
-    >
-      <span id={`${groupId}-label`} className="sr-only">
-        Time window — Today, this week, this month
-      </span>
-      {/* Rail */}
-      <div
-        aria-hidden
-        style={{
-          position: 'relative',
-          height: 4,
-          background: 'rgba(140,123,107,0.2)',
-          borderRadius: 999,
-        }}
-      >
-        <div
-          style={{
-            position: 'absolute',
-            left: 0,
-            top: 0,
-            bottom: 0,
-            width: `${pct}%`,
-            background: '#C4622D',
-            borderRadius: 999,
-            transition: 'width 220ms var(--ease-out)',
-          }}
-        />
-      </div>
-
-      {/* Stops */}
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          marginTop: -7,
-          position: 'relative',
-        }}
-      >
+    <div role="radiogroup" aria-label="Time window" onKeyDown={onKeyDown}>
+      {/* Track — rail + ink progress + three dots (the radios) */}
+      <div className={styles.track}>
+        <div className={styles.rail} aria-hidden />
+        <div className={styles.progress} style={{ width: `${pct}%` }} aria-hidden />
         {STOPS.map((s, i) => {
           const sel = s.id === value
           return (
@@ -130,61 +93,30 @@ export function TimeSlider({ value, onChange }: TimeSliderProps) {
               aria-label={`${s.label} — ${s.sub}`}
               tabIndex={sel ? 0 : -1}
               onClick={() => onChange(s.id)}
-              className="focus:outline-none focus-visible:ring-2 focus-visible:ring-[#C4622D] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-parchment)]"
-              style={{
-                background: 'transparent',
-                border: 'none',
-                padding: 0,
-                cursor: 'pointer',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems:
-                  i === 0
-                    ? 'flex-start'
-                    : i === STOPS.length - 1
-                      ? 'flex-end'
-                      : 'center',
-                borderRadius: 8,
-                // Padding gives the stop a ≥24px hit area per HOR-220's
-                // WCAG 2.5.5 line. Visible dot stays 14px.
-                paddingTop: 0,
-                paddingBottom: 6,
-              }}
+              className={`${styles.dot} ${sel ? styles.dotActive : ''}`}
+              style={{ left: `${(i / (STOPS.length - 1)) * 100}%` }}
             >
-              <span
-                aria-hidden
-                style={{
-                  width: 14,
-                  height: 14,
-                  borderRadius: '50%',
-                  background: sel ? '#C4622D' : '#FAF7F2',
-                  border: sel
-                    ? '3px solid var(--color-parchment, #F5F0E8)'
-                    : '2px solid rgba(140,123,107,0.4)',
-                  boxShadow: sel ? '0 0 0 2px #C4622D' : 'none',
-                  marginBottom: 8,
-                  transition: 'background 180ms var(--ease-out), box-shadow 180ms var(--ease-out)',
-                }}
-              />
-              <span
-                style={{
-                  fontSize: 12,
-                  fontWeight: 600,
-                  color: sel ? '#1A1612' : '#6E5F50',
-                }}
-              >
-                {s.label}
-              </span>
-              <span
-                style={{
-                  fontSize: 10,
-                  color: '#8C7B6B',
-                  marginTop: 2,
-                  fontFamily: 'var(--font-mono)',
-                }}
-              >
-                {s.sub}
-              </span>
+              <span className={styles.dotInner} aria-hidden />
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Labels — visual affordance; the dots above are the accessible radios */}
+      <div className={styles.labels}>
+        {STOPS.map((s) => {
+          const sel = s.id === value
+          return (
+            <button
+              key={s.id}
+              type="button"
+              tabIndex={-1}
+              aria-hidden
+              onClick={() => onChange(s.id)}
+              className={`${styles.label} ${sel ? styles.labelActive : ''}`}
+            >
+              <span className={styles.labelMain}>{s.label}</span>
+              <span className={styles.labelCaption}>{s.sub}</span>
             </button>
           )
         })}

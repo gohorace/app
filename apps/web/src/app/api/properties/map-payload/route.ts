@@ -3,7 +3,8 @@
  *
  *   GET /api/properties/map-payload?timeWindow=24h|7d|30d
  *
- * Wraps three Postgres RPCs (migration 20260518000040_property_signal_rpcs)
+ * Wraps four Postgres RPCs (signals/suburbs/heat from
+ * 20260518000040_property_signal_rpcs + suburb boundaries from HOR-369)
  * and returns the contract `MapPayload` shape the brief specifies. Every map
  * refetch goes through here — no client-side recomputation, no view-state
  * coupling.
