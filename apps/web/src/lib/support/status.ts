@@ -10,15 +10,34 @@
 export interface SupportGuide {
   title: string
   sub: string
-  /** Internal route — all guides currently land on the /help stub. */
+  /** Full URL of the Help Centre article (opens in a new tab). */
   href: string
 }
 
+/** Root of the Featurebase-hosted Help Centre, linked beneath the guides. */
+export const HELP_CENTRE_URL = 'https://gohorace.featurebase.app/en/help'
+
 export const SUPPORT_GUIDES: SupportGuide[] = [
-  { title: 'Reading your daily digest', sub: 'Three minutes — what to act on, what to skip.', href: '/help' },
-  { title: 'Setting up an inspection', sub: 'QR, sign-in flow, and the post-visit follow up.', href: '/help' },
-  { title: 'How intent scoring works', sub: 'The points behind warm / active / stirring.', href: '/help' },
-  { title: 'Inviting your team', sub: 'Roles, seats, and what your assistant can see.', href: '/help' },
+  {
+    title: 'Getting started with Horace',
+    sub: 'Snippet, markets, contacts, alerts — the first ten minutes.',
+    href: 'https://gohorace.featurebase.app/en/help/articles/2473480-getting-started-with-horace',
+  },
+  {
+    title: 'Your Stream — the day’s signals',
+    sub: 'What to act on, what to skip, in priority order.',
+    href: 'https://gohorace.featurebase.app/en/help/articles/8938980-your-stream-the-days-signals',
+  },
+  {
+    title: 'Market — the suburb view',
+    sub: 'Read signal strength across suburbs before leads surface.',
+    href: 'https://gohorace.featurebase.app/en/help/articles/9973686-market-the-suburb-view',
+  },
+  {
+    title: 'Reaching out — tracked email, SMS, and links',
+    sub: 'Send, schedule, and see what lands.',
+    href: 'https://gohorace.featurebase.app/en/help/articles/7585477-reaching-out-tracked-email-sms-and-links',
+  },
 ]
 
 export interface SupportChannelDef {
