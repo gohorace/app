@@ -9,6 +9,8 @@ import { CompanionProvider } from '@/components/companion/companion-context'
 import { CompanionMount } from '@/components/companion/companion-mount'
 import { ComposerDockProvider } from '@/components/email/composer-dock-context'
 import { ComposerDockMount } from '@/components/email/composer-dock-mount'
+import { FeaturebaseMessenger } from '@/components/featurebase/featurebase-provider'
+import { signFeaturebaseJwt } from '@/lib/featurebase/jwt'
 import { fetchAttentionCount } from '@/lib/notifications/attention-count'
 import { requireActiveSubscription } from '@/lib/billing/gate'
 
@@ -61,7 +63,20 @@ export default async function DashboardLayout({ children }: { children: React.Re
     workspace?.current_period_end,
   )
 
+  // Featurebase identity — signed server-side so messenger conversations
+  // attribute to this agent. Returns null (→ anonymous) until
+  // FEATUREBASE_JWT_SECRET is configured. Names may be blank during onboarding;
+  // `trim() || undefined` keeps the claim out of the JWT when so.
+  const featurebaseJwt =
+    signFeaturebaseJwt({
+      userId: user.id,
+      email: user.email,
+      name: `${agent.first_name ?? ''} ${agent.last_name ?? ''}`.trim() || undefined,
+      profilePicture: agent.avatar_url ?? undefined,
+    }) ?? undefined
+
   return (
+    <FeaturebaseMessenger featurebaseJwt={featurebaseJwt}>
     <CompanionProvider>
      <ComposerDockProvider>
       <div className="flex h-screen overflow-hidden bg-background">
@@ -110,6 +125,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       </div>
      </ComposerDockProvider>
     </CompanionProvider>
+    </FeaturebaseMessenger>
   )
 }
 
