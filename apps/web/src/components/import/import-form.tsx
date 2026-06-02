@@ -177,7 +177,7 @@ export function ImportForm() {
 
           <div className="space-y-2">
             {FIELD_ORDER.map((key) => (
-              <div key={key} className="grid grid-cols-[110px_1fr] items-center gap-3">
+              <div key={key} className="grid grid-cols-1 md:grid-cols-[110px_1fr] md:items-center gap-1 md:gap-3">
                 <label className="text-xs font-medium" style={{ color: '#5A4D40' }}>
                   {FIELD_LABELS[key]}
                   {key === 'email' && <span style={{ color: '#A5511E' }}> *</span>}

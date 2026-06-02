@@ -168,8 +168,9 @@ export function SupportView({ attentionCount }: { attentionCount: number }) {
           </button>
         </div>
 
-        {/* Two-column grid */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18 }}>
+        {/* Two-column grid — collapses to a single column on narrow viewports
+            (auto-fit + min() avoids each column crushing to ~146px on mobile). */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(260px, 100%), 1fr))', gap: 18 }}>
           {/* Guides */}
           <section style={panelStyle}>
             <h2 style={panelHeadingStyle}>Guides</h2>

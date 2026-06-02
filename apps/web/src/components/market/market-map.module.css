@@ -478,3 +478,41 @@
   color: var(--color-stone);
   opacity: 0.7;
 }
+
+/* ─── Mobile (< md) ──────────────────────────────────────────────────────────
+ * The overlays above are positioned in desktop pixels and assume no bottom
+ * tab bar. On mobile the dashboard renders a fixed bottom nav (~56px +
+ * safe-area), so the bottom-anchored scrubber/zoom must clear it, and the
+ * 340px/400px fixed widths overflow a ~375px viewport. */
+@media (max-width: 767px) {
+  /* Detail panel — full-width sheet with small gutters, capped so it clears
+     the tab bar at the bottom. */
+  .panel {
+    top: 12px;
+    left: 12px;
+    right: 12px;
+    width: auto;
+    max-height: calc(100% - 24px - env(safe-area-inset-bottom) - 56px);
+    padding: 18px 18px;
+  }
+
+  /* Time scrubber — span the width (gutters) and float clear of the nav. */
+  .timeScrubber {
+    left: 12px;
+    right: 12px;
+    width: auto;
+    max-width: none;
+    transform: none;
+    bottom: calc(env(safe-area-inset-bottom) + 76px);
+    padding: 13px 18px 15px;
+  }
+
+  /* Zoom control — re-dock to the right edge, stacked above the scrubber
+     (the desktop translateX(216px) lands it off-canvas on narrow screens). */
+  .zoomCtrl {
+    left: auto;
+    right: 12px;
+    transform: none;
+    bottom: calc(env(safe-area-inset-bottom) + 76px + 92px);
+  }
+}
