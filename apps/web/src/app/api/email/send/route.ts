@@ -19,6 +19,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { resolvePrimaryAgent } from '@/lib/seats/resolve-agent'
 import { authenticateRequest } from '@/lib/mcp/auth'
+import { logAudit, AuditAction } from '@/lib/audit/log'
 import {
   sendTrackedEmail,
   scheduleTrackedEmail,
@@ -37,6 +38,8 @@ interface ResolvedAuth {
   agentId: string
   workspaceId: string
   source: EmailSendSource
+  /** Acting user id (UI/cookie path). Null on the MCP/Bearer path. */
+  userId: string | null
 }
 
 export async function POST(req: NextRequest) {
@@ -71,9 +74,33 @@ export async function POST(req: NextRequest) {
     // Scheduled send (HOR-357) — park the row; the cron worker fires it.
     if (payload.scheduled_at) {
       const scheduled = await scheduleTrackedEmail(sendCtx, payload, payload.scheduled_at)
+      await logAudit(admin, {
+        workspaceId: auth.workspaceId,
+        actorUserId: auth.userId,
+        actorAgentId: auth.agentId,
+        // HOR-374: actor-only for now. HOR-378 (Phase 4, two-identity comms) will
+        // set acting_as once the send path distinguishes a Support seat sending on
+        // behalf of its linked agent.
+        action: AuditAction.EmailSchedule,
+        resourceType: 'email',
+        resourceId: scheduled.email_send_id,
+        scope: 'own',
+        metadata: { source, contact_id: payload.contact_id, scheduled_at: payload.scheduled_at },
+      })
       return NextResponse.json(scheduled, { status: 200 })
     }
     const result = await sendTrackedEmail(sendCtx, payload)
+    await logAudit(admin, {
+      workspaceId: auth.workspaceId,
+      actorUserId: auth.userId,
+      actorAgentId: auth.agentId,
+      // HOR-374: actor-only for now; HOR-378 adds acting_as for Support sends.
+      action: AuditAction.EmailSend,
+      resourceType: 'email',
+      resourceId: result.email_send_id,
+      scope: 'own',
+      metadata: { source, contact_id: payload.contact_id },
+    })
     return NextResponse.json(result, { status: 200 })
   } catch (err) {
     if (err instanceof SendTrackedEmailError) {
@@ -104,6 +131,7 @@ async function resolveAuth(req: NextRequest): Promise<ResolvedAuth> {
       agentId: mcp.agentId,
       workspaceId: mcp.workspaceId,
       source: 'mcp',
+      userId: null,
     }
   }
 
@@ -131,6 +159,7 @@ async function resolveAuth(req: NextRequest): Promise<ResolvedAuth> {
     agentId: agent.id,
     workspaceId: agent.workspace_id,
     source: 'ui',
+    userId: user.id,
   }
 }
 
