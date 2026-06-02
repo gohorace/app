@@ -5,6 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveResidence, type SelectedAddressInput } from '@/lib/contacts/residence'
 import { getRoles, withRoleAdded, withRoleRemoved } from '@/lib/contacts/roles'
 import { resolvePrimaryAgent } from '@/lib/seats/resolve-agent'
+import { logAudit, actingAs, AuditAction } from '@/lib/audit/log'
 
 // Body shape for role mutations. Caller sends one of:
 //   - `{ add_role: { type, property_id, date? } }`         — append/replace
@@ -253,14 +254,36 @@ export async function PATCH(
   // Refuse edits on soft-deleted contacts. Restore first, then edit.
   // HOR-203: ownership scope expanded — support seats can action signals
   // on contacts owned by their assigned agent(s) (allowedAgentIds).
-  const { error } = await admin
+  const { data: updated, error } = await admin
     .from('contacts')
     .update(update)
     .eq('id', params.id)
     .in('agent_id', allowedAgentIds)
     .is('deleted_at', null)
+    .select('agent_id, workspace_id')
+    .maybeSingle()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // HOR-374: audit the edit. Captures actor (caller's own agent) and, when a
+  // support seat edits a contact owned by a linked agent, the acting-as identity.
+  if (updated) {
+    const ownerAgentId = (updated as { agent_id: string | null }).agent_id
+    const workspaceId =
+      (updated as { workspace_id: string | null }).workspace_id ?? agent.workspace_id
+    if (workspaceId) {
+      await logAudit(admin, {
+        workspaceId,
+        actorUserId: user.id,
+        actorAgentId: agent.id,
+        ...actingAs(agent.id, ownerAgentId),
+        action: AuditAction.ContactUpdate,
+        resourceType: 'contact',
+        resourceId: params.id,
+        metadata: { fields: Object.keys(update) },
+      })
+    }
+  }
 
   return NextResponse.json({ ok: true })
 }

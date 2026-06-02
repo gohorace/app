@@ -16,6 +16,7 @@ import {
   Plug,
   Database,
   Upload,
+  ScrollText,
   LogOut,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
@@ -42,6 +43,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: '/settings/team', label: 'Team', icon: Users, adminOnly: true },
       { href: '/settings/billing', label: 'Plan & billing', icon: CreditCard, adminOnly: true },
+      { href: '/settings/audit', label: 'Activity log', icon: ScrollText, adminOnly: true },
     ],
   },
   {
