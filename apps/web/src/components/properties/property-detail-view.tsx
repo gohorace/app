@@ -21,6 +21,7 @@ import {
   Sun,
   TrendingUp,
   UserPlus,
+  UserCog,
   Users,
   Zap,
   type LucideIcon,
@@ -45,6 +46,7 @@ import {
 import type { PropertyRead } from '@/lib/ai/property-read'
 import { useCompanion } from '@/components/companion/companion-context'
 import { AttachContactDialog } from './attach-contact-dialog'
+import { PropertyReassignDialog, type ReassignAgentOption } from './property-reassign-dialog'
 import { PropertyTrail } from './property-trail'
 
 // Role-attached vendors/buyers (durable metadata roles) — derived by the page.
@@ -70,6 +72,14 @@ export interface PropertyDetailViewProps {
   read: PropertyRead
   /** Durable seller/buyer roles on this property (metadata). */
   roleAttached: PropertyDetailRoleAttached[]
+  /**
+   * HOR-379 — reassignment affordance. Present (Admin/Manager only) when the
+   * viewer can `assign_properties`; omitted otherwise so Agents never see it.
+   */
+  reassign?: {
+    currentAgentName: string | null
+    agents: ReassignAgentOption[]
+  }
 }
 
 type TimelineFilter = 'all' | 'known' | 'moments' | 'anon'
@@ -93,13 +103,14 @@ const CHIP_ICON: Record<ChangeChipIcon, LucideIcon> = {
   'eye-off': EyeOff,
 }
 
-export function PropertyDetailView({ property, signal, read, roleAttached }: PropertyDetailViewProps) {
+export function PropertyDetailView({ property, signal, read, roleAttached, reassign }: PropertyDetailViewProps) {
   const { openCompanion } = useCompanion()
   const isMobile = useIsMobile()
   const [status, setStatus] = useState<PropertyStatus>(property.status)
   const [statusError, setStatusError] = useState<string | null>(null)
   const [timelineFilter, setTimelineFilter] = useState<TimelineFilter>('all')
   const [attachOpen, setAttachOpen] = useState(false)
+  const [reassignOpen, setReassignOpen] = useState(false)
   const [sheetOpen, setSheetOpen] = useState(false)
 
   useEffect(() => setStatus(property.status), [property.id, property.status])
@@ -200,6 +211,19 @@ export function PropertyDetailView({ property, signal, read, roleAttached }: Pro
           <MapPin style={{ width: 13, height: 13 }} />
           {property.suburb ?? 'Suburb pending'}
         </div>
+
+        {/* ── Reassignment (Admin/Manager only — HOR-379) ─────────────────── */}
+        {reassign && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+            <span style={metaPillStyle}>
+              <UserCog style={{ width: 11, height: 11 }} />
+              {reassign.currentAgentName ? `Assigned to ${reassign.currentAgentName}` : 'Unassigned'}
+            </span>
+            <button type="button" onClick={() => setReassignOpen(true)} style={ghostBtnStyle}>
+              <UserCog style={{ width: 13, height: 13 }} /> Reassign
+            </button>
+          </div>
+        )}
 
         {/* ── SIGNAL ──────────────────────────────────────────────────────── */}
         <ActStart label="Why now" tone="signal" />
@@ -449,6 +473,16 @@ export function PropertyDetailView({ property, signal, read, roleAttached }: Pro
 
       {attachOpen && (
         <AttachContactDialog propertyId={property.id} propertyAddress={property.address} onClose={() => setAttachOpen(false)} />
+      )}
+
+      {reassignOpen && reassign && (
+        <PropertyReassignDialog
+          propertyId={property.id}
+          propertyAddress={property.address}
+          currentAgentName={reassign.currentAgentName}
+          agents={reassign.agents}
+          onClose={() => setReassignOpen(false)}
+        />
       )}
     </div>
   )
