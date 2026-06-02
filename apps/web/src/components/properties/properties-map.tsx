@@ -18,8 +18,9 @@
  * Layers:
  *   1. **City choropleth (HOR-369).** When zoomed out past CITY_MAX_ZOOM, suburb
  *      boundary polygons (`payload.boundaries`) load into the Data layer, filled
- *      terracotta with opacity ∝ joined `SuburbSignal.intensity`. Clickable where
- *      intensity > 0.10 → `#suburb=<id>`.
+ *      terracotta with opacity ∝ joined `SuburbSignal.intensity`, floored at a
+ *      faint QUIET_FILL so a workspace's core markets always read even at
+ *      intensity 0. All boundaries are clickable → `#suburb=<id>`.
  *   2. **Radial heat** (HeatmapLayer) when zoomed in.
  *   3. **Suburb labels** (OverlayView) at the GNAF centroid.
  *   4. **Property pins** (Marker + MarkerClusterer) in three ink tiers, with a
@@ -481,12 +482,13 @@ export const PropertiesMap = forwardRef<PropertiesMapHandle, Props>(function Pro
           }
         })
 
-        // City choropleth click → open the suburb panel (intensity > 0.10).
+        // City choropleth click → open the suburb panel. Any boundary in the
+        // payload is one of the agent's own suburbs, so all are clickable —
+        // including quiet core markets with no engagement yet.
         map.data.addListener('click', (e: google.maps.Data.MouseEvent) => {
           if (typeof window === 'undefined') return
           const id = e.feature.getProperty('id') as string | undefined
-          const intensity = Number(e.feature.getProperty('intensity')) || 0
-          if (!id || intensity <= 0.10) return
+          if (!id) return
           const url = new URL(window.location.href)
           url.hash = `suburb=${encodeURIComponent(id)}`
           window.location.replace(url.toString())
@@ -660,16 +662,27 @@ export const PropertiesMap = forwardRef<PropertiesMapHandle, Props>(function Pro
 
     map.data.setStyle((feature) => {
       const intensity = Number(feature.getProperty('intensity')) || 0
-      const interactive = intensity > 0.10
-      const fillOpacity = Math.min(0.85, intensity * 0.85) * heatOpacity
+      // A boundary in the payload is, by definition, one of the workspace's
+      // suburbs (it has properties there — typically a core market). Give it a
+      // baseline visible presence even at intensity 0 (a freshly-added core
+      // market with no engagement yet), so the agent's patch always reads on
+      // the map. Engaged suburbs scale above the floor as before.
+      const QUIET_FILL = 0.06
+      const fillOpacity = Math.max(
+        QUIET_FILL * heatOpacity,
+        Math.min(0.85, intensity * 0.85) * heatOpacity,
+      )
+      const warm = intensity > 0.10
       return {
         fillColor: COLOR.terracotta,
         fillOpacity,
         strokeColor: COLOR.terracotta,
-        strokeWeight: interactive ? 0.8 : 0.4,
-        strokeOpacity: 0.32,
-        clickable: interactive,
-        cursor: interactive ? 'pointer' : undefined,
+        strokeWeight: warm ? 0.8 : 0.6,
+        strokeOpacity: 0.5,
+        // Always clickable — the agent can open the panel for any of their own
+        // suburbs, engaged or not.
+        clickable: true,
+        cursor: 'pointer',
         zIndex: 1,
       }
     })
