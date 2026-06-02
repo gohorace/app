@@ -21,6 +21,8 @@ export const AuditAction = {
   EmailSchedule: 'email.schedule',
   PropertyReassign: 'property.reassign',
   RoleChange: 'member.role_change',
+  MemberRemove: 'member.remove',
+  MemberInvite: 'member.invite',
   ExportAccount: 'export.account',
   ExportScope: 'export.scope',
 } as const

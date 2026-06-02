@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import {
   buildActor,
+  canGrantRole,
+  checkRoleChange,
   type AgentRole,
   type SeatType,
   type Capability,
@@ -212,4 +214,67 @@ describe('legacy members.role → canonical agents.role parity', () => {
       expect(actor(agentsRole, 'agent').can('manage_team')).toBe(canManageTeam)
     })
   }
+})
+
+describe('canGrantRole — invite/grant ceiling (at or below self)', () => {
+  it('Admin can grant any role', () => {
+    expect(canGrantRole('admin', 'admin')).toBe(true)
+    expect(canGrantRole('admin', 'manager')).toBe(true)
+    expect(canGrantRole('admin', 'agent')).toBe(true)
+  })
+
+  it('Manager can grant at or below self, never Admin', () => {
+    expect(canGrantRole('manager', 'admin')).toBe(false)
+    expect(canGrantRole('manager', 'manager')).toBe(true)
+    expect(canGrantRole('manager', 'agent')).toBe(true)
+  })
+
+  it('Agent cannot grant any role', () => {
+    expect(canGrantRole('agent', 'agent')).toBe(false)
+    expect(canGrantRole('agent', 'manager')).toBe(false)
+  })
+})
+
+describe('checkRoleChange — promote/demote guard', () => {
+  it('an Admin can promote another member to Admin (multiple admins)', () => {
+    expect(
+      checkRoleChange({ actorRole: 'admin', actorIsSelf: false, currentRole: 'manager', nextRole: 'admin' }),
+    ).toEqual({ ok: true })
+  })
+
+  it('an Admin can promote an agent to manager', () => {
+    expect(
+      checkRoleChange({ actorRole: 'admin', actorIsSelf: false, currentRole: 'agent', nextRole: 'manager' }),
+    ).toEqual({ ok: true })
+  })
+
+  it('a Manager cannot mint an Admin (ceiling)', () => {
+    expect(
+      checkRoleChange({ actorRole: 'manager', actorIsSelf: false, currentRole: 'agent', nextRole: 'admin' }),
+    ).toEqual({ ok: false, reason: 'ceiling' })
+  })
+
+  it('a Manager cannot demote an Admin (cannot act on someone senior)', () => {
+    expect(
+      checkRoleChange({ actorRole: 'manager', actorIsSelf: false, currentRole: 'admin', nextRole: 'agent' }),
+    ).toEqual({ ok: false, reason: 'ceiling' })
+  })
+
+  it('no self-escalation: a Manager cannot raise their own role', () => {
+    expect(
+      checkRoleChange({ actorRole: 'manager', actorIsSelf: true, currentRole: 'manager', nextRole: 'admin' }),
+    ).toEqual({ ok: false, reason: 'self_escalation' })
+  })
+
+  it('an Agent cannot change roles at all', () => {
+    expect(
+      checkRoleChange({ actorRole: 'agent', actorIsSelf: false, currentRole: 'agent', nextRole: 'manager' }),
+    ).toEqual({ ok: false, reason: 'forbidden' })
+  })
+
+  it('an Admin may self-demote (last-admin invariant is enforced at the DB layer)', () => {
+    expect(
+      checkRoleChange({ actorRole: 'admin', actorIsSelf: true, currentRole: 'admin', nextRole: 'manager' }),
+    ).toEqual({ ok: true })
+  })
 })
