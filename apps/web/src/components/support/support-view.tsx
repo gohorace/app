@@ -3,6 +3,7 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import { ArrowUpRight, Calendar, Mail, MessageCircle } from 'lucide-react'
+import { showNewMessage } from 'featurebase-js'
 import { useCompanion } from '@/components/companion/companion-context'
 import { QuillIcon } from '@/components/ui/quill-icon'
 import { BellButton } from '@/components/dashboard/bell-button'
@@ -284,26 +285,41 @@ function SupportChannel({ channel, isLast }: { channel: SupportChannelDef; isLas
         <div style={{ fontSize: 13, fontWeight: 500, color: '#1A1612' }}>{channel.title}</div>
         <div style={{ fontSize: 11.5, color: '#8C7B6B', marginTop: 2, lineHeight: 1.4 }}>{channel.sub}</div>
       </div>
-      <a
-        href={channel.href}
-        {...(channel.external ? { target: '_blank', rel: 'noreferrer' } : {})}
-        style={{
-          padding: '6px 12px',
-          fontSize: 11.5,
-          fontWeight: 500,
-          color: '#1A1612',
-          background: 'transparent',
-          border: '1px solid rgba(140,123,107,0.3)',
-          borderRadius: 7,
-          textDecoration: 'none',
-          whiteSpace: 'nowrap',
-          flexShrink: 0,
-        }}
-      >
-        {channel.cta}
-      </a>
+      {channel.messenger && MESSENGER_ENABLED ? (
+        <button type="button" onClick={() => showNewMessage()} style={channelCtaStyle}>
+          {channel.cta}
+        </button>
+      ) : (
+        <a
+          href={channel.href}
+          {...(channel.external ? { target: '_blank', rel: 'noreferrer' } : {})}
+          style={channelCtaStyle}
+        >
+          {channel.cta}
+        </a>
+      )}
     </div>
   )
+}
+
+// The Live-chat CTA opens the Featurebase messenger only when an appId is
+// configured; otherwise it stays on its mailto fallback. NEXT_PUBLIC_* vars
+// are inlined by Next at build, so this is a static check in the client bundle.
+const MESSENGER_ENABLED = !!process.env.NEXT_PUBLIC_FEATUREBASE_APP_ID
+
+const channelCtaStyle: React.CSSProperties = {
+  padding: '6px 12px',
+  fontSize: 11.5,
+  fontWeight: 500,
+  color: '#1A1612',
+  background: 'transparent',
+  border: '1px solid rgba(140,123,107,0.3)',
+  borderRadius: 7,
+  textDecoration: 'none',
+  whiteSpace: 'nowrap',
+  flexShrink: 0,
+  cursor: 'pointer',
+  fontFamily: 'var(--font-body)',
 }
 
 const panelStyle: React.CSSProperties = {
