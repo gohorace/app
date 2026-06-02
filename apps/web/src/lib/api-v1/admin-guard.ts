@@ -8,7 +8,7 @@
  * not-yet-regenerated generated types.
  */
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { resolvePrimaryAgent } from '@/lib/seats/resolve-agent'
+import { getActor } from '@/lib/auth/capabilities'
 
 export interface AdminContext {
   workspaceId: string
@@ -20,20 +20,18 @@ export async function resolveAdminContext(
   db: SupabaseClient,
   userId: string,
 ): Promise<AdminContext | null> {
-  const agent = await resolvePrimaryAgent(db, userId, { requireWorkspace: true })
-  if (!agent?.workspace_id) return null
+  // HOR-376: route through the canonical permission layer. `agents.role` is now the
+  // source of truth for the Role axis; it maps 1:1 to the pre-376 members.role gate
+  // (owner→admin, admin→manager), so this preserves behaviour exactly.
+  const actor = await getActor(db, userId, { requireWorkspace: true })
+  if (!actor?.workspaceId || !actor.agentId) return null
 
-  const { data: membership } = await db
-    .from('workspace_members')
-    .select('role')
-    .eq('user_id', userId)
-    .eq('workspace_id', agent.workspace_id)
-    .maybeSingle()
-
-  const role = membership?.role as string | undefined
   return {
-    workspaceId: agent.workspace_id as string,
-    agentId: agent.id as string,
-    isAdmin: role === 'owner' || role === 'admin',
+    workspaceId: actor.workspaceId,
+    agentId: actor.agentId,
+    // Preserves the legacy gate (members.role ∈ {owner, admin} == agents.role ∈
+    // {admin, manager}). HOR-377/HOR-375 will tighten the admin-only surfaces that
+    // hang off this (v1 keys, whole-account export) to `actor.isAdmin`.
+    isAdmin: actor.role === 'admin' || actor.role === 'manager',
   }
 }

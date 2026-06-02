@@ -20,6 +20,8 @@ export interface ResolvedAgent {
   id: string
   workspace_id: string | null
   seat_type: 'agent' | 'support'
+  /** Canonical Role axis (HOR-376). 'agent' | 'manager' | 'admin'. */
+  role: 'agent' | 'manager' | 'admin'
 }
 
 export async function resolvePrimaryAgent(
@@ -29,10 +31,10 @@ export async function resolvePrimaryAgent(
 ): Promise<ResolvedAgent | null> {
   let query = admin
     .from('agents')
-    // seat_type / status are added by later migrations and aren't in the
-    // generated Database types yet — cast the projection (matches permissions.ts).
+    // seat_type / status / role are added by later migrations and aren't in
+    // the generated Database types yet — cast the projection (matches permissions.ts).
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    .select('id, workspace_id, seat_type, status' as any)
+    .select('id, workspace_id, seat_type, status, role' as any)
     .eq('user_id', userId)
 
   if (opts.requireWorkspace) query = query.not('workspace_id', 'is', null)
@@ -47,9 +49,11 @@ export async function resolvePrimaryAgent(
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const row = data[0] as any
+  const role = row.role
   return {
     id: row.id as string,
     workspace_id: (row.workspace_id as string | null) ?? null,
     seat_type: row.seat_type === 'support' ? 'support' : 'agent',
+    role: role === 'admin' || role === 'manager' ? role : 'agent',
   }
 }
