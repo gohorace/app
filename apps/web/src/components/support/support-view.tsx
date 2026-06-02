@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { ArrowUpRight, Calendar, Mail, MessageCircle, X } from 'lucide-react'
+import { ArrowUpRight, Calendar, Lightbulb, Mail, MessageCircle, X } from 'lucide-react'
 import { showNewMessage } from 'featurebase-js'
 import { useCompanion } from '@/components/companion/companion-context'
 import { QuillIcon } from '@/components/ui/quill-icon'
@@ -25,6 +25,7 @@ const CHANNEL_ICON = {
   mail: Mail,
   chat: MessageCircle,
   calendar: Calendar,
+  feedback: Lightbulb,
 } as const
 
 export function SupportView({ attentionCount }: { attentionCount: number }) {

@@ -41,7 +41,7 @@ export const SUPPORT_GUIDES: SupportGuide[] = [
 ]
 
 export interface SupportChannelDef {
-  icon: 'mail' | 'chat' | 'calendar'
+  icon: 'mail' | 'chat' | 'calendar' | 'feedback'
   title: string
   sub: string
   cta: string
@@ -83,6 +83,14 @@ export const SUPPORT_CHANNELS: SupportChannelDef[] = [
     cta: 'Pick a time',
     href: 'https://cal.com/andytwomey/support-session',
     embed: true,
+  },
+  {
+    icon: 'feedback',
+    title: 'Feedback',
+    sub: 'Request a feature, vote, or report a bug — see what we’re building.',
+    cta: 'Open board',
+    href: 'https://gohorace.featurebase.app/en',
+    external: true,
   },
 ]
 
