@@ -16,11 +16,13 @@ Google's two basemap-styling paths are mutually exclusive:
   `AdvancedMarkerElement`.
 
 We took the inline path (no Map ID / no console setup, renders on the preview
-immediately, fully version-controlled). Consequence: pins render as custom
-`OverlayView` DOM instead of Advanced Markers (same look + hover/label/selection
-+ keyboard a11y), and `MarkerClusterer` is dropped — replaced by a top-N
-(`MAX_PINS`) intensity cap with a visible "showing strongest N" note. Re-add a
-clusterer (OverlayView grid) if dense markets need drill-in.
+immediately, fully version-controlled). Consequence: pins render as legacy
+`google.maps.Marker`s (which, unlike `AdvancedMarkerElement`, don't need a
+mapId) so we keep `MarkerClusterer` — a workspace with thousands of properties
+clusters into density instead of dropping pins. Tier visuals are SVG icons;
+hover/selection swap to a ringed icon + a shared address-chip overlay. Trade-off
+vs Advanced Markers / OverlayView: legacy markers aren't keyboard-focusable DOM,
+so per-pin keyboard nav (HOR-220) regresses — flagged, revisit if needed.
 
 ## The style (what it does)
 

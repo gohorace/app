@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Minus, Plus } from 'lucide-react'
 import { BellButton } from '@/components/dashboard/bell-button'
-import { PropertiesMap, type ZoomMode } from '@/components/properties/properties-map'
+import { PropertiesMap, type PropertiesMapHandle } from '@/components/properties/properties-map'
 import { useSidebarPref } from '@/lib/ui/use-sidebar-pref'
 import type { MapPayload, PropertySignal, SuburbSignal, TimeWindow } from '@/lib/map/rpc-types'
 import { TimeSlider } from './time-slider'
@@ -23,9 +23,10 @@ import styles from './market-map.module.css'
  * property panel (written by a pin click in `PropertiesMap`), `#suburb=<id>`
  * opens the suburb panel (written by a choropleth/label click at city zoom).
  *
- * Zoom is a two-state toggle (city ↔ neighbourhood); changing it clears the
- * selection. City zoom shows the suburb choropleth (HOR-369 boundaries),
- * neighbourhood zoom shows radial heat + pins.
+ * Zoom: the glass +/- buttons nudge the live Google zoom incrementally (via
+ * the map's imperative handle), so they stay consistent with mouse-scroll.
+ * The choropleth (city read) vs radial heat + pins (neighbourhood read) switch
+ * is derived inside `PropertiesMap` from the live zoom, not a discrete toggle.
  *
  * First-visit collapse: on first navigation to /market, force the sidebar
  * collapsed once (guarded by `horace.market.firstVisitDone`).
@@ -49,9 +50,9 @@ export function MarketView({
   const [timeWindow, setTimeWindow] = useState<TimeWindow>(initialTimeWindow)
   const [payload, setPayload] = useState<MapPayload | null>(initialPayload)
   const [loading, setLoading] = useState(false)
-  const [zoomMode, setZoomMode] = useState<ZoomMode>('neigh')
   const [selection, setSelection] = useState<Selection | null>(null)
   const [, , setSidebarCollapsed] = useSidebarPref()
+  const mapRef = useRef<PropertiesMapHandle>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const fetchAbortRef = useRef<AbortController | null>(null)
 
@@ -141,14 +142,6 @@ export function MarketView({
     window.dispatchEvent(new HashChangeEvent('hashchange'))
   }
 
-  // ── Two-state zoom. Changing it clears the current selection (the design
-  //   resets selection on a zoom change for cleanliness).
-  function handleZoomChange(next: ZoomMode) {
-    if (next === zoomMode) return
-    setZoomMode(next)
-    clearHashSelection()
-  }
-
   const selectedProperty = useMemo<PropertySignal | null>(() => {
     if (selection?.kind !== 'pin' || !payload) return null
     return payload.properties.find((p) => p.id === selection.id) ?? null
@@ -174,9 +167,9 @@ export function MarketView({
         }}
       >
         <PropertiesMap
+          ref={mapRef}
           payload={payload}
           fallbackCenter={fallbackCenter}
-          zoomMode={zoomMode}
           selectedPinId={selectedPinId}
           fill
         />
@@ -197,14 +190,13 @@ export function MarketView({
         <TimeSlider value={timeWindow} onChange={handleTimeChange} />
       </div>
 
-      {/* ── Zoom control (bottom-right) ────────────────────────────── */}
+      {/* ── Zoom control (beside the scrubber) — incremental, matches scroll ── */}
       <div className={styles.zoomCtrl}>
         <button
           type="button"
           className={styles.zoomBtn}
-          onClick={() => handleZoomChange('neigh')}
-          disabled={zoomMode === 'neigh'}
-          aria-label="Zoom in to neighbourhood"
+          onClick={() => mapRef.current?.zoomBy(1)}
+          aria-label="Zoom in"
         >
           <Plus size={14} />
         </button>
@@ -212,9 +204,8 @@ export function MarketView({
         <button
           type="button"
           className={styles.zoomBtn}
-          onClick={() => handleZoomChange('city')}
-          disabled={zoomMode === 'city'}
-          aria-label="Zoom out to city"
+          onClick={() => mapRef.current?.zoomBy(-1)}
+          aria-label="Zoom out"
         >
           <Minus size={14} />
         </button>
