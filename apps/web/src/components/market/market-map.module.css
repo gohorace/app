@@ -68,9 +68,13 @@
 
 .zoomCtrl {
   position: absolute;
-  bottom: 14px;
-  right: 14px;
-  z-index: 2;
+  /* Docked just right of the bottom-center time scrubber (400px wide → its
+     right edge is at center+200; +16px gap). Keeps clear of the Companion
+     button at the bottom-right. Bottom-aligned with the scrubber. */
+  bottom: 22px;
+  left: 50%;
+  transform: translateX(216px);
+  z-index: 3;
   display: flex;
   flex-direction: column;
   background: rgba(250, 247, 242, 0.92);
