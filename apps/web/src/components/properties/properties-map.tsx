@@ -662,14 +662,17 @@ export const PropertiesMap = forwardRef<PropertiesMapHandle, Props>(function Pro
 
     map.data.setStyle((feature) => {
       const intensity = Number(feature.getProperty('intensity')) || 0
-      // A boundary in the payload is, by definition, one of the workspace's
-      // suburbs (it has properties there — typically a core market). Give it a
-      // baseline visible presence even at intensity 0 (a freshly-added core
-      // market with no engagement yet), so the agent's patch always reads on
-      // the map. Engaged suburbs scale above the floor as before.
-      const QUIET_FILL = 0.06
+      // Every boundary in the payload is one of the workspace's own suburbs
+      // (it has properties there — typically a core market). Render it as the
+      // agent's patch: a clear terracotta OUTLINE plus a fill that reads even
+      // at intensity 0 (a freshly-added core market with no engagement yet),
+      // so the choropleth surfaces the patch at city zoom even when no pins
+      // do. Engaged suburbs deepen the fill above the baseline. BASELINE_FILL
+      // is a fixed opacity (NOT scaled by heatOpacity) so the patch always
+      // reads regardless of the heat tuning.
+      const BASELINE_FILL = 0.16
       const fillOpacity = Math.max(
-        QUIET_FILL * heatOpacity,
+        BASELINE_FILL,
         Math.min(0.85, intensity * 0.85) * heatOpacity,
       )
       const warm = intensity > 0.10
@@ -677,8 +680,8 @@ export const PropertiesMap = forwardRef<PropertiesMapHandle, Props>(function Pro
         fillColor: COLOR.terracotta,
         fillOpacity,
         strokeColor: COLOR.terracotta,
-        strokeWeight: warm ? 0.8 : 0.6,
-        strokeOpacity: 0.5,
+        strokeWeight: warm ? 2 : 1.5,
+        strokeOpacity: warm ? 0.95 : 0.85,
         // Always clickable — the agent can open the panel for any of their own
         // suburbs, engaged or not.
         clickable: true,
