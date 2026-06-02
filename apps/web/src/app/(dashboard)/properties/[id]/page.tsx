@@ -10,6 +10,8 @@ import { getRoles } from '@/lib/contacts/roles'
 import { coercePropertyStatus } from '@/lib/design/badges'
 import { fetchPropertySignal } from '@/lib/properties/signal'
 import { getCachedPropertyRead } from '@/lib/ai/property-read'
+import { getActor } from '@/lib/auth/capabilities'
+import type { ReassignAgentOption } from '@/components/properties/property-reassign-dialog'
 
 export const dynamic = 'force-dynamic'
 
@@ -32,7 +34,7 @@ export default async function PropertyDetailPage({
 
   const { data: property } = await admin
     .from('properties')
-    .select('id, street_number, street_name, suburb, status')
+    .select('id, street_number, street_name, suburb, status, listing_agent_id')
     .eq('id', params.id)
     .eq('workspace_id', agent.workspace_id)
     .is('deleted_at', null)
@@ -90,6 +92,41 @@ export default async function PropertyDetailPage({
     })
   }
 
+  // ── Reassignment affordance (Admin/Manager only — HOR-379) ──────────────
+  // Resolved via getActor (multi-workspace safe) rather than the page's legacy
+  // single-agent lookup above. Only built when the viewer can assign_properties;
+  // Agents/Support never receive the prop, so the control never renders for them.
+  const actor = await getActor(admin, user!.id, { requireWorkspace: true })
+  let reassign: { currentAgentName: string | null; agents: ReassignAgentOption[] } | undefined
+  if (actor?.can('assign_properties') && actor.workspaceId === agent.workspace_id) {
+    // Candidate targets: active, real (non-support) agent seats in this workspace.
+    const { data: roster } = await admin
+      .from('agents')
+      // role/seat_type/status aren't in the generated types yet (regen deferred).
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .select('id, first_name, last_name, role, seat_type, status' as any)
+      .eq('workspace_id', agent.workspace_id)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rows = (roster as any[]) ?? []
+    const currentId = (property as { listing_agent_id?: string | null }).listing_agent_id ?? null
+    const agentOptions: ReassignAgentOption[] = rows
+      .filter((r) => r.status === 'active' && r.seat_type !== 'support')
+      .map((r) => ({
+        id: r.id as string,
+        name: [r.first_name, r.last_name].filter(Boolean).join(' ') || 'Unnamed agent',
+        role: (r.role as string) ?? 'agent',
+        isCurrent: r.id === currentId,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name))
+    // Name of the current holder — from the full roster, since they may be a
+    // departed/support seat that's excluded from the selectable targets.
+    const currentRow = currentId ? rows.find((r) => r.id === currentId) : null
+    const currentAgentName = currentRow
+      ? [currentRow.first_name, currentRow.last_name].filter(Boolean).join(' ') || 'Unnamed agent'
+      : null
+    reassign = { currentAgentName, agents: agentOptions }
+  }
+
   return (
     <PropertyDetailView
       property={{
@@ -101,6 +138,7 @@ export default async function PropertyDetailPage({
       signal={signal}
       read={read}
       roleAttached={roleAttached}
+      reassign={reassign}
     />
   )
 }
