@@ -228,12 +228,12 @@ export function WebhooksManager() {
             <ul className="divide-y border rounded-md">
               {endpoints.map((ep) => (
                 <li key={ep.id} className="px-3 py-2 space-y-1">
-                  <div className="flex items-center justify-between gap-3">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
                     <div className="min-w-0">
                       <p className="text-sm font-medium truncate">{ep.description || ep.url}</p>
                       <p className="text-xs text-muted-foreground truncate font-mono">{ep.url}</p>
                     </div>
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
                       {statusBadge(ep)}
                       <Button variant="ghost" size="sm" onClick={() => viewLog(ep)}>
                         {openLog === ep.id ? 'Hide' : 'Deliveries'}
