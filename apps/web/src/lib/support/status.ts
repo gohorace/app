@@ -79,5 +79,5 @@ export const SUPPORT_STATUS: SupportStatus = {
   level: 'quiet',
   headline: 'All systems quiet.',
   detail: 'Last incident: 4 weeks ago.',
-  pageUrl: 'https://status.gohorace.com',
+  pageUrl: 'https://horace.instatus.com',
 }

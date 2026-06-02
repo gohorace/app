@@ -253,7 +253,7 @@ export function SupportView({ attentionCount }: { attentionCount: number }) {
             rel="noreferrer"
             style={{ marginLeft: 'auto', fontSize: 11.5, color: '#3D5246', fontWeight: 500, textDecoration: 'none' }}
           >
-            status.gohorace.com ↗
+            horace.instatus.com ↗
           </a>
         </div>
       </div>
