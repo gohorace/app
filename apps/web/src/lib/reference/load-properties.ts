@@ -6,13 +6,16 @@ import { formatTimestamptz } from './format'
 
 type Admin = ReturnType<typeof createAdminClient>
 
-// Workspace-bounded ceiling. The substrate table sorts/filters/paginates
-// in-table over this set and renders its row count + "of N" footer straight
-// from the loaded array, so this also bounds the *count shown to the user*.
-// It must sit ABOVE real workspace volumes — GNAF core-market imports push a
-// single workspace well past 10k live properties, so the old 500 ceiling made
-// every large workspace read "500 rows" regardless of its true size. Raise (or
-// move to true server-side range pagination) if a workspace ever approaches it.
+// PostgREST caps every request at `max_rows` (1000 on this project — see
+// supabase/config.toml), so a single .limit(N) silently truncates at 1000 no
+// matter how high N is. The substrate table renders its row count + "of N"
+// footer straight from the loaded array, so a truncated load = a wrong count.
+// We therefore page through the workspace with .range() (PAGE_SIZE-sized
+// requests, fetched in parallel) up to a safety ceiling. GNAF core-market
+// imports push a single workspace well past 10k live properties; CAP sits
+// above real volumes with headroom. If a workspace ever approaches CAP, move
+// to true server-side range pagination (load only the visible page).
+const PAGE_SIZE = 1000
 const CAP = 25000
 
 interface EngagementRow {
@@ -21,6 +24,14 @@ interface EngagementRow {
   visitors: number
   last_viewed: string | null
   top_viewer_score: number
+}
+
+type Base = {
+  id: string
+  street_number: string | null
+  street_name: string | null
+  suburb: string | null
+  last_activity_at: string | null
 }
 
 /**
@@ -38,24 +49,37 @@ export async function loadReferenceProperties(
 ): Promise<PropertyRow[]> {
   const { workspaceId } = opts
 
-  const { data: rows } = await admin
-    // latitude/longitude etc. lag the generated types — cast the from() ref,
-    // same convention as the old properties page.
+  // Exact live count, so we know how many pages to pull (and the count is
+  // truthful even in the rare case we hit CAP). head:true transfers no rows.
+  const { count } = await admin
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .from('properties' as any)
-    .select('id, street_number, street_name, suburb, last_activity_at')
+    .select('id', { count: 'exact', head: true })
     .eq('workspace_id', workspaceId)
     .is('deleted_at', null)
-    .order('last_activity_at', { ascending: false, nullsFirst: false })
-    .limit(CAP)
-  type Base = {
-    id: string
-    street_number: string | null
-    street_name: string | null
-    suburb: string | null
-    last_activity_at: string | null
-  }
-  const base = (rows as Base[] | null) ?? []
+
+  const total = Math.min(count ?? 0, CAP)
+  const pageCount = Math.ceil(total / PAGE_SIZE)
+
+  // Fetch every page in parallel. The secondary `id` sort is a stable
+  // tiebreaker so range windows never overlap or skip rows when many rows
+  // share a `last_activity_at` (e.g. the null-activity GNAF import set).
+  const pages = await Promise.all(
+    Array.from({ length: pageCount }, (_, i) =>
+      admin
+        // latitude/longitude etc. lag the generated types — cast the from()
+        // ref, same convention as the old properties page.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .from('properties' as any)
+        .select('id, street_number, street_name, suburb, last_activity_at')
+        .eq('workspace_id', workspaceId)
+        .is('deleted_at', null)
+        .order('last_activity_at', { ascending: false, nullsFirst: false })
+        .order('id', { ascending: true })
+        .range(i * PAGE_SIZE, i * PAGE_SIZE + PAGE_SIZE - 1),
+    ),
+  )
+  const base = pages.flatMap((r) => (r.data as Base[] | null) ?? [])
 
   const eng = new Map<string, EngagementRow>()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
