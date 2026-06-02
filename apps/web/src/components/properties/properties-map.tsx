@@ -1,38 +1,33 @@
 'use client'
 
 /**
- * Properties map — Google Maps signal layer (HOR-218 on top of HOR-195's base).
+ * Properties map — Google Maps signal layer (HOR-218 base, HOR-370 hero re-skin).
  *
  * Consumes the `MapPayload` from `/api/properties/map-payload` (HOR-216) and
- * renders four layers on top of the Google base:
+ * renders the market substrate on top of the Google base. The `/market` view
+ * (`components/market/market-view.tsx`) frames it full-bleed and drives the
+ * two-state zoom (city ↔ neighbourhood) + selection through props/hash.
  *
- *   1. **Heat layer.** Terracotta gradient, opacity-capped at 0.6, radius
- *      banded by zoom (suburb / transition / street levels per the brief).
- *   2. **Suburb labels** as custom `OverlayView` DOM nodes positioned at the
- *      GNAF locality centroid. Weight + colour driven by suburb `state`.
- *      Stirring suburbs get an animated terracotta dot suffix.
- *   3. **Property pins** in three v2 heat tiers (HOR-245):
- *        - intensity > 0.6 → 14px terracotta dot + per-pin halo
- *          (halo radius = 3 + intensity*6, opacity = 0.08 + intensity*0.08)
- *        - intensity 0.5–0.6 → 11px mustard dot
- *        - intensity < 0.5 → 8px stone dot
- *      (The pre-v2 quiet / active / hot geometry was discarded in favour
- *      of the heat-driven sizing — `state` is still in the payload for
- *      legacy callers but the pin renderer reads `intensity` directly.)
- *   4. **Clustering** above 200 pins via `@googlemaps/markerclusterer` with a
- *      custom hot-pin-styled cluster bubble (not a numbered circle, per brief).
+ * Layers:
+ *   1. **City choropleth (HOR-369).** At city zoom, suburb boundary polygons
+ *      (`payload.boundaries`) load into the Google **Data layer**, filled
+ *      terracotta with opacity ∝ the joined `SuburbSignal.intensity` (cap
+ *      0.85 × `heatOpacity`). Polygons are clickable only where intensity >
+ *      0.10 → `#suburb=<id>`. Suburbs with no boundary fall back to radial heat.
+ *   2. **Radial heat.** At neighbourhood zoom, the terracotta HeatmapLayer,
+ *      radius banded by zoom, weighted by intensity.
+ *   3. **Suburb labels** as `OverlayView` DOM at the GNAF centroid — weight +
+ *      colour by `state`; stirring suburbs get a pulsing terracotta dot
+ *      (gated by `showStirring`). Click → `#suburb=<id>`.
+ *   4. **Property pins** in three editorial ink tiers (design spec):
+ *        hot ≥0.65 (ink dot + ink ring + terracotta halo + specular),
+ *        active ≥0.25 (medium ink dot + thin ring), quiet <0.25 (small dimmed
+ *        dot). The selected pin gets a terracotta ring.
+ *   5. **Clustering** above 200 pins via `@googlemaps/markerclusterer`.
  *
- * Click → hash:
- *   - Pin click sets `location.hash = '#signal=<id>'`. v2-M4's
- *     `PropertyOverlay` (`components/market/property-overlay.tsx`) reads
- *     the hash and mounts itself; HOR-219's signal-panel.tsx was removed
- *     in HOR-245 along with the suburb panel.
- *   - Suburb-label click pans + zooms the map to the suburb centroid
- *     (HOR-245 dropped the suburb panel; suburb interactions are a
- *     navigation aid only).
- *
- * Loader pattern matches the previous version + `address-autocomplete.tsx` —
- * same loader, same env var (`NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`).
+ * Click → hash: a pin writes `#signal=<id>`; a suburb polygon/label writes
+ * `#suburb=<id>`; an empty-map click clears either. `MarketView` reads the
+ * hash and mounts the matching detail panel.
  */
 
 import { useEffect, useRef, useState } from 'react'
@@ -55,6 +50,13 @@ const HORACE_HQ_FALLBACK = { lat: -33.8688, lng: 151.2093 }
 
 const CLUSTER_THRESHOLD = 200  // brief: cluster only when > 200 visible
 
+// Two curated Google zoom levels for the city ↔ neighbourhood toggle.
+const CITY_ZOOM = 11
+const NEIGH_ZOOM = 15
+
+/** The market's two-state zoom mode. City = choropleth read; neigh = pins. */
+export type ZoomMode = 'city' | 'neigh'
+
 // ─── Palette (matches design tokens used elsewhere in the dashboard) ────────
 const COLOR = {
   terracotta:  '#C4622D',
@@ -63,58 +65,67 @@ const COLOR = {
   stone:       '#8C7B6B',
 }
 
-// ─── Palette additions for v2 pin tiers (HOR-245) ──────────────────────────
-const PIN_V2 = {
-  terracotta: '#C4622D',
-  mustard:    '#B5922A',
-  stone:      '#8C7B6B',
-} as const
+// ─── Property pins — three editorial ink tiers (HOR-370 design spec) ────────
+// Tiers by intensity: hot ≥0.65, active ≥0.25, quiet <0.25. Pins are INK
+// (not terracotta — that reads as cartography); the warmth is the halo on
+// hot pins + the heat layer beneath. SVG sizes leave room for the hot halo.
 
-// ─── SVG markup per pin tier (v2 — HOR-245) ─────────────────────────────────
-// Tier breakdown:
-//   intensity > 0.6  → 14px terracotta dot + per-pin halo
-//                      (halo radius = 3 + intensity*6, opacity = 0.08 + intensity*0.08)
-//   intensity 0.5–0.6 → 11px mustard dot
-//   intensity < 0.5  → 8px stone dot
-//
-// The halo is rendered as a backing circle inside the same SVG so the
-// AdvancedMarkerElement gets a single positioned node per pin; the pin
-// dot sits centred on top. Total SVG bounding box is sized to fit the
-// largest halo at intensity = 1.0 (radius 9, diameter 18) plus the 14px
-// dot — we use 32x32 to keep it square + give a little breathing room.
+function tierFor(intensity: number): PropertyState {
+  if (intensity >= 0.65) return 'hot'
+  if (intensity >= 0.25) return 'active'
+  return 'quiet'
+}
 
 function pinSvg(intensity: number): string {
   const i = Number.isFinite(intensity) ? Math.max(0, Math.min(1, intensity)) : 0
+  const tier = tierFor(i)
 
-  if (i > 0.6) {
-    // 14px terracotta dot + halo. Halo per the v2 spec.
-    const haloR = 3 + i * 6           // 6.6..9
-    const haloOpacity = 0.08 + i * 0.08  // 0.128..0.16
+  if (tier === 'hot') {
+    // ink dot + ink ring + soft terracotta halo + specular highlight
+    return `
+      <svg width="48" height="48" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" style="overflow:visible">
+        <circle cx="24" cy="24" r="20" fill="${COLOR.terracotta}" opacity="0.12"/>
+        <circle cx="24" cy="24" r="12" fill="none" stroke="${COLOR.ink}" stroke-width="1.4" opacity="0.9"/>
+        <circle cx="24" cy="24" r="6.5" fill="${COLOR.ink}"/>
+        <circle cx="22.57" cy="22.57" r="2.08" fill="rgba(250,247,242,0.45)"/>
+      </svg>`
+  }
+  if (tier === 'active') {
+    // medium ink dot + thin ink ring
     return `
       <svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
-        <circle cx="16" cy="16" r="${haloR.toFixed(2)}" fill="${PIN_V2.terracotta}" opacity="${haloOpacity.toFixed(3)}"/>
-        <circle cx="16" cy="16" r="7" fill="${PIN_V2.terracotta}" stroke="rgba(250,247,242,0.85)" stroke-width="1.5"/>
+        <circle cx="16" cy="16" r="8" fill="none" stroke="${COLOR.ink}" stroke-width="0.9" opacity="0.5"/>
+        <circle cx="16" cy="16" r="4.5" fill="${COLOR.ink}"/>
       </svg>`
   }
-  if (i >= 0.5) {
-    // 11px mustard dot.
-    return `
-      <svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
-        <circle cx="8" cy="8" r="5.5" fill="${PIN_V2.mustard}" stroke="rgba(250,247,242,0.85)" stroke-width="1.5"/>
-      </svg>`
-  }
-  // 8px stone dot.
+  // quiet — small dimmed dot
   return `
-    <svg width="12" height="12" viewBox="0 0 12 12" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="6" cy="6" r="4" fill="${PIN_V2.stone}" stroke="rgba(250,247,242,0.85)" stroke-width="1.25"/>
+    <svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="16" cy="16" r="3" fill="${COLOR.ink}" opacity="0.55"/>
     </svg>`
 }
 
+/**
+ * Resolve the pin wrapper's ring from its dataset flags so selection (solid
+ * terracotta) and hover/focus (soft terracotta) compose without clobbering
+ * each other. Selection wins.
+ */
+function applyPinRing(wrap: HTMLElement) {
+  const selected = wrap.dataset.selected === 'true'
+  const hovered = wrap.dataset.hovered === 'true'
+  if (selected) {
+    wrap.style.boxShadow = '0 0 0 2px #C4622D, 0 0 0 5px rgba(196,98,45,0.22)'
+  } else if (hovered) {
+    wrap.style.boxShadow = '0 0 0 3px rgba(196,98,45,0.32)'
+  } else {
+    wrap.style.boxShadow = 'none'
+  }
+}
+
 function pinElement(p: PropertySignal): HTMLElement {
-  // HOR-220 a11y: the pin's visual SVG can be 6px (quiet tier), but the
-  // hit/focus target must be ≥ 24px (WCAG 2.5.5 target size minimum).
-  // Wrapper is a fixed 32×32 box with the SVG centred; cursor + focus ring
-  // live on the wrapper.
+  // HOR-220 a11y: the visual SVG can be small (quiet tier), but the
+  // hit/focus target must be ≥ 24px (WCAG 2.5.5). Wrapper is a fixed 32×32
+  // box with the SVG centred; the hot halo overflows it harmlessly.
   const wrap = document.createElement('div')
   wrap.style.cursor = 'pointer'
   wrap.style.width = '32px'
@@ -128,24 +139,15 @@ function pinElement(p: PropertySignal): HTMLElement {
   wrap.setAttribute('role', 'button')
   wrap.innerHTML = pinSvg(p.intensity)
   wrap.title = p.address
-  // v2-M4: aria still announces the categorical state for screen readers
-  // (the visual signal is intensity-driven, but the state buckets give
-  // assistive tech a stable label vocabulary).
   wrap.setAttribute('aria-label', `${p.address} — ${p.state} signal`)
-  // Focus + hover both surface a terracotta halo. Same treatment for both
-  // so the focus state reads without colour-only reliance (the halo grows
-  // the bounding box visibly).
-  const showRing = () => {
-    wrap.style.boxShadow = '0 0 0 3px rgba(196,98,45,0.32)'
-  }
-  const hideRing = () => {
-    wrap.style.boxShadow = 'none'
-  }
-  wrap.addEventListener('mouseenter', showRing)
-  wrap.addEventListener('mouseleave', hideRing)
-  wrap.addEventListener('focus', showRing)
-  wrap.addEventListener('blur',  hideRing)
-  // Keyboard activation parity with click — Enter / Space fire a click event.
+
+  const show = () => { wrap.dataset.hovered = 'true'; applyPinRing(wrap) }
+  const hide = () => { wrap.dataset.hovered = 'false'; applyPinRing(wrap) }
+  wrap.addEventListener('mouseenter', show)
+  wrap.addEventListener('mouseleave', hide)
+  wrap.addEventListener('focus', show)
+  wrap.addEventListener('blur', hide)
+  // Keyboard activation parity with click.
   wrap.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault()
@@ -157,12 +159,12 @@ function pinElement(p: PropertySignal): HTMLElement {
 
 // ─── Suburb label DOM (built per overlay instance) ──────────────────────────
 // State-driven typography:
-//   quiet    — DM Mono 10/400, faded grey
-//   warm     — Playfair 11/600, dark ink
-//   hot      — Playfair 12/700, dark ink (the strongest read)
-//   stirring — Playfair 11/600, terracotta + animated dot suffix
+//   quiet    — DM Mono 10/400, faded grey (non-interactive cartography)
+//   warm     — Playfair 11/600
+//   hot      — Playfair 12/700 (strongest read)
+//   stirring — Playfair 11/600 italic terracotta + pulsing dot (gated)
 
-function suburbLabelDom(s: SuburbSignal): HTMLElement {
+function suburbLabelDom(s: SuburbSignal, showStirring: boolean): HTMLElement {
   const wrap = document.createElement('div')
   wrap.style.position = 'absolute'
   wrap.style.transform = 'translate(-50%, -50%)'
@@ -170,26 +172,17 @@ function suburbLabelDom(s: SuburbSignal): HTMLElement {
   wrap.style.cursor = s.state === 'quiet' ? 'default' : 'pointer'
   wrap.style.userSelect = 'none'
   wrap.style.whiteSpace = 'nowrap'
-  // HOR-220 a11y: padding gives the label a ≥24px tap target; the visible
-  // text is smaller but the click + focus area meets WCAG 2.5.5.
+  // HOR-220 a11y: padding gives a ≥24px tap target.
   wrap.style.padding = '6px 8px'
   wrap.style.borderRadius = '4px'
   wrap.style.outline = 'none'
   wrap.setAttribute('data-suburb-state', s.state)
   if (s.state !== 'quiet') {
-    // Interactive suburbs are keyboard-reachable and screen-reader-labelled.
     wrap.tabIndex = 0
     wrap.setAttribute('role', 'button')
-    // Hotfix: defend against null name (legacy suburb rows with no GNAF match
-    // and no `properties.suburb` value can come through). Generic fallback
-    // beats announcing "null — stirring suburb signal".
     wrap.setAttribute('aria-label', `${s.name ?? 'Suburb'} — ${s.state} suburb signal`)
-    const showRing = () => {
-      wrap.style.boxShadow = '0 0 0 3px rgba(196,98,45,0.22)'
-    }
-    const hideRing = () => {
-      wrap.style.boxShadow = 'none'
-    }
+    const showRing = () => { wrap.style.boxShadow = '0 0 0 3px rgba(196,98,45,0.22)' }
+    const hideRing = () => { wrap.style.boxShadow = 'none' }
     wrap.addEventListener('mouseenter', showRing)
     wrap.addEventListener('mouseleave', hideRing)
     wrap.addEventListener('focus', showRing)
@@ -236,9 +229,9 @@ function suburbLabelDom(s: SuburbSignal): HTMLElement {
 
   wrap.appendChild(text)
 
-  // Stirring suffix — animated terracotta dot with two ring pulses.
-  // Matches prototype's `stir-ring` keyframes (MapView.jsx:116-122).
-  if (s.state === 'stirring') {
+  // Stirring suffix — animated terracotta dot with two ring pulses. Gated by
+  // the showStirring prop (design's tweak harness).
+  if (s.state === 'stirring' && showStirring) {
     const dotWrap = document.createElement('span')
     dotWrap.style.position = 'relative'
     dotWrap.style.display = 'inline-block'
@@ -247,7 +240,6 @@ function suburbLabelDom(s: SuburbSignal): HTMLElement {
     dotWrap.style.marginLeft = '6px'
     dotWrap.style.verticalAlign = 'middle'
 
-    // Inner solid dot
     const dot = document.createElement('span')
     dot.style.position = 'absolute'
     dot.style.left = '50%'
@@ -259,7 +251,6 @@ function suburbLabelDom(s: SuburbSignal): HTMLElement {
     dot.style.background = COLOR.terracotta
     dotWrap.appendChild(dot)
 
-    // Two pulse rings (the keyframes are injected once below).
     for (const cls of ['horace-stir-a', 'horace-stir-b']) {
       const ring = document.createElement('span')
       ring.style.position = 'absolute'
@@ -269,8 +260,7 @@ function suburbLabelDom(s: SuburbSignal): HTMLElement {
       ring.style.height = '14px'
       ring.style.borderRadius = '50%'
       ring.style.border = `1px solid ${COLOR.terracotta}`
-      ring.style.transform = 'translate(-50%, -50%) scale(0.6)'
-      ring.style.opacity = '0.9'
+      ring.style.transform = 'translate(-50%, -50%) scale(0.4)'
       ring.className = `horace-stir-ring ${cls}`
       dotWrap.appendChild(ring)
     }
@@ -281,9 +271,8 @@ function suburbLabelDom(s: SuburbSignal): HTMLElement {
   return wrap
 }
 
-// Injected once per page lifetime. Provides the keyframes for the stirring
-// dot's two-phase pulse — using global CSS is simpler than CSS-in-JS for an
-// imperative DOM overlay.
+// Injected once per page lifetime. Two-phase terracotta pulse on the stirring
+// dot — matches the design's `stir-label-pulse` (2200ms, 2nd ring +1100ms).
 function ensureStirringKeyframes() {
   if (typeof document === 'undefined') return
   if (document.getElementById('horace-stir-keyframes')) return
@@ -291,15 +280,14 @@ function ensureStirringKeyframes() {
   style.id = 'horace-stir-keyframes'
   style.textContent = `
     @keyframes horace-stir-pulse {
-      0%   { transform: translate(-50%, -50%) scale(0.6); opacity: 0.9; }
-      80%  { transform: translate(-50%, -50%) scale(1.6); opacity: 0;   }
-      100% { transform: translate(-50%, -50%) scale(1.6); opacity: 0;   }
+      0%   { transform: translate(-50%, -50%) scale(0.4); opacity: 0.85; }
+      100% { transform: translate(-50%, -50%) scale(2.4); opacity: 0;    }
     }
     .horace-stir-ring {
-      animation: horace-stir-pulse 2.4s ease-out infinite;
+      animation: horace-stir-pulse 2200ms cubic-bezier(0.16, 1, 0.3, 1) infinite;
     }
     .horace-stir-ring.horace-stir-b {
-      animation-delay: 1.2s;
+      animation-delay: 1100ms;
     }
   `
   document.head.appendChild(style)
@@ -324,17 +312,12 @@ function suburbLabelOpacityForZoom(z: number): number {
 // ─── Cluster renderer ───────────────────────────────────────────────────────
 //
 // Brief: "cluster bubble uses the same pin treatment, not a numbered circle".
-// We render the cluster as a hot-pin look scaled to cluster size — bigger
-// halo, no number badge. The clusterer surfaces `cluster.count`; we don't
-// surface it visually (the bubble size implies density).
 
 function clusterRenderer(
   cluster: Cluster,
   _stats: ClusterStats,
   map: google.maps.Map,
 ): google.maps.marker.AdvancedMarkerElement {
-  // Size scales gently with count — log-ish so 1000 markers don't blot the
-  // map but 10 still differ visibly from 200.
   const c = cluster.count
   const halo = Math.min(64, Math.max(34, 24 + Math.sqrt(c) * 2.2))
   const dot  = Math.min(20, Math.max(8,  4  + Math.sqrt(c) * 0.7))
@@ -360,7 +343,6 @@ function clusterRenderer(
     content: el,
     title: `${c} properties`,
   })
-  // Click → zoom in on the cluster bounds.
   marker.addListener('click', () => {
     if (cluster.bounds) map.fitBounds(cluster.bounds, 64)
   })
@@ -374,21 +356,37 @@ interface Props {
   fallbackCenter?: { lat: number; lng: number } | null
   /**
    * Fill the parent container's height instead of the default fixed 540px.
-   * `/market` (HOR-245) renders the map full-bleed inside a flex column, so
-   * it passes `fill`. The legacy embedded card height stays the default for
-   * any other caller.
+   * `/market` renders the map full-bleed and passes `fill`.
    */
   fill?:           boolean
+  /** Two-state zoom mode (HOR-370). City = choropleth; neigh = radial heat + pins. */
+  zoomMode?:       ZoomMode
+  /** The currently-selected pin id — gets a terracotta selection ring. */
+  selectedPinId?:  string | null
+  /** Global heat opacity multiplier (design tweak; default 0.6). */
+  heatOpacity?:    number
+  /** Whether stirring suburb labels pulse (design tweak; default true). */
+  showStirring?:   boolean
 }
 
-export function PropertiesMap({ payload, fallbackCenter = null, fill = false }: Props) {
+export function PropertiesMap({
+  payload,
+  fallbackCenter = null,
+  fill = false,
+  zoomMode = 'neigh',
+  selectedPinId = null,
+  heatOpacity = 0.6,
+  showStirring = true,
+}: Props) {
   const hostRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<google.maps.Map | null>(null)
   const markersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([])
+  const pinElsRef = useRef<Map<string, HTMLElement>>(new Map())
   const clustererRef = useRef<MarkerClusterer | null>(null)
   const heatRef = useRef<google.maps.visualization.HeatmapLayer | null>(null)
   const suburbOverlaysRef = useRef<google.maps.OverlayView[]>([])
   const initialFitRef = useRef(false)
+  const zoomModeInitRef = useRef(false)
   const [degraded, setDegraded] = useState<string | null>(null)
   const [ready, setReady] = useState(false)
 
@@ -417,24 +415,17 @@ export function PropertiesMap({ payload, fallbackCenter = null, fill = false }: 
         const initialCenter = fallbackCenter ?? HORACE_HQ_FALLBACK
         const map = new GMap(hostRef.current, {
           center: initialCenter,
-          zoom: 13,
+          zoom: NEIGH_ZOOM,
           mapId: 'horace-properties-map', // required for AdvancedMarkerElement
-          disableDefaultUI: false,
-          mapTypeControl: false,
-          streetViewControl: false,
-          fullscreenControl: false,
+          disableDefaultUI: true,         // /market floats its own glass controls
           clickableIcons: false,
         })
         mapRef.current = map
 
-        // Heat-radius update on zoom — the heat layer is rebuilt with a new
-        // radius per band so the visual concentration matches the agent's
-        // current focus level.
+        // Heat-radius + suburb-label opacity follow the live zoom band.
         map.addListener('zoom_changed', () => {
-          const z = map.getZoom() ?? 13
+          const z = map.getZoom() ?? NEIGH_ZOOM
           if (heatRef.current) heatRef.current.set('radius', heatRadiusForZoom(z))
-          // Update suburb-label opacity in place — keeps suburb names primary
-          // at city zoom, lets street labels take over at street zoom.
           const op = suburbLabelOpacityForZoom(z)
           for (const ov of suburbOverlaysRef.current) {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -443,15 +434,26 @@ export function PropertiesMap({ payload, fallbackCenter = null, fill = false }: 
           }
         })
 
-        // Map background click (anywhere not on a pin/label) → close any
-        // open panel by clearing the hash. The panel itself owns Esc-close,
-        // but a tap-out-to-dismiss feels natural on the map surface.
+        // Empty-map click → clear any open panel by clearing the hash.
         map.addListener('click', () => {
           if (typeof window === 'undefined') return
           if (window.location.hash.startsWith('#signal=') || window.location.hash.startsWith('#suburb=')) {
             history.replaceState(null, '', window.location.pathname + window.location.search)
             window.dispatchEvent(new HashChangeEvent('hashchange'))
           }
+        })
+
+        // City choropleth click → open the suburb panel. Listener is attached
+        // once; features are added/removed per zoom mode below. Gated to
+        // intensity > 0.10 (matches the design's hit-target rule).
+        map.data.addListener('click', (e: google.maps.Data.MouseEvent) => {
+          if (typeof window === 'undefined') return
+          const id = e.feature.getProperty('id') as string | undefined
+          const intensity = Number(e.feature.getProperty('intensity')) || 0
+          if (!id || intensity <= 0.10) return
+          const url = new URL(window.location.href)
+          url.hash = `suburb=${encodeURIComponent(id)}`
+          window.location.replace(url.toString())
         })
 
         setReady(true)
@@ -463,9 +465,9 @@ export function PropertiesMap({ payload, fallbackCenter = null, fill = false }: 
 
     return () => {
       cancelled = true
-      // Tear down everything attached to the map.
       for (const m of markersRef.current) m.map = null
       markersRef.current = []
+      pinElsRef.current.clear()
       if (clustererRef.current) {
         clustererRef.current.clearMarkers()
         clustererRef.current = null
@@ -478,12 +480,23 @@ export function PropertiesMap({ payload, fallbackCenter = null, fill = false }: 
       suburbOverlaysRef.current = []
       mapRef.current = null
       initialFitRef.current = false
+      zoomModeInitRef.current = false
       setReady(false)
     }
-  // Loader runs once per mount; fallbackCenter changes are handled in the
-  // payload-sync effect via fitBounds / setCenter.
+  // Loader runs once per mount; prop changes handled in the sync effects.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // ── Two-state zoom. The initial camera is owned by the pin fit below; this
+  //   only fires on an actual mode toggle.
+  useEffect(() => {
+    if (!ready || !mapRef.current) return
+    if (!zoomModeInitRef.current) {
+      zoomModeInitRef.current = true
+      return
+    }
+    mapRef.current.setZoom(zoomMode === 'city' ? CITY_ZOOM : NEIGH_ZOOM)
+  }, [ready, zoomMode])
 
   // ── Sync property pins (with optional clustering) on payload change ─────
   useEffect(() => {
@@ -492,36 +505,34 @@ export function PropertiesMap({ payload, fallbackCenter = null, fill = false }: 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const G = (window as any).google as typeof google
 
-    // Tear down previous markers + clusterer.
     if (clustererRef.current) {
       clustererRef.current.clearMarkers()
       clustererRef.current = null
     }
     for (const m of markersRef.current) m.map = null
     markersRef.current = []
+    pinElsRef.current.clear()
 
     const props = payload?.properties ?? []
     const plottable = props.filter((p): p is PropertySignal & { lat: number; lng: number } =>
       typeof p.lat === 'number' && typeof p.lng === 'number',
     )
 
-    // HOR-220 tab order: hot → active → quiet within visible bounds (DOM
-    // insertion order controls Tab traversal in AdvancedMarkerElement panes).
-    // Paint order (hot on top) is preserved independently via marker.zIndex —
-    // see brief: "tab order goes hot → active → quiet within visible bounds".
+    // HOR-220 tab order: hot → active → quiet. Paint order (hot on top) via zIndex.
     const tabOrder:  Record<PropertyState, number> = { hot: 0, active: 1, quiet: 2 }
     const paintZIdx: Record<PropertyState, number> = { quiet: 1, active: 2, hot: 3 }
     const sorted = [...plottable].sort((a, b) => tabOrder[a.state] - tabOrder[b.state])
     const markers = sorted.map((p) => {
+      const el = pinElement(p)
+      pinElsRef.current.set(p.id, el)
       const marker = new G.maps.marker.AdvancedMarkerElement({
         position: { lat: p.lat, lng: p.lng },
-        content: pinElement(p),
+        content: el,
         title:   p.address,
         zIndex:  paintZIdx[p.state],
       })
       marker.addListener('click', () => {
         if (typeof window === 'undefined') return
-        // Hash routing — the slide-in SignalPanel (HOR-219) listens for it.
         const url = new URL(window.location.href)
         url.hash = `signal=${encodeURIComponent(p.id)}`
         window.location.replace(url.toString())
@@ -530,8 +541,6 @@ export function PropertiesMap({ payload, fallbackCenter = null, fill = false }: 
     })
     markersRef.current = markers
 
-    // Cluster only when the visible pin count crosses the brief's threshold.
-    // Below it, attach markers directly to the map so each pin reads on its own.
     if (markers.length >= CLUSTER_THRESHOLD) {
       clustererRef.current = new MarkerClusterer({
         map,
@@ -542,15 +551,13 @@ export function PropertiesMap({ payload, fallbackCenter = null, fill = false }: 
       for (const m of markers) m.map = map
     }
 
-    // First payload after mount: fit the map to the active pins so the agent
-    // lands on something meaningful. Subsequent payloads (scrubber clicks)
-    // preserve the user's zoom + pan.
+    // First payload after mount: fit to the active pins.
     if (!initialFitRef.current && plottable.length > 0) {
       const bounds = new G.maps.LatLngBounds()
       for (const p of plottable) bounds.extend({ lat: p.lat, lng: p.lng })
       if (plottable.length === 1) {
         map.setCenter({ lat: plottable[0].lat, lng: plottable[0].lng })
-        map.setZoom(15)
+        map.setZoom(NEIGH_ZOOM)
       } else {
         map.fitBounds(bounds, 64)
       }
@@ -558,7 +565,17 @@ export function PropertiesMap({ payload, fallbackCenter = null, fill = false }: 
     }
   }, [ready, payload?.properties])
 
-  // ── Sync heat layer ─────────────────────────────────────────────────────
+  // ── Selection ring — toggle the terracotta ring on the selected pin
+  //   without rebuilding markers.
+  useEffect(() => {
+    if (!ready) return
+    for (const [id, el] of pinElsRef.current) {
+      el.dataset.selected = id === selectedPinId ? 'true' : 'false'
+      applyPinRing(el)
+    }
+  }, [ready, selectedPinId, payload?.properties])
+
+  // ── Sync radial heat layer (neighbourhood zoom only) ────────────────────
   useEffect(() => {
     if (!ready || !mapRef.current) return
     const map = mapRef.current
@@ -569,32 +586,81 @@ export function PropertiesMap({ payload, fallbackCenter = null, fill = false }: 
       heatRef.current.setMap(null)
       heatRef.current = null
     }
+    // City zoom uses the choropleth instead of radial clouds.
+    if (zoomMode === 'city') return
+
     const heat = payload?.heat ?? []
     if (heat.length === 0) return
 
     const data = heat.map((c) => ({
       location: new G.maps.LatLng(c.lat, c.lng),
-      // Brief: weight the heat layer by intensity, not point count.
       weight: c.intensity,
     }))
 
     const layer = new G.maps.visualization.HeatmapLayer({
       data,
       map,
-      radius:  heatRadiusForZoom(map.getZoom() ?? 13),
-      opacity: 0.6,
-      // Brief: transparent → warm cream → soft orange → deeper orange.
+      radius:  heatRadiusForZoom(map.getZoom() ?? NEIGH_ZOOM),
+      opacity: heatOpacity,
       gradient: [
         'rgba(196,98,45,0)',
         'rgba(239,231,215,0.4)',
         'rgba(196,98,45,0.5)',
         'rgba(196,98,45,0.9)',
       ],
-      maxIntensity: 1.0, // payload intensities are already normalised 0..1
+      maxIntensity: 1.0,
       dissipating: true,
     })
     heatRef.current = layer
-  }, [ready, payload?.heat])
+  }, [ready, payload?.heat, zoomMode, heatOpacity])
+
+  // ── Sync city choropleth (HOR-369 boundaries via the Data layer) ────────
+  useEffect(() => {
+    if (!ready || !mapRef.current) return
+    const map = mapRef.current
+
+    // Always start from a clean slate, then repopulate only at city zoom.
+    map.data.forEach((f) => map.data.remove(f))
+    if (zoomMode !== 'city') return
+
+    const boundaries = payload?.boundaries ?? []
+    if (boundaries.length === 0) return
+
+    // Join boundary → suburb signal by id to drive fill opacity + clickability.
+    const signalById = new Map((payload?.suburbs ?? []).map((s) => [s.id, s]))
+
+    map.data.addGeoJson({
+      type: 'FeatureCollection',
+      features: boundaries.map((b) => ({
+        type: 'Feature',
+        id: b.id,
+        geometry: b.geometry,
+        properties: {
+          id: b.id,
+          intensity: signalById.get(b.id)?.intensity ?? 0,
+        },
+      })),
+    })
+
+    map.data.setStyle((feature) => {
+      const intensity = Number(feature.getProperty('intensity')) || 0
+      const interactive = intensity > 0.10
+      // Per the design: opacity ∝ intensity, capped 0.85, scaled by the
+      // global heat multiplier. (Data layer can't do the multiply-blend
+      // wash natively — this is the documented fidelity trade-off.)
+      const fillOpacity = Math.min(0.85, intensity * 0.85) * heatOpacity
+      return {
+        fillColor: COLOR.terracotta,
+        fillOpacity,
+        strokeColor: COLOR.terracotta,
+        strokeWeight: interactive ? 0.8 : 0.4,
+        strokeOpacity: 0.32,
+        clickable: interactive,
+        cursor: interactive ? 'pointer' : undefined,
+        zIndex: 1,
+      }
+    })
+  }, [ready, payload?.boundaries, payload?.suburbs, zoomMode, heatOpacity])
 
   // ── Sync suburb labels ──────────────────────────────────────────────────
   useEffect(() => {
@@ -603,47 +669,37 @@ export function PropertiesMap({ payload, fallbackCenter = null, fill = false }: 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const G = (window as any).google as typeof google
 
-    // Tear down previous overlays.
     for (const o of suburbOverlaysRef.current) o.setMap(null)
     suburbOverlaysRef.current = []
 
     const suburbs = payload?.suburbs ?? []
-    const initialOpacity = suburbLabelOpacityForZoom(map.getZoom() ?? 13)
+    const initialOpacity = suburbLabelOpacityForZoom(map.getZoom() ?? NEIGH_ZOOM)
 
-    // Custom OverlayView class — defined per-effect so it closes over the
-    // live `G` reference, avoiding the SSR-vs-runtime google-undefined trap.
     class SuburbLabelOverlay extends G.maps.OverlayView {
       private dom: HTMLElement | null = null
       constructor(private suburb: SuburbSignal) { super() }
 
-      // For the zoom-change handler to read.
       getDom(): HTMLElement | null { return this.dom }
 
       onAdd() {
-        const dom = suburbLabelDom(this.suburb)
+        const dom = suburbLabelDom(this.suburb, showStirring)
         dom.style.opacity = String(initialOpacity)
         dom.style.transition = 'opacity 220ms ease-out'
 
-        // Click → pan + zoom to the suburb centroid. HOR-245 dropped the
-        // suburb side panel (v2 only has a property overlay); suburb-label
-        // interactions are now a navigation aid only. Quiet suburbs aren't
-        // interactive — they read as cartography.
+        // HOR-370: a suburb label click opens the suburb detail panel
+        // (re-added; HOR-245 had dropped it for a pan/zoom nav aid). Quiet
+        // suburbs aren't interactive — they read as cartography.
         if (this.suburb.state !== 'quiet') {
           dom.addEventListener('click', (e) => {
             e.stopPropagation()
-            if (this.suburb.lat == null || this.suburb.lng == null) return
-            const target = new G.maps.LatLng(this.suburb.lat, this.suburb.lng)
-            map.panTo(target)
-            // Zoom in one street-level step; cap at 16 so we don't blow
-            // past the heat layer's resolution.
-            const next = Math.min(16, (map.getZoom() ?? 13) + 2)
-            map.setZoom(next)
+            const url = new URL(window.location.href)
+            url.hash = `suburb=${encodeURIComponent(this.suburb.id)}`
+            window.location.replace(url.toString())
           })
         }
 
         this.dom = dom
         const panes = this.getPanes()
-        // floatPane sits above markers; suburb labels read as cartography.
         panes?.floatPane.appendChild(dom)
       }
 
@@ -652,7 +708,6 @@ export function PropertiesMap({ payload, fallbackCenter = null, fill = false }: 
         const projection = this.getProjection()
         if (!projection) return
         if (this.suburb.lat == null || this.suburb.lng == null) {
-          // No GNAF centroid — hide rather than place at (0,0).
           this.dom.style.display = 'none'
           return
         }
@@ -674,7 +729,6 @@ export function PropertiesMap({ payload, fallbackCenter = null, fill = false }: 
       }
     }
 
-    // Render order: quiet first so warm/hot/stirring labels paint on top.
     const stateOrder: Record<SuburbState, number> = { quiet: 0, warm: 1, hot: 2, stirring: 3 }
     const sorted = [...suburbs].sort((a, b) => stateOrder[a.state] - stateOrder[b.state])
 
@@ -683,7 +737,7 @@ export function PropertiesMap({ payload, fallbackCenter = null, fill = false }: 
       overlay.setMap(map)
       suburbOverlaysRef.current.push(overlay)
     }
-  }, [ready, payload?.suburbs])
+  }, [ready, payload?.suburbs, showStirring])
 
   // ── Degraded states ─────────────────────────────────────────────────────
 
@@ -691,10 +745,10 @@ export function PropertiesMap({ payload, fallbackCenter = null, fill = false }: 
     return (
       <div
         style={{
-          height: 540,
+          height: fill ? '100%' : 540,
           background: COLOR.parchment,
-          border: '1px solid rgba(140,123,107,0.22)',
-          borderRadius: 10,
+          border: fill ? 'none' : '1px solid rgba(140,123,107,0.22)',
+          borderRadius: fill ? 0 : 10,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -713,9 +767,6 @@ export function PropertiesMap({ payload, fallbackCenter = null, fill = false }: 
     )
   }
 
-  // HOR-220: meaningful aria-label that recomputes on every payload change.
-  // Screen-reader users without map access still get "what's in here" at a
-  // glance. Empty payload → short empty-state label.
   const mapAriaLabel = payload
     ? composeMapAriaLabel(payload)
     : 'Property signal map'
@@ -730,8 +781,6 @@ export function PropertiesMap({ payload, fallbackCenter = null, fill = false }: 
           height: fill ? '100%' : 540,
           width: '100%',
           background: COLOR.parchment,
-          // Full-bleed in /market reads to the panel edges; the bordered,
-          // rounded card treatment is only for the legacy embedded use.
           border: fill ? 'none' : '1px solid rgba(140,123,107,0.22)',
           borderRadius: fill ? 0 : 10,
           overflow: 'hidden',
