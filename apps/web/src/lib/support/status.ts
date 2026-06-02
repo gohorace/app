@@ -29,6 +29,8 @@ export interface SupportChannelDef {
   /** mailto: / external URL the CTA opens. */
   href: string
   external?: boolean
+  /** When set, the CTA opens `href` in an in-app modal (cal.com embed) rather than navigating away. */
+  embed?: boolean
 }
 
 export const SUPPORT_EMAIL = 'support@gohorace.com'
@@ -54,8 +56,8 @@ export const SUPPORT_CHANNELS: SupportChannelDef[] = [
     title: 'Book a 1:1',
     sub: '20 minutes with someone on the team — pricing, setup, or a deep look at your account.',
     cta: 'Pick a time',
-    href: 'https://calendly.com/gohorace/intro',
-    external: true,
+    href: 'https://cal.com/andytwomey/support-session',
+    embed: true,
   },
 ]
 
