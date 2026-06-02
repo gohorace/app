@@ -305,6 +305,18 @@ async function dispatchSend(
       'Connected Gmail integration is missing its sender address.',
     )
   }
+
+  // Sender display name — sourced from the agent's Horace profile, NOT the
+  // Google account name. Decoupled deliberately so the From name is stable
+  // across a Gmail reconnect/swap and stays under Horace's control. Falls back
+  // to the bare address when the agent has no name on file.
+  const { data: agentRow } = await ctx.admin
+    .from('agents')
+    .select('first_name, last_name')
+    .eq('id', ctx.agentId)
+    .maybeSingle()
+  const fromHeader = formatFromHeader(agentRow as AgentNameRow | null, fromAddress)
+
   const contactRow = { id: contactId }
 
   // ── Step 7: rewrite links + inject pixel (if tracked) ─────────────────────
@@ -325,7 +337,7 @@ async function dispatchSend(
   const listUnsubscribe = `<${unsubUrl}>, <mailto:unsubscribe@gohorace.com>`
 
   const mime = buildMimeMessage({
-    from: fromAddress,
+    from: fromHeader,
     to: payload.toEmail,
     subject: payload.subject,
     text: payload.bodyText,
@@ -612,6 +624,31 @@ function normalizePayload(p: EmailSendPayload): NormalizedPayload {
     bodyText,
     tracked: p.tracked !== false,
   }
+}
+
+interface AgentNameRow {
+  first_name?: string | null
+  last_name?: string | null
+}
+
+/**
+ * Build the `From` header value from the agent's Horace name + verified Gmail
+ * address. Returns `Display Name <email>` when a name exists, else the bare
+ * address. The display name is quoted if it contains RFC 5322 specials
+ * (e.g. a comma in "Smith, John"); non-ASCII is handled downstream by
+ * mime.ts → encodeAddressHeader (RFC 2047).
+ */
+function formatFromHeader(agent: AgentNameRow | null, email: string): string {
+  const name = [agent?.first_name, agent?.last_name]
+    .map((part) => (part ?? '').trim())
+    .filter(Boolean)
+    .join(' ')
+  if (!name) return email
+  // RFC 5322 specials that force a quoted-string display name.
+  const display = /[()<>@,;:\\".[\]]/.test(name)
+    ? `"${name.replace(/(["\\])/g, '\\$1')}"`
+    : name
+  return `${display} <${email}>`
 }
 
 function derivePlainText(html: string): string {
