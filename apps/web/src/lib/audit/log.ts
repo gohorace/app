@@ -25,6 +25,8 @@ export const AuditAction = {
   MemberInvite: 'member.invite',
   ExportAccount: 'export.account',
   ExportScope: 'export.scope',
+  ExportGrant: 'export.grant',
+  ExportRevoke: 'export.revoke',
 } as const
 
 export type AuditActionValue = (typeof AuditAction)[keyof typeof AuditAction]
