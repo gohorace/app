@@ -238,7 +238,7 @@ export function TeamManager({
         <div className="rounded-md border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-[22px] shadow-[var(--shadow-sm)]">
           <CardLabel>Invite a teammate</CardLabel>
           <form onSubmit={handleInvite}>
-            <div className="flex gap-2.5 items-end">
+            <div className="flex flex-col gap-2.5 sm:flex-row sm:items-end">
               <div className="flex-1 space-y-1.5">
                 <Label htmlFor="invite-email">Email</Label>
                 <Input
@@ -251,7 +251,7 @@ export function TeamManager({
                   autoComplete="off"
                 />
               </div>
-              <div className="w-[120px] space-y-1.5">
+              <div className="w-full space-y-1.5 sm:w-[120px]">
                 <Label htmlFor="invite-role">{supportSeatsEnabled && proPlan ? 'Type' : 'Role'}</Label>
                 <Select
                   id="invite-role"
@@ -261,7 +261,7 @@ export function TeamManager({
                   options={inviteOptions.map((opt) => ({ value: opt, label: inviteRoleDisplay(opt) }))}
                 />
               </div>
-              <Button type="submit" disabled={inviteBusy || !inviteEmail.trim()}>
+              <Button type="submit" className="w-full sm:w-auto" disabled={inviteBusy || !inviteEmail.trim()}>
                 <Send className="size-3.5" />
                 {inviteBusy ? 'Sending…' : 'Send invite'}
               </Button>
@@ -417,24 +417,28 @@ function InviteRow({
   onRevoke: (inv: PendingInviteRow) => void
 }) {
   return (
-    <div className={`${rowBase}${last ? '' : ' ' + divider}`}>
+    <div className={`${rowBase} flex-wrap${last ? '' : ' ' + divider}`}>
       {/* Mail icon circle */}
       <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-[rgba(181,146,42,0.12)]">
         <Mail className="size-[15px] text-[var(--color-signal-mid)]" />
       </div>
       <div className="min-w-0 flex-1">
-        <div className="text-[13px] font-semibold text-[var(--fg-primary)]">{inv.email}</div>
-        <div className="text-xs text-[var(--fg-secondary)]">
+        <div className="truncate text-[13px] font-semibold text-[var(--fg-primary)]">{inv.email}</div>
+        <div className="truncate text-xs text-[var(--fg-secondary)]">
           Pending · {inviteRoleDisplay(inv.role)} · invited by {inv.inviterName} · expires {formatExpiry(inv.expiresAt)}
         </div>
       </div>
-      <Badge variant="amber" dot>Pending</Badge>
-      {canInvite && (
-        <>
-          <Button variant="ghost" size="sm" onClick={() => onResend(inv)}>Resend</Button>
-          <Button variant="ghost" size="sm" onClick={() => onRevoke(inv)}>Revoke</Button>
-        </>
-      )}
+      {/* Status + actions — drop to their own full-width line on mobile so the
+          text column above keeps its width instead of wrapping word-by-word. */}
+      <div className="flex shrink-0 basis-full items-center justify-end gap-1 md:ml-auto md:basis-auto">
+        <Badge variant="amber" dot>Pending</Badge>
+        {canInvite && (
+          <>
+            <Button variant="ghost" size="sm" onClick={() => onResend(inv)}>Resend</Button>
+            <Button variant="ghost" size="sm" onClick={() => onRevoke(inv)}>Revoke</Button>
+          </>
+        )}
+      </div>
     </div>
   )
 }

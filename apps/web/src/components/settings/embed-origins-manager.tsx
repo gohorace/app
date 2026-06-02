@@ -103,8 +103,8 @@ export function EmbedOriginsManager({ initialOrigins, autoAllowed }: Props) {
           <ul className="divide-y border rounded-md">
             {origins.map((host) => (
               <li key={host} className="flex items-center justify-between gap-3 px-3 py-2">
-                <code className="text-sm font-mono">{host}</code>
-                <Button variant="ghost" size="sm" onClick={() => handleRemove(host)}>
+                <code className="min-w-0 truncate text-sm font-mono">{host}</code>
+                <Button variant="ghost" size="sm" className="shrink-0" onClick={() => handleRemove(host)}>
                   Remove
                 </Button>
               </li>
