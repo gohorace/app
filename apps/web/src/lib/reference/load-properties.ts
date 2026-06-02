@@ -6,7 +6,14 @@ import { formatTimestamptz } from './format'
 
 type Admin = ReturnType<typeof createAdminClient>
 
-const CAP = 500
+// Workspace-bounded ceiling. The substrate table sorts/filters/paginates
+// in-table over this set and renders its row count + "of N" footer straight
+// from the loaded array, so this also bounds the *count shown to the user*.
+// It must sit ABOVE real workspace volumes — GNAF core-market imports push a
+// single workspace well past 10k live properties, so the old 500 ceiling made
+// every large workspace read "500 rows" regardless of its true size. Raise (or
+// move to true server-side range pagination) if a workspace ever approaches it.
+const CAP = 25000
 
 interface EngagementRow {
   property_id: string
