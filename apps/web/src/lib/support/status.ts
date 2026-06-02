@@ -26,9 +26,13 @@ export interface SupportChannelDef {
   title: string
   sub: string
   cta: string
-  /** mailto: / external URL the CTA opens. */
+  /** mailto: / external URL the CTA opens (also the fallback when the
+   *  Featurebase messenger isn't configured). */
   href: string
   external?: boolean
+  /** When true, the CTA opens the Featurebase messenger instead of `href`,
+   *  provided NEXT_PUBLIC_FEATUREBASE_APP_ID is set. Falls back to `href`. */
+  messenger?: boolean
 }
 
 export const SUPPORT_EMAIL = 'support@gohorace.com'
@@ -46,8 +50,10 @@ export const SUPPORT_CHANNELS: SupportChannelDef[] = [
     title: 'Live chat',
     sub: 'Mon–Fri, 9am–5pm AEST.',
     cta: 'Start chat',
-    // Placeholder until a real chat widget is wired (product decision).
+    // Opens the Featurebase messenger when configured; otherwise falls back
+    // to this mailto.
     href: `mailto:${SUPPORT_EMAIL}?subject=Live%20chat%20request`,
+    messenger: true,
   },
   {
     icon: 'calendar',
