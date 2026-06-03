@@ -3,7 +3,7 @@ import { ArrowRight } from 'lucide-react'
 import { closing } from '../content'
 import styles from '../handbook.module.css'
 
-export function Closing() {
+export function Closing({ onBookCall }: { onBookCall: () => void }) {
   return (
     <section className={styles.closing} id="close">
       <div className={styles.closingInner}>
@@ -28,14 +28,9 @@ export function Closing() {
             {closing.ctaPrimary.label}
             <ArrowRight />
           </Link>
-          <a
-            className={`${styles.cta} ${styles.ctaGhost}`}
-            href={closing.ctaGhost.href}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
+          <button type="button" className={`${styles.cta} ${styles.ctaGhost}`} onClick={onBookCall}>
             {closing.ctaGhost.label}
-          </a>
+          </button>
         </div>
         <p className={styles.closingTrial}>{closing.trial}</p>
       </div>

@@ -2,6 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import QRCode from 'qrcode'
+import { BookingModal } from '@/components/booking-modal'
 import {
   chapters,
   checklist,
@@ -182,6 +183,9 @@ export default function HandbookPage() {
   }, [])
   const scrollToTop = useCallback(() => window.scrollTo({ top: 0, behavior: 'smooth' }), [])
 
+  // ── Book-a-walk-through modal (cal.com embed) ──
+  const [bookingOpen, setBookingOpen] = useState(false)
+
   // ── Resume banner ──
   const [resumeShow, setResumeShow] = useState(false)
   const resumeFrac = useRef<number | null>(null)
@@ -247,7 +251,7 @@ export default function HandbookPage() {
           </div>
         </main>
 
-        <Closing />
+        <Closing onBookCall={() => setBookingOpen(true)} />
       </div>
 
       <NowPlayingBar
@@ -282,6 +286,14 @@ export default function HandbookPage() {
         onNative={onNative}
         showNative={showNative}
       />
+
+      {bookingOpen && (
+        <BookingModal
+          href={closing.ctaGhost.href}
+          label="Book a walk-through"
+          onClose={() => setBookingOpen(false)}
+        />
+      )}
 
       <Toast message={toast.message} show={toast.show} />
       <ResumeBanner show={resumeShow} onResume={onResume} onDismiss={() => setResumeShow(false)} />
