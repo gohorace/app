@@ -4,18 +4,17 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import QRCode from 'qrcode'
 import { BookingModal } from '@/components/booking-modal'
 import {
+  basics,
   chapters,
-  checklist,
   closing,
   hero,
   journeyMatrix,
-  prospectingMatrix,
   pullquotes,
   share,
 } from './content'
 import styles from './handbook.module.css'
+import { BasicsList } from './components/BasicsList'
 import { Chapter } from './components/Chapter'
-import { Checklist } from './components/Checklist'
 import { Closing } from './components/Closing'
 import { Hero } from './components/Hero'
 import { MatrixTable } from './components/MatrixTable'
@@ -48,8 +47,8 @@ function computeReadTime(): string {
     parts.push(c.heading, ...c.paras)
   }
   for (const q of pullquotes) parts.push(q.text)
-  for (const item of checklist) parts.push(item.title, item.body)
-  for (const m of [journeyMatrix, prospectingMatrix]) {
+  parts.push(...basics)
+  for (const m of [journeyMatrix]) {
     parts.push(m.caption, ...m.headers)
     for (const r of m.rows) parts.push(r.stageTitle, r.stageSub ?? '', r.gives, r.reads)
   }
@@ -234,9 +233,8 @@ export default function HandbookPage() {
           {chapters.map((ch) => (
             <Fragment key={ch.id}>
               <Chapter chapter={ch} num={numbers[ch.id] ?? null} />
-              {ch.id === 's7' && <Checklist items={checklist} />}
-              {ch.id === 's8' && <MatrixTable matrix={journeyMatrix} />}
-              {ch.id === 's9' && <MatrixTable matrix={prospectingMatrix} />}
+              {ch.id === 's4' && <MatrixTable matrix={journeyMatrix} />}
+              {ch.id === 's4b' && <BasicsList items={basics} />}
               {pullquotes
                 .filter((pq) => pq.after === ch.id)
                 .map((pq) => (

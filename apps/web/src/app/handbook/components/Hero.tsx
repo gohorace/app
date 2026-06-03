@@ -12,9 +12,11 @@ export function Hero({ readTime, onListen }: { readTime: string; onListen: () =>
         <em>{hero.titleEm}</em>
         {hero.titleTail}
       </h1>
-      <p className={styles.standfirst} data-speak="">
-        {hero.standfirst}
-      </p>
+      {hero.standfirst && (
+        <p className={styles.standfirst} data-speak="">
+          {hero.standfirst}
+        </p>
+      )}
       <div className={styles.byline}>
         <div className={styles.bylineAv}>
           {/* eslint-disable-next-line @next/next/no-img-element */}

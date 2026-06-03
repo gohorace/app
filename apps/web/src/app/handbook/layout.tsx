@@ -1,9 +1,9 @@
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: 'The Horace handbook — Set up your site, take back your pipeline',
+  title: 'The Horace handbook — Win more listings, lose fewer',
   description:
-    "Your website already knows who's about to sell. Here's how Horace reads the trail vendors leave — and how to set your site up so he sees it all.",
+    "The interest isn't missing — it's invisible. Here's how Horace reads the trail vendors leave on your own website, so you win more listings and lose fewer.",
 }
 
 export default function HandbookLayout({ children }: { children: React.ReactNode }) {
