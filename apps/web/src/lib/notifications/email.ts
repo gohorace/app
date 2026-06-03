@@ -555,3 +555,74 @@ export function buildInvitePlainText(args: {
     '— The Horace team',
   ].join('\n')
 }
+
+// ── New-user welcome ──────────────────────────────────────────────────────────
+
+/** Where a new user goes to get set up. Shown as the CTA + raw link. */
+const WELCOME_SETUP_URL = 'https://www.gohorace.com/support'
+
+/**
+ * Welcome email sent once when a brand-new account provisions (the
+ * once-per-signup branch in lib/onboarding/bootstrap.ts).
+ *
+ * Voice note: unlike the auth emails (signed "The Horace team"), this is
+ * Horace speaking in the first person — warm, Sunshine-Coast, persona-led,
+ * signed off "Seize the moment — Horace".
+ *
+ * firstName is optional: if we don't have it yet we drop the name from the
+ * greeting rather than render "Hi … , — glad you're here."
+ */
+export function buildWelcomeEmail(args: {
+  firstName: string | null
+  email: string
+}): { subject: string; html: string; text: string } {
+  const subject = 'Getting started with Horace'
+
+  const first = (args.firstName ?? '').trim()
+  const greeting = first
+    ? `Hi from the Sunshine Coast, ${escapeHtml(first)} — glad you’re here.`
+    : 'Hi from the Sunshine Coast — glad you’re here.'
+
+  // Deliberately plain — this should read like a personal note from Horace,
+  // not a designed marketing email. No wordmark header, no cards, no shell();
+  // just black-on-white body copy and a one-line signature.
+  const setupLabel = 'gohorace.com/support'
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Getting started with Horace</title>
+</head>
+<body style="margin:0;padding:0;background:#ffffff;">
+  <div style="max-width:560px;margin:0 auto;padding:24px 24px 32px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:15px;line-height:1.65;color:#1a1a1a;">
+    <p style="margin:0 0 16px;">${greeting}</p>
+    <p style="margin:0 0 16px;">Horace reads the behaviour on your website and taps you on the shoulder when someone’s worth a call — so you’re not waiting for the phone to ring.</p>
+    <p style="margin:0 0 16px;">To get him watching your site, start here: <a href="${WELCOME_SETUP_URL}" style="color:#1a1a1a;">${setupLabel}</a> — how to get set up, and how to reach us if you get stuck.</p>
+    <p style="margin:0 0 24px;">Here’s to your next listing.</p>
+    <p style="margin:0;">Seize the moment —<br>Horace</p>
+    <p style="margin:28px 0 0;padding-top:14px;border-top:1px solid #ececec;font-size:12px;color:#999;">
+      You’re receiving this because you just created a Horace account at <a href="https://www.gohorace.com" style="color:#999;">gohorace.com</a>.
+    </p>
+  </div>
+</body>
+</html>`
+
+  const text = [
+    first
+      ? `Hi from the Sunshine Coast, ${first} — glad you're here.`
+      : 'Hi from the Sunshine Coast — glad you\'re here.',
+    '',
+    'Horace reads the behaviour on your website and taps you on the shoulder when someone\'s worth a call — so you\'re not waiting for the phone to ring.',
+    '',
+    `To get him watching your site, start here — how to get set up, and how to reach us if you get stuck: ${WELCOME_SETUP_URL}`,
+    '',
+    'Here\'s to your next listing.',
+    '',
+    'Seize the moment —',
+    'Horace',
+  ].join('\n')
+
+  return { subject, html, text }
+}
