@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { postToSignupsChannel } from '@/lib/notifications/slack'
+import { sendWelcomeEmail } from '@/lib/notifications/welcome'
 import { resolvePrimaryAgent } from '@/lib/seats/resolve-agent'
 import { redirect } from 'next/navigation'
 import type { OnboardingStep } from './state'
@@ -62,6 +63,10 @@ export async function bootstrapOnboardingContext(): Promise<OnboardingContext> {
     .eq('user_id', user.id)
     .maybeSingle()
 
+  // Set when this request is the one that provisions a brand-new account, so
+  // we can fire the once-per-signup welcome email after the agent row exists.
+  let justProvisioned = false
+
   if (!membership) {
     const metadata = (user.user_metadata ?? {}) as Record<string, unknown>
     const readString = (key: string): string => {
@@ -121,6 +126,10 @@ export async function bootstrapOnboardingContext(): Promise<OnboardingContext> {
       `🎉 New signup: ${signupName || '(no name)'} <${user.email ?? 'no email'}> — ${pendingAgencyName}`,
     )
 
+    // This request just created the account — fire the welcome email once
+    // the agent row is resolved below (we need its id for the audit row).
+    justProvisioned = true
+
     await admin.auth.admin.updateUserById(user.id, {
       user_metadata: {
         ...metadata,
@@ -153,6 +162,20 @@ export async function bootstrapOnboardingContext(): Promise<OnboardingContext> {
   if (!agent) {
     // Workspace creation must have failed silently — bounce back to signup.
     redirect('/signup')
+  }
+
+  // New account just provisioned this request → send the one-time welcome
+  // email in Horace's voice. Best-effort (swallows its own errors); awaited
+  // so it completes before this serverless invocation returns.
+  if (justProvisioned) {
+    await sendWelcomeEmail({
+      admin,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      agentId: (agent as any).id as string,
+      email: user.email ?? '',
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      firstName: ((agent as any).first_name as string | null) ?? null,
+    })
   }
 
   // HOR-161 heal-forward: the wizard's 'pair' step doesn't auto-advance on
