@@ -1,0 +1,80 @@
+import { describe, it, expect } from 'vitest'
+import { extractContent } from './extract'
+
+describe('extractContent — schema.org JSON-LD', () => {
+  const html = `<html><head>
+    <script type="application/ld+json">${JSON.stringify({
+      '@context': 'https://schema.org',
+      '@type': 'RealEstateListing',
+      name: '12 Smith Street, Glebe',
+      image: ['https://x.au/img/hero.jpg'],
+      datePosted: '2026-05-20',
+      numberOfBedrooms: 3,
+      numberOfBathroomsTotal: 2,
+      offers: { '@type': 'Offer', price: '$1,450,000' },
+      address: {
+        '@type': 'PostalAddress',
+        streetAddress: '12 Smith Street',
+        addressLocality: 'Glebe',
+        addressRegion: 'NSW',
+        postalCode: '2037',
+      },
+    })}</script></head><body><h1>12 Smith Street, Glebe</h1></body></html>`
+
+  it('pulls a structured address (so it can match a property by hash)', () => {
+    const out = extractContent(html, 'https://x.au/listings/12-smith-st', 'listing')
+    expect(out.street_number).toBe('12')
+    expect(out.street_name).toBe('Smith Street')
+    expect(out.suburb).toBe('Glebe')
+    expect(out.state).toBe('NSW')
+    expect(out.postcode).toBe('2037')
+  })
+
+  it('pulls price, image, beds/baths, listed date', () => {
+    const out = extractContent(html, 'https://x.au/listings/12-smith-st', 'listing')
+    expect(out.price_text).toBe('$1,450,000')
+    expect(out.hero_image_url).toBe('https://x.au/img/hero.jpg')
+    expect(out.bed).toBe(3)
+    expect(out.bath).toBe(2)
+    expect(out.listed_date).toBe('2026-05-20')
+    expect(out.still_active).toBe(true)
+  })
+
+  it('routes price to sold_price_text for sold pages', () => {
+    const out = extractContent(html, 'https://x.au/sold/12-smith-st', 'sold')
+    expect(out.sold_price_text).toBe('$1,450,000')
+    expect(out.price_text).toBeUndefined()
+  })
+})
+
+describe('extractContent — fallbacks', () => {
+  it('uses Open Graph tags when no JSON-LD', () => {
+    const html = `<html><head>
+      <meta property="og:title" content="45 Jones Avenue, Newtown" />
+      <meta property="og:image" content="https://x.au/og.jpg" />
+      </head><body>3 bed 1 bath 2 car</body></html>`
+    const out = extractContent(html, 'https://x.au/property/45-jones', 'listing')
+    expect(out.title).toBe('45 Jones Avenue, Newtown')
+    expect(out.hero_image_url).toBe('https://x.au/og.jpg')
+    expect(out.bed).toBe(3)
+    expect(out.bath).toBe(1)
+    expect(out.car).toBe(2)
+  })
+
+  it('flags a listing with a Sold banner as no longer active', () => {
+    const html = `<html><body><h1>12 Smith Street — SOLD</h1></body></html>`
+    const out = extractContent(html, 'https://x.au/listings/12-smith', 'listing')
+    expect(out.still_active).toBe(false)
+  })
+
+  it('extracts suburb-report title + published date + suburb from URL', () => {
+    const html = `<html><head>
+      <meta property="og:title" content="Glebe Market Report — Q2 2026" />
+      <meta property="article:published_time" content="2026-04-01T09:00:00+10:00" />
+      </head><body></body></html>`
+    const out = extractContent(html, 'https://x.au/suburb-report/glebe', 'suburb_report')
+    expect(out.title).toBe('Glebe Market Report — Q2 2026')
+    expect(out.published_date).toBe('2026-04-01')
+    expect(out.suburb).toBe('Glebe')
+  })
+})
