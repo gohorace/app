@@ -211,23 +211,6 @@
   border-radius: var(--radius-sm);
 }
 
-/* Skip-to-content link used by onboarding shell. */
-.skip-link {
-  position: absolute;
-  top: -40px;
-  left: 8px;
-  padding: 8px 12px;
-  background: var(--color-ink);
-  color: var(--color-cream);
-  border-radius: var(--radius-sm);
-  font-size: 0.875rem;
-  z-index: 1000;
-  transition: top var(--duration-fast) var(--ease-out);
-}
-.skip-link:focus {
-  top: 8px;
-}
-
 /* Honour prefers-reduced-motion globally. Components can opt out per-rule. */
 @media (prefers-reduced-motion: reduce) {
   *,
