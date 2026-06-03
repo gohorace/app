@@ -151,6 +151,7 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/data') ||
     pathname.startsWith('/privacy') ||
     pathname.startsWith('/contact') ||
+    pathname.startsWith('/handbook') ||
     pathname.startsWith('/login') ||
     pathname.startsWith('/signup') ||
     pathname.startsWith('/check-email') ||
