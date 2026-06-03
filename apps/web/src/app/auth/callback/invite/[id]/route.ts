@@ -21,8 +21,9 @@ export const runtime = 'nodejs'
  *   1. Exchange the code for a session (creates the auth.users row if needed).
  *   2. Call accept_workspace_invite(invite_id, user_id) — the RPC inserts
  *      workspace_members + agents rows and pre-seeds
- *      agents.last_completed_step = 'script' so the wizard resumes at
- *      'contacts' (step 3 of 4) via resumeStep().
+ *      agents.last_completed_step = 'script' so the wizard resumes at the
+ *      'core_markets' (patch) step via resumeStep() (the agency owner has
+ *      already installed the snippet). See migration v3 20260603000001.
  *   3. Redirect to /onboarding.
  */
 export async function GET(

@@ -1,5 +1,4 @@
 import { Suspense } from 'react'
-import Link from 'next/link'
 import { SignupForm } from '@/components/auth/signup-form'
 import { Rail } from '@/components/onboarding/rail'
 import styles from '@/components/onboarding/onboarding.module.css'
@@ -12,7 +11,6 @@ const PROFILE_STAGE = {
 export default function SignupPage() {
   return (
     <>
-      <a href="#signup-main" className="skip-link">Skip to main content</a>
       <div className={styles.shell}>
         <Rail current="profile" completed={new Set()} stage={PROFILE_STAGE} />
         <main id="signup-main" className={styles.pane} aria-label="Create your account">
@@ -29,19 +27,6 @@ export default function SignupPage() {
           <Suspense fallback={null}>
             <SignupForm />
           </Suspense>
-
-          <p style={{
-            fontSize: 13,
-            color: 'var(--color-stone-aa)',
-            marginTop: 32,
-            paddingTop: 24,
-            borderTop: '1px solid var(--border-subtle)',
-          }}>
-            Already have an account?{' '}
-            <Link href="/login" style={{ color: 'var(--color-terracotta-text)', fontWeight: 500, textDecoration: 'underline' }}>
-              Sign in
-            </Link>
-          </p>
         </main>
       </div>
     </>
