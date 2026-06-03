@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { resolvePrimaryAgent } from '@/lib/seats/resolve-agent'
 import { z } from 'zod'
 import { detectCms, countListings, nextPageUrl } from './detect'
 import { classifyError, normaliseUrl, type SiteProbeResponse } from './validate'
@@ -43,6 +45,34 @@ const LISTING_CAP = 200
  * on timeout, `.name === 'BlockedError'` on >= 400, and other errors
  * bubble up via classifyError as 'unreachable'.
  */
+/**
+ * Persist the agent's confirmed site URL to `agent_settings.website_url`,
+ * best-effort. The probe is the moment we know an agent's real, reachable
+ * site (and the canonical post-redirect host), so it's the right point to
+ * capture it for the P1 site crawler (HOR-385) — settings/profile + the MCP
+ * profile tools already share this column. Never blocks or fails the probe:
+ * a lost write just means the agent re-enters it in Settings.
+ *
+ * Resolves the agent via resolvePrimaryAgent (NOT a bare
+ * `.eq('user_id').maybeSingle()`, which throws for multi-workspace users —
+ * see lib/seats/resolve-agent.ts). The probe is only called from onboarding
+ * Turn 2, so an unconditional set of the freshly-confirmed canonical URL is
+ * correct; there is no other caller to clobber a Settings-edited value.
+ */
+async function persistWebsiteUrl(userId: string, websiteUrl: string): Promise<void> {
+  try {
+    const admin = createAdminClient()
+    const agent = await resolvePrimaryAgent(admin, userId)
+    if (!agent) return
+    const { error } = await admin
+      .from('agent_settings')
+      .upsert({ agent_id: agent.id, website_url: websiteUrl }, { onConflict: 'agent_id' })
+    if (error) console.error('[site-probe] persist website_url failed:', error)
+  } catch (e) {
+    console.error('[site-probe] persist website_url threw:', e)
+  }
+}
+
 async function fetchHtml(url: URL): Promise<{ html: string; finalUrl: URL }> {
   const ctrl = new AbortController()
   const timeout = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS)
@@ -133,6 +163,11 @@ export async function POST(req: NextRequest) {
       }
     }
   }
+
+  // Capture the confirmed, canonical site URL for the P1 crawler. Awaited so
+  // the write lands before the serverless function can freeze, but wrapped so
+  // it never affects the probe result.
+  await persistWebsiteUrl(user.id, finalUrl.toString())
 
   const res: SiteProbeResponse = {
     ok: true,
