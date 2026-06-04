@@ -153,6 +153,11 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/privacy') ||
     pathname.startsWith('/contact') ||
     pathname.startsWith('/manifesto') ||
+    // Public site-audit tool. NB: the page is `/audit`; the API lives under
+    // `/api/site-audit/*` (deliberately NOT `/api/audit`, which is the
+    // Admin-only access-control audit log and must stay gated).
+    pathname.startsWith('/audit') ||
+    pathname.startsWith('/api/site-audit') ||
     pathname.startsWith('/login') ||
     pathname.startsWith('/signup') ||
     pathname.startsWith('/check-email') ||
