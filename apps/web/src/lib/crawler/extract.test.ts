@@ -90,6 +90,56 @@ describe('extractContent — fallbacks', () => {
     expect(out.suburb).toBe('Noosa Heads')
   })
 
+  it('handles the /properties/<address>/<rex-ID> convention: address from the prior segment + captures the ID', () => {
+    const html = `<html><head>
+      <script type="application/ld+json">${JSON.stringify({
+        '@type': 'House',
+        address: {
+          '@type': 'PostalAddress',
+          streetAddress: '61',
+          addressLocality: 'Noosa Heads',
+          addressRegion: 'Qld',
+          postalCode: '4567',
+        },
+      })}</script></head><body></body></html>`
+    const out = extractContent(
+      html,
+      'https://maxproperty.au/properties/61-noosa-springs-drive-noosa-heads-qld-4567/rex-12345',
+      'listing',
+    )
+    expect(out.street_number).toBe('61')
+    expect(out.street_name).toBe('Noosa Springs Drive')
+    expect(out.suburb).toBe('Noosa Heads')
+    expect(out.external_id).toBe('rex-12345')
+  })
+
+  const glebeLd = `<script type="application/ld+json">${JSON.stringify({
+    '@type': 'House',
+    address: { '@type': 'PostalAddress', streetAddress: '12', addressLocality: 'Glebe', addressRegion: 'NSW', postalCode: '2037' },
+  })}</script>`
+
+  it('treats a bare numeric tail as the ID too (/properties/<address>/12345)', () => {
+    const out = extractContent(`<html><head>${glebeLd}</head></html>`, 'https://x.au/properties/12-smith-street-glebe-nsw-2037/12345', 'listing')
+    expect(out.street_number).toBe('12')
+    expect(out.street_name).toBe('Smith Street')
+    expect(out.external_id).toBe('12345')
+  })
+
+  it('does not treat a /listing/<slug ending in postcode> as an ID tail', () => {
+    const noosaLd = `<script type="application/ld+json">${JSON.stringify({
+      '@type': 'House',
+      address: { '@type': 'PostalAddress', streetAddress: '61', addressLocality: 'Noosa Heads', addressRegion: 'Qld', postalCode: '4567' },
+    })}</script>`
+    const out = extractContent(
+      `<html><head>${noosaLd}</head></html>`,
+      'https://maxproperty.au/listing/759-61-noosa-springs-drive-noosa-heads-qld-4567/',
+      'listing',
+    )
+    // Last segment is the address slug (ends in postcode but is multi-word), not an ID.
+    expect(out.external_id).toBeUndefined()
+    expect(out.street_name).toBe('Noosa Springs Drive')
+  })
+
   it('drops a bare-number street when the slug yields nothing usable (no junk property)', () => {
     const html = `<html><head>
       <script type="application/ld+json">${JSON.stringify({

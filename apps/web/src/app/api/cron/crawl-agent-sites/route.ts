@@ -104,7 +104,12 @@ export async function GET(request: NextRequest) {
       const payload = {
         ...extracted,
         http_status: res.status,
-        raw: { crawled_at: new Date().toISOString() },
+        // Preserve the stable per-property ID (e.g. Rex /properties/<addr>/<id>)
+        // for future ID-based reconciliation; harmless when absent.
+        raw: {
+          crawled_at: new Date().toISOString(),
+          ...(extracted.external_id ? { rex_id: extracted.external_id } : {}),
+        },
       }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { error } = await admin.rpc('upsert_agent_site_content' as any, {

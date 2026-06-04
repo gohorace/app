@@ -35,6 +35,11 @@ export interface ExtractedContent {
   title?: string
   published_date?: string
   still_active?: boolean
+  /** Stable per-property ID from the URL when present (e.g. Rex CRM exposes
+   *  /properties/<address>/<rex-ID>). A far more reliable reconciliation key
+   *  than the address hash — stored in `raw` for now; promoting it to the
+   *  primary match key is a tracked follow-up. */
+  external_id?: string
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -191,25 +196,72 @@ export function extractContent(html: string, url: string, type: CrawlContentType
     out.still_active = !SOLD_BANNER_RE.test(heading)
   }
 
-  // Street-completeness guard + URL-slug recovery. Some real-estate themes
-  // emit a truncated schema.org streetAddress (e.g. "61", with the rest only
-  // in the URL slug). A bare-number street would create a junk `properties`
-  // row that can't match G-NAF — bias to omission. First try to recover the
-  // real street from the slug, anchored on the known suburb/state/postcode;
-  // if that fails, drop the structured street so the upsert RPC skips property
-  // reconciliation entirely (the content row is still captured + suburb-matchable).
-  if ((type === 'listing' || type === 'sold') && !isCompleteStreet(out.street_name)) {
-    const recovered = recoverStreetFromSlug(url, out.suburb, out.state, out.postcode)
-    if (recovered && isCompleteStreet(recovered.name)) {
-      out.street_number = recovered.number
-      out.street_name = recovered.name
-    } else {
-      out.street_number = undefined
-      out.street_name = undefined
+  if (type === 'listing' || type === 'sold') {
+    // Locate the address slug + any trailing stable ID. Handles both
+    // /listing/<address-slug>/ and the Rex convention
+    // /properties/<address-slug>/<rex-ID> (where the ID is the LAST segment,
+    // so the address is the prior one).
+    const { slug, externalId } = listingUrlParts(url)
+    out.external_id = externalId
+
+    // Street-completeness guard + URL-slug recovery. Some themes emit a
+    // truncated schema.org streetAddress (e.g. "61", rest only in the slug).
+    // A bare-number street would create a junk `properties` row that can't
+    // match G-NAF — bias to omission. Recover the real street from the address
+    // slug, anchored on the known suburb/state/postcode; if that fails, drop
+    // the structured street so the upsert RPC skips property reconciliation
+    // (the content row is still captured + suburb-matchable).
+    if (!isCompleteStreet(out.street_name)) {
+      const recovered = recoverStreetFromSlug(slug, out.suburb, out.state, out.postcode)
+      if (recovered && isCompleteStreet(recovered.name)) {
+        out.street_number = recovered.number
+        out.street_name = recovered.name
+      } else {
+        out.street_number = undefined
+        out.street_name = undefined
+      }
     }
   }
 
   return out
+}
+
+// A trailing path segment that's a stable ID, not an address slug:
+// "rex-12345", "12345", "p-12345" — mostly numeric, no multi-word address.
+const EXTERNAL_ID_RE = /^[a-z]{0,4}[-_]?\d{4,}$/i
+
+// Category prefixes that sit BEFORE a detail slug — never an address segment.
+// Guards against /listing/12345 treating "listing" as the address.
+const CATEGORY_SEGMENTS = new Set([
+  'listing', 'listings', 'property', 'properties', 'for-sale', 'buy', 'sold',
+  'recently-sold', 'sold-properties',
+])
+
+/** Split a listing URL into its address slug + any trailing stable ID.
+ *  /properties/12-smith-st-glebe-nsw-2037/rex-12345
+ *    → { slug: '12-smith-st-glebe-nsw-2037', externalId: 'rex-12345' }
+ *  /listing/759-61-noosa-springs-drive-noosa-heads-qld-4567/
+ *    → { slug: '759-61-...-4567' } (last segment is the address)
+ *  /listing/12345
+ *    → { slug: '12345' } (prior segment is a category word, not an address). */
+function listingUrlParts(url: string): { slug: string; externalId?: string } {
+  let segs: string[]
+  try {
+    segs = new URL(url).pathname.split('/').filter(Boolean)
+  } catch {
+    return { slug: '' }
+  }
+  if (segs.length === 0) return { slug: '' }
+  const last = segs[segs.length - 1].replace(/\.(html?|php)$/i, '')
+  if (segs.length >= 2 && EXTERNAL_ID_RE.test(last)) {
+    const prior = segs[segs.length - 2]
+    // Only treat `last` as an ID tail when the prior segment is a real address
+    // slug (multi-token), not a category prefix like /listing/.
+    if (!CATEGORY_SEGMENTS.has(prior.toLowerCase()) && prior.includes('-')) {
+      return { slug: prior, externalId: last }
+    }
+  }
+  return { slug: last }
 }
 
 /** A street looks usable only if it has letters and some length — a purely
@@ -229,18 +281,11 @@ const STATE_TOKENS = new Set(['qld', 'nsw', 'vic', 'sa', 'wa', 'tas', 'nt', 'act
  *  drop a leading listing-id (a numeric token followed by another number), and
  *  title-case what remains. Returns undefined when there's nothing usable. */
 function recoverStreetFromSlug(
-  url: string,
+  slug: string,
   suburb?: string,
   state?: string,
   postcode?: string,
 ): { number?: string; name?: string } | undefined {
-  let slug: string
-  try {
-    const parts = new URL(url).pathname.split('/').filter(Boolean)
-    slug = parts[parts.length - 1] ?? ''
-  } catch {
-    return undefined
-  }
   if (!slug) return undefined
 
   let tokens = slug
