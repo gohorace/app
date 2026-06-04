@@ -112,39 +112,82 @@
 .footerInner {
   max-width: 1120px;
   margin: 0 auto;
-  padding: 40px 48px;
+  padding: 64px 48px 48px;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
+  gap: 64px;
+}
+
+.footerBrand {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 260px;
 }
 
 .footerLogo .wordmark {
-  color: rgba(245,240,232,0.7);
+  color: rgba(245,240,232,0.85);
   font-size: 18px;
 }
-
-.footerLinks {
-  display: flex;
-  gap: 32px;
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.footerLinks a {
-  font-size: 13px;
-  color: rgba(140,123,107,0.7);
-  text-decoration: none;
-  transition: color 180ms var(--ease-out);
-}
-
-.footerLinks a:hover { color: rgba(245,240,232,0.7); }
 
 .footerSig {
   font-family: var(--font-display);
   font-style: italic;
-  font-size: 12px;
-  color: rgba(140,123,107,0.5);
+  font-size: 15px;
+  line-height: 1.4;
+  color: rgba(140,123,107,0.75);
+  margin: 0;
+}
+
+.footerCols {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(120px, 1fr));
+  gap: 48px;
+}
+
+.footerColLabel {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(245,240,232,0.45);
+  margin-bottom: 18px;
+}
+
+.footerCol ul {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+}
+
+.footerCol a {
+  font-size: 14px;
+  color: rgba(245,240,232,0.7);
+  text-decoration: none;
+  transition: color 180ms var(--ease-out);
+}
+
+.footerCol a:hover { color: var(--color-ember); }
+
+.footerBaseline {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 24px 48px;
+  border-top: 1px solid rgba(255,255,255,0.08);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: rgba(140,123,107,0.55);
 }
 
 /* ── RESPONSIVE ── */
@@ -154,13 +197,19 @@
 
   .footerInner {
     flex-direction: column;
-    align-items: center;
-    gap: 16px;
-    padding: 32px 24px;
-    text-align: center;
+    align-items: flex-start;
+    gap: 40px;
+    padding: 48px 24px 32px;
   }
 
-  .footerLinks { gap: 24px; }
+  .footerCols { width: 100%; gap: 32px 24px; }
+
+  .footerBaseline {
+    padding: 20px 24px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
 
   .btnLg {
     padding: 12px 18px;
