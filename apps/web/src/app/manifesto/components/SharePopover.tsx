@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import { Copy, Mail, Share2, X } from 'lucide-react'
-import styles from '../handbook.module.css'
+import styles from '../manifesto.module.css'
 
 type Props = {
   open: boolean

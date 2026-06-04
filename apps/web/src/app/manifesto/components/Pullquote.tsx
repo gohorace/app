@@ -1,4 +1,4 @@
-import styles from '../handbook.module.css'
+import styles from '../manifesto.module.css'
 
 export function Pullquote({ text }: { text: string }) {
   return (

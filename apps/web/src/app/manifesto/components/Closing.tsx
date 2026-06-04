@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { ArrowRight } from 'lucide-react'
 import { closing } from '../content'
-import styles from '../handbook.module.css'
+import styles from '../manifesto.module.css'
 
 export function Closing({ onBookCall }: { onBookCall: () => void }) {
   return (
