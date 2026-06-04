@@ -191,7 +191,96 @@ export function extractContent(html: string, url: string, type: CrawlContentType
     out.still_active = !SOLD_BANNER_RE.test(heading)
   }
 
+  // Street-completeness guard + URL-slug recovery. Some real-estate themes
+  // emit a truncated schema.org streetAddress (e.g. "61", with the rest only
+  // in the URL slug). A bare-number street would create a junk `properties`
+  // row that can't match G-NAF — bias to omission. First try to recover the
+  // real street from the slug, anchored on the known suburb/state/postcode;
+  // if that fails, drop the structured street so the upsert RPC skips property
+  // reconciliation entirely (the content row is still captured + suburb-matchable).
+  if ((type === 'listing' || type === 'sold') && !isCompleteStreet(out.street_name)) {
+    const recovered = recoverStreetFromSlug(url, out.suburb, out.state, out.postcode)
+    if (recovered && isCompleteStreet(recovered.name)) {
+      out.street_number = recovered.number
+      out.street_name = recovered.name
+    } else {
+      out.street_number = undefined
+      out.street_name = undefined
+    }
+  }
+
   return out
+}
+
+/** A street looks usable only if it has letters and some length — a purely
+ *  numeric "61" (truncated source data) does not and must not seed a property. */
+function isCompleteStreet(name: string | undefined): boolean {
+  if (!name) return false
+  const t = name.trim()
+  return t.length >= 3 && /[a-z]/i.test(t)
+}
+
+const STATE_TOKENS = new Set(['qld', 'nsw', 'vic', 'sa', 'wa', 'tas', 'nt', 'act'])
+
+/** Recover { number, name } from a listing URL slug, anchored on the known
+ *  suburb/state/postcode tail. Slugs like
+ *  "759-61-noosa-springs-drive-noosa-heads-qld-4567" → number "61", name
+ *  "Noosa Springs Drive": strip postcode + state + the trailing suburb words,
+ *  drop a leading listing-id (a numeric token followed by another number), and
+ *  title-case what remains. Returns undefined when there's nothing usable. */
+function recoverStreetFromSlug(
+  url: string,
+  suburb?: string,
+  state?: string,
+  postcode?: string,
+): { number?: string; name?: string } | undefined {
+  let slug: string
+  try {
+    const parts = new URL(url).pathname.split('/').filter(Boolean)
+    slug = parts[parts.length - 1] ?? ''
+  } catch {
+    return undefined
+  }
+  if (!slug) return undefined
+
+  let tokens = slug
+    .replace(/\.(html?|php)$/i, '')
+    .toLowerCase()
+    .split('-')
+    .filter(Boolean)
+
+  // Strip trailing postcode + state.
+  if (postcode && tokens[tokens.length - 1] === postcode.toLowerCase()) tokens.pop()
+  else if (/^\d{4}$/.test(tokens[tokens.length - 1] ?? '')) tokens.pop()
+  if (STATE_TOKENS.has(tokens[tokens.length - 1] ?? '')) tokens.pop()
+  else if (state && tokens[tokens.length - 1] === state.toLowerCase()) tokens.pop()
+
+  // Strip the trailing suburb words (matched from the end, so a suburb word
+  // that also appears in the street name — "noosa" — is left intact).
+  if (suburb) {
+    const subTokens = suburb.toLowerCase().split(/\s+/).filter(Boolean)
+    for (let i = subTokens.length - 1; i >= 0; i--) {
+      if (tokens[tokens.length - 1] === subTokens[i]) tokens.pop()
+      else break
+    }
+  }
+
+  // Drop a leading listing-id: a numeric token immediately followed by another
+  // numeric token (the street number). "759-61-..." → drop "759".
+  if (tokens.length >= 2 && /^\d+$/.test(tokens[0]) && /^\d+$/.test(tokens[1])) {
+    tokens.shift()
+  }
+  if (tokens.length === 0) return undefined
+
+  let number: string | undefined
+  if (/^\d+[a-z]?$/.test(tokens[0])) {
+    number = tokens[0]
+    tokens = tokens.slice(1)
+  }
+  if (tokens.length === 0) return undefined
+
+  const name = tokens.map((t) => t.replace(/\b\w/g, (c) => c.toUpperCase())).join(' ')
+  return { number, name }
 }
 
 function matchCount(text: string, re: RegExp): number | undefined {

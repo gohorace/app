@@ -67,6 +67,47 @@ describe('extractContent — fallbacks', () => {
     expect(out.still_active).toBe(false)
   })
 
+  it('recovers a truncated street from the URL slug (anchored on the known suburb)', () => {
+    // Real maxproperty.au case: schema.org streetAddress is just "61".
+    const html = `<html><head>
+      <script type="application/ld+json">${JSON.stringify({
+        '@type': 'House',
+        address: {
+          '@type': 'PostalAddress',
+          streetAddress: '61',
+          addressLocality: 'Noosa Heads',
+          addressRegion: 'Qld',
+          postalCode: '4567',
+        },
+      })}</script></head><body></body></html>`
+    const out = extractContent(
+      html,
+      'https://maxproperty.au/listing/759-61-noosa-springs-drive-noosa-heads-qld-4567/',
+      'listing',
+    )
+    expect(out.street_number).toBe('61')
+    expect(out.street_name).toBe('Noosa Springs Drive')
+    expect(out.suburb).toBe('Noosa Heads')
+  })
+
+  it('drops a bare-number street when the slug yields nothing usable (no junk property)', () => {
+    const html = `<html><head>
+      <script type="application/ld+json">${JSON.stringify({
+        '@type': 'House',
+        address: {
+          '@type': 'PostalAddress',
+          streetAddress: '61',
+          addressLocality: 'Noosa Heads',
+          addressRegion: 'Qld',
+          postalCode: '4567',
+        },
+      })}</script></head><body></body></html>`
+    const out = extractContent(html, 'https://x.au/listing/12345/', 'listing')
+    expect(out.street_name).toBeUndefined()
+    expect(out.street_number).toBeUndefined()
+    expect(out.suburb).toBe('Noosa Heads') // content row still captured + suburb-matchable
+  })
+
   it('extracts suburb-report title + published date + suburb from URL', () => {
     const html = `<html><head>
       <meta property="og:title" content="Glebe Market Report — Q2 2026" />
