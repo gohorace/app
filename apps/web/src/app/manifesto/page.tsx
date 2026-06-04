@@ -4,20 +4,16 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import QRCode from 'qrcode'
 import { BookingModal } from '@/components/booking-modal'
 import {
-  basics,
   chapters,
   closing,
   hero,
-  journeyMatrix,
   pullquotes,
   share,
 } from './content'
-import styles from './handbook.module.css'
-import { BasicsList } from './components/BasicsList'
+import styles from './manifesto.module.css'
 import { Chapter } from './components/Chapter'
 import { Closing } from './components/Closing'
 import { Hero } from './components/Hero'
-import { MatrixTable } from './components/MatrixTable'
 import { NowPlayingBar } from './components/NowPlayingBar'
 import { PhonePopover } from './components/PhonePopover'
 import { Pullquote } from './components/Pullquote'
@@ -47,11 +43,6 @@ function computeReadTime(): string {
     parts.push(c.heading, ...c.paras)
   }
   for (const q of pullquotes) parts.push(q.text)
-  parts.push(...basics)
-  for (const m of [journeyMatrix]) {
-    parts.push(m.caption, ...m.headers)
-    for (const r of m.rows) parts.push(r.stageTitle, r.stageSub ?? '', r.gives, r.reads)
-  }
   const words = parts
     .join(' ')
     .trim()
@@ -60,7 +51,7 @@ function computeReadTime(): string {
   return `${Math.max(1, Math.round(words / 200))} min read`
 }
 
-export default function HandbookPage() {
+export default function ManifestoPage() {
   const pageRef = useRef<HTMLDivElement>(null)
   const fillRef = useRef<HTMLDivElement>(null)
 
@@ -116,14 +107,14 @@ export default function HandbookPage() {
 
   // ── Share / phone URLs (client-resolved to avoid hydration drift) ──
   const [urls, setUrls] = useState({
-    page: 'https://gohorace.com/handbook',
-    display: 'gohorace.com/handbook',
+    page: 'https://gohorace.com/manifesto',
+    display: 'gohorace.com/manifesto',
   })
   const [showNative, setShowNative] = useState(false)
   useEffect(() => {
     setUrls({
       page: window.location.href,
-      display: (window.location.host || 'gohorace.com') + (window.location.pathname || '/handbook'),
+      display: (window.location.host || 'gohorace.com') + (window.location.pathname || '/manifesto'),
     })
     setShowNative(typeof navigator !== 'undefined' && !!navigator.share)
   }, [])
@@ -233,8 +224,6 @@ export default function HandbookPage() {
           {chapters.map((ch) => (
             <Fragment key={ch.id}>
               <Chapter chapter={ch} num={numbers[ch.id] ?? null} />
-              {ch.id === 's4' && <MatrixTable matrix={journeyMatrix} />}
-              {ch.id === 's4b' && <BasicsList items={basics} />}
               {pullquotes
                 .filter((pq) => pq.after === ch.id)
                 .map((pq) => (

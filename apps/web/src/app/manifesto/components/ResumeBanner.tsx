@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import { X } from 'lucide-react'
-import styles from '../handbook.module.css'
+import styles from '../manifesto.module.css'
 
 type Props = {
   show: boolean

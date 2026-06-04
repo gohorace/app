@@ -1,9 +1,9 @@
-// The Horace Handbook — all page copy.
+// The Horace manifesto — all page copy.
 // Paragraphs carry light inline markup as a small token grammar:
 //   **bold** -> <strong>, *italic* -> <em>. See `renderInline` in Chapter.tsx.
 
 export const hero = {
-  eyebrow: 'The Horace handbook',
+  eyebrow: 'The Horace manifesto',
   // `lose fewer.` renders as Playfair italic 500; line break before it.
   // Trailing space on titleLead keeps the read-aloud from running the two
   // halves together ("listings,lose") — invisible before the <br>.
@@ -77,23 +77,8 @@ export const chapters: Chapter[] = [
     paras: [
       "The pragmatic agent isn't working harder. They're aiming better. They let the signal decide where their time goes — so the call lands on the vendor who's actually moving, not the whole database on a Tuesday.",
       "That's the edge I'm here for. I read the trail every visitor leaves, I learn the normal rhythm of your street and your listings, and I tap you the moment something breaks it — *something's stirring*. A change like that is rarely random. A quiet owner suddenly checking sold prices usually means something shifted in their life — a job, a baby on the way, a number that finally added up. I can't see what changed. But I see the moment it starts to show, and that's all you need to be first.",
-      "A best-practice site makes that edge sharper — not because I'm asking for anything, but because a site a vendor can move through cleanly is one where every step they take is a step you can read. Here's what that looks like, mapped to the journey a vendor actually travels.",
-    ],
-  },
-  {
-    id: 's4b',
-    tagLabel: '',
-    heading: '',
-    paras: ['The best sites also get a few basics right, and they’re worth naming:'],
-  },
-  {
-    id: 's4c',
-    tagLabel: '',
-    heading: '',
-    paras: [
-      'And the sharp ones make their marketing work twice. Every touch they send — an anniversary note, a just-sold card in the street, a newsletter — points back to a page on their own site, never a dead end like a flat PDF or a portal listing. Once as outreach, again as signal: the moment a vendor acts on it, it’s there to read, and the follow-up happens while it’s still warm. That’s how you stay in the mix across a research window that runs months, not days.',
-      "One last thing worth knowing about me. I'd rather stay quiet than guess. A nudge means I'm sure — and when I'm not, *nothing worth your attention yet* is me respecting your time, not missing the moment.",
-      "Build the site a vendor wants to move through, and you've built the thing that tells you when they're ready. Win more. Lose fewer. Be first.",
+      "One thing worth knowing about me. I'd rather stay quiet than guess. A nudge means I'm sure — and when I'm not, *nothing worth your attention yet* is me respecting your time, not missing the moment.",
+      "The site itself matters too — not as a brochure, but as the surface I read. A site a vendor can move through cleanly is a site where every step they take is a step you can read. The how of that — the build, the structure, the speed, the conversion craft — I've laid out in a separate playbook. This piece is about why. That one's about how.",
     ],
   },
 ]
@@ -103,73 +88,6 @@ export const pullquotes: { after: string; text: string }[] = [
   { after: 's1', text: "The interest isn't missing. It's invisible." },
   { after: 's3', text: 'Your website is the one channel you own.' },
 ]
-
-// Best-practice basics (chapter 04, after the journey table). Each may carry
-// **bold**/*italic*.
-export const basics: string[] = [
-  'Every page tracked, not just the homepage — so nothing a vendor does goes unseen.',
-  'The pages that carry meaning kept clear and distinct: sold results, appraisals, listings, suburb reports, contact.',
-  'Forms that register a start, not only a submit — the vendor who begins and stops is often your warmest call.',
-  'Each listing on its own page, so a repeat visit to one property stands out for what it is.',
-  'Contact recognition that works — so a returning vendor is *Sarah’s back*, not *someone’s back*.',
-]
-
-export type MatrixRow = {
-  stageTitle: string
-  stageSub?: string
-  gives: string
-  reads: string
-}
-
-export type Matrix = {
-  caption: string
-  headers: [string, string, string]
-  rows: MatrixRow[]
-}
-
-// Chapter 04 — placed after s4.
-export const journeyMatrix: Matrix = {
-  caption: 'The vendor’s journey — and what it tells you',
-  headers: ["Where they're at", 'What a great site gives them', 'What it tells you'],
-  rows: [
-    {
-      stageTitle: 'Just wondering',
-      stageSub: "What's my place worth?",
-      gives: "A value estimate, your suburb's recent sold prices",
-      reads: "Someone's checking what homes like theirs are fetching",
-    },
-    {
-      stageTitle: 'Keeping an eye',
-      stageSub: 'Watching, not committed',
-      gives: 'Suburb reports to download, market updates, sold galleries',
-      reads: 'They pulled a report — and they keep coming back to the sold results',
-    },
-    {
-      stageTitle: 'Getting serious',
-      stageSub: 'Should I sell?',
-      gives: 'An appraisal page, a selling guide, straight talk on fees and the process',
-      reads: "They're on your appraisal page but haven't booked — a warm call, not a cold one",
-    },
-    {
-      stageTitle: 'Sizing you up',
-      stageSub: 'Who do I trust with this?',
-      gives: 'Your track record, recent sales, real reviews, your profile',
-      reads: "They're reading your sold listings and reviews — you're on the shortlist, up against two or three others",
-    },
-    {
-      stageTitle: 'On the edge',
-      stageSub: 'Ready to reach out',
-      gives: 'An easy way to contact you, a simple booking',
-      reads: 'They hit your contact page and left. They were close — follow up',
-    },
-    {
-      stageTitle: 'After the first chat',
-      stageSub: 'Deciding to list',
-      gives: 'Comparable sales, clear next steps',
-      reads: "They're back on your sold results after the appraisal — still weighing it",
-    },
-  ],
-}
 
 export const closing = {
   eyebrow: 'Seize the moment',
@@ -185,6 +103,6 @@ export const closing = {
 }
 
 export const share = {
-  title: 'The Horace handbook',
+  title: 'The Horace manifesto',
   text: 'Win more listings, lose fewer — how Horace reads the trail vendors leave on your own site. Worth a read.',
 }

@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import { X } from 'lucide-react'
-import styles from '../handbook.module.css'
+import styles from '../manifesto.module.css'
 
 type Props = {
   open: boolean
@@ -17,7 +17,7 @@ export function PhonePopover({ open, onClose, qrSvg, fallbackUrl }: Props) {
       </button>
       <h3>Read it on your phone</h3>
       <p className={styles.popSub}>
-        Point your camera at the code — the handbook opens on your phone so you can finish it later, or on the train.
+        Point your camera at the code — the manifesto opens on your phone so you can finish it later, or on the train.
       </p>
       <div className={styles.qrBox}>
         {qrSvg ? (

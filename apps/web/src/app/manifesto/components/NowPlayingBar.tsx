@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import { Pause, Play, SkipBack, SkipForward, Square } from 'lucide-react'
-import styles from '../handbook.module.css'
+import styles from '../manifesto.module.css'
 
 type Props = {
   show: boolean
@@ -33,7 +33,7 @@ export function NowPlayingBar({
         <img src="/horace-ink.png" alt="Horace" width={38} height={38} />
       </div>
       <div className={styles.playerInfo}>
-        <div className={styles.pt}>Listening to the handbook</div>
+        <div className={styles.pt}>Listening to the manifesto</div>
         <div className={styles.ps}>{status}</div>
         <div className={styles.playerProg}>
           <i style={{ width: `${progress.toFixed(1)}%` }} />

@@ -1,5 +1,5 @@
 /* ───────────────────────────────────────────────
-   The Horace Handbook — editorial stylesheet
+   The Horace manifesto — editorial stylesheet
    Ported from the design-handoff prototype (thesis.css).
    Colour + font tokens (--color-*, --font-*) come from the app's
    globals.css / next-font; page-local tokens are scoped to .page so

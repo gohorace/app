@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import type { Chapter as ChapterData } from '../content'
-import styles from '../handbook.module.css'
+import styles from '../manifesto.module.css'
 import { renderInline } from './inline'
 
 export function Chapter({ chapter, num }: { chapter: ChapterData; num: string | null }) {

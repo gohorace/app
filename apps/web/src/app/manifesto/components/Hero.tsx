@@ -1,6 +1,6 @@
 import { Play } from 'lucide-react'
 import { hero } from '../content'
-import styles from '../handbook.module.css'
+import styles from '../manifesto.module.css'
 
 export function Hero({ readTime, onListen }: { readTime: string; onListen: () => void }) {
   return (

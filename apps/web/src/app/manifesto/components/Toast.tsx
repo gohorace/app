@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import { Check } from 'lucide-react'
-import styles from '../handbook.module.css'
+import styles from '../manifesto.module.css'
 
 export function Toast({ message, show }: { message: string; show: boolean }) {
   return (

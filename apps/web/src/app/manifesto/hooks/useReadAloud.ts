@@ -202,7 +202,7 @@ export function useReadAloud(
     clearHighlight()
     if (finished) {
       idxRef.current = 0
-      onToastRef.current('That’s the handbook — seize the moment')
+      onToastRef.current('That’s the manifesto — seize the moment')
     }
   }
 

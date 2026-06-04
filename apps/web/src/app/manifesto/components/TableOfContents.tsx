@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import styles from '../handbook.module.css'
+import styles from '../manifesto.module.css'
 
 export type TocEntry = { id: string; label: string }
 
@@ -12,7 +12,7 @@ type Props = {
 export function TableOfContents({ entries, activeId, onJump }: Props) {
   return (
     <aside className={styles.toc} aria-label="Contents">
-      <div className={styles.tocLabel}>The handbook</div>
+      <div className={styles.tocLabel}>The manifesto</div>
       <ul className={styles.tocList}>
         {entries.map((entry, i) => (
           <li key={entry.id}>

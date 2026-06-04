@@ -5,7 +5,7 @@ import { X } from 'lucide-react'
 
 /**
  * Cal.com booking modal — a dark-overlay dialog wrapping the cal embed iframe
- * (`embed=true&layout=month_view`). Shared by /support and the /handbook CTA so
+ * (`embed=true&layout=month_view`). Shared by /support and the /manifesto CTA so
  * there's one booking-modal implementation. Escape closes; body scroll locks
  * while open.
  */

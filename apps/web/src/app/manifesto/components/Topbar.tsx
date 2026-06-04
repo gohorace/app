@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import { Bookmark, Pause, Play, Share2, Smartphone } from 'lucide-react'
-import styles from '../handbook.module.css'
+import styles from '../manifesto.module.css'
 
 type Props = {
   scrolled: boolean
@@ -33,7 +33,7 @@ export function Topbar({
         <span className={styles.brandDot} />
         <span className={styles.brandName}>Horace</span>
         <span className={styles.brandSep} />
-        <span className={styles.brandTag}>The handbook</span>
+        <span className={styles.brandTag}>The manifesto</span>
       </button>
       <nav className={styles.tools}>
         <button
