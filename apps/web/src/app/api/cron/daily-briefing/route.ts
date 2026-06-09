@@ -30,7 +30,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ ok: true, sent: 0 })
   }
 
-  // Filter to agents who have recipients and whose local hour matches their configured send hour
+  // Filter to agents who have recipients and whose local hour matches their
+  // configured send hour. This route is driven HOURLY by pg_cron
+  // (supabase/migrations/20260609000001_pg_cron_daily_briefing.sql) so each
+  // agent matches exactly once a day, in their own configured local hour and
+  // timezone. (Previously a once-daily Vercel cron at 07:00 UTC meant only
+  // local hour 17 — AEST — could ever match, silently ignoring the setting.)
   const nowUtcMs = Date.now()
   const eligibleAgents = agentSettings.filter((s) => {
     // Must have at least one recipient configured
@@ -45,7 +50,10 @@ export async function GET(request: NextRequest) {
         hour: 'numeric',
         hour12: false,
       })
-      return parseInt(localHour, 10) === (s.daily_briefing_hour ?? 17)
+      // en-AU/hour12:false renders midnight as "24" in some ICU builds, so
+      // `% 24` normalises it back to 0 — otherwise daily_briefing_hour=0
+      // (midnight) could never match.
+      return parseInt(localHour, 10) % 24 === (s.daily_briefing_hour ?? 17)
     } catch {
       return false
     }
@@ -54,6 +62,18 @@ export async function GET(request: NextRequest) {
   if (eligibleAgents.length === 0) {
     return NextResponse.json({ ok: true, sent: 0 })
   }
+
+  // Same-day dedupe: this route now runs hourly (pg_cron), so guard against a
+  // double-send if it's re-invoked within the matching hour (retry, redeploy,
+  // manual trigger). Skip any agent already sent an email_daily_brief in the
+  // last 23h. One batch read rather than a per-agent query in the loop.
+  const sinceIso = new Date(nowUtcMs - 23 * 60 * 60 * 1000).toISOString()
+  const { data: recentLogs } = await admin
+    .from('notification_log')
+    .select('agent_id')
+    .eq('type', 'email_daily_brief')
+    .gte('sent_at', sinceIso)
+  const alreadySent = new Set((recentLogs ?? []).map((r) => r.agent_id))
 
   const { Resend } = await import('resend')
   const resend = new Resend(resendKey)
@@ -70,6 +90,8 @@ export async function GET(request: NextRequest) {
 
   for (const settings of eligibleAgents) {
     try {
+      if (alreadySent.has(settings.agent_id)) continue
+
       const agent = settings.agents as { first_name: string | null; last_name: string | null; email: string | null } | null
       const agentName =
         [agent?.first_name, agent?.last_name].filter(Boolean).join(' ') ||
