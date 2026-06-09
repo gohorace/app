@@ -31,10 +31,14 @@
 -- 3. ONE new Vault secret for the route URL:
 --
 --      SELECT vault.create_secret(
---        'https://gohorace.com/api/cron/daily-briefing',
+--        'https://www.gohorace.com/api/cron/daily-briefing',
 --        'daily_briefing_worker_url',
 --        'Daily-briefing worker URL — fix hourly cron'
 --      );
+--
+--    NB: use the `www.` host (matches scheduled_emails_worker_url). The
+--    apex gohorace.com 301-redirects to www and pg_net does not follow
+--    redirects, so a bare-apex URL would never reach the route.
 --
 -- If the secret is missing, http_get gets a NULL url and pg_net silently
 -- drops the request; the migration applies cleanly regardless. Setting the
