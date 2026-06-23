@@ -18,6 +18,7 @@
    that flickers a broken state, and these are fixed-size circles, so a plain
    <img> (matching the design prototype) is both simpler and more robust. */
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { BookingModal } from '@/components/booking-modal'
 import styles from './playbook.module.css'
 
 // ── CTA destinations ────────────────────────────────
@@ -74,6 +75,9 @@ export default function PlaybookClient() {
   const [qrFallback, setQrFallback] = useState<string | null>(null)
   const [displayUrl, setDisplayUrl] = useState('gohorace.com/playbook')
   const [canNativeShare, setCanNativeShare] = useState(false)
+
+  // ── Book-a-walk-through modal (cal.com embed) ──────
+  const [bookingOpen, setBookingOpen] = useState(false)
 
   // ── Listen (read-aloud) engine state ──────────────
   const [playing, setPlaying] = useState(false)
@@ -1219,15 +1223,14 @@ export default function PlaybookClient() {
               <a className={cx('cta', 'cta-primary')} href={SIGNUP_HREF} data-cta="signup">
                 Start your free trial {ARROW}
               </a>
-              <a
+              <button
+                type="button"
                 className={cx('cta', 'cta-ghost')}
-                href={WALKTHROUGH_HREF}
                 data-cta="calcom"
-                target="_blank"
-                rel="noopener noreferrer"
+                onClick={() => setBookingOpen(true)}
               >
                 Book a walk-through
-              </a>
+              </button>
             </div>
             <p className={styles['closing-trial']}>
               14-day free trial · no card required · or book a 20-minute walk-through
@@ -1394,6 +1397,15 @@ export default function PlaybookClient() {
           </svg>
         </button>
       </div>
+
+      {/* Book-a-walk-through modal */}
+      {bookingOpen && (
+        <BookingModal
+          href={WALKTHROUGH_HREF}
+          label="Book a walk-through"
+          onClose={() => setBookingOpen(false)}
+        />
+      )}
     </div>
   )
 }

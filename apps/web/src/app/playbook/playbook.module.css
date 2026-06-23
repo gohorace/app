@@ -443,6 +443,18 @@ table.matrix tr.speaking { background: rgba(232,149,109,0.16) !important; }
   .article p { font-size: 1.1rem; }
   .article .lead { font-size: 1.18rem; }
   .dropcap::first-letter { font-size: 3.6rem; }
+
+  /* Resume banner: drop the left:50% centering, which let the horizontal row
+     overflow narrow viewports and clip the "Resume reading" button off-screen.
+     Pin to both edges and let it flex within the screen instead. */
+  .resume {
+    left: 12px; right: 12px; gap: 10px; padding-left: 16px;
+    transform: translateY(160%);
+  }
+  .resume.show { transform: translateY(0); }
+  .resume span { flex: 1; min-width: 0; }
+  .resume .r-go { flex-shrink: 0; white-space: nowrap; padding: 0 16px; }
+  .resume .r-x { flex-shrink: 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {
