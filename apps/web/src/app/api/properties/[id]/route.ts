@@ -175,7 +175,23 @@ export async function DELETE(
     return NextResponse.json({ error: 'No workspace for user' }, { status: 400 })
   }
 
-  // Soft delete only — properties referenced by contacts.residence_property_id
+  // Look up the row first — we need its gnaf pid to tombstone it (HOR-410).
+  // The import upsert dedups on (workspace_id, address_hash) WHERE
+  // deleted_at IS NULL, so a soft-deleted G-NAF property would otherwise
+  // silently reappear on the next import/refresh of its scope.
+  const { data: existing } = await admin
+    .from('properties')
+    // gnaf_address_detail_pid (migration 20260517000002) isn't in the
+    // generated types yet — cast the select to bypass the stale type.
+    .select('id, gnaf_address_detail_pid' as '*')
+    .eq('id', params.id)
+    .eq('workspace_id', agent.workspace_id)
+    .is('deleted_at', null)
+    .maybeSingle()
+
+  if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+  // Soft delete — properties referenced by contacts.residence_property_id
   // shouldn't disappear from history. The 30-day purge cron handles hard
   // deletes once nothing's referencing them.
   const now = new Date().toISOString()
@@ -187,5 +203,31 @@ export async function DELETE(
     .is('deleted_at', null)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ ok: true, deleted_at: now })
+
+  // Tombstone G-NAF-sourced rows so the Core Markets worker skips this
+  // address on future ticks. Upsert (idempotent) — re-deleting a row
+  // that's already suppressed is a no-op. Best-effort: a tombstone
+  // failure shouldn't block the delete the user already sees succeed.
+  const gnafPid = (existing as unknown as { gnaf_address_detail_pid: string | null }).gnaf_address_detail_pid
+  let suppressed = false
+  if (gnafPid) {
+    const { error: suppressError } = await admin
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .from('gnaf_import_suppressions' as any)
+      .upsert(
+        {
+          workspace_id: agent.workspace_id,
+          gnaf_address_detail_pid: gnafPid,
+          property_id: params.id,
+        },
+        { onConflict: 'workspace_id,gnaf_address_detail_pid' },
+      )
+    if (suppressError) {
+      console.error('[properties/:id DELETE] tombstone failed', suppressError)
+    } else {
+      suppressed = true
+    }
+  }
+
+  return NextResponse.json({ ok: true, deleted_at: now, suppressed })
 }

@@ -36,18 +36,22 @@ export default async function CoreMarketsSettingsPage() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: rawMarkets } = await admin
     .from('core_markets' as any)
-    .select('id, locality_pid, locality_name, state_abbrev, postcode, created_at')
+    .select('id, granularity, locality_pid, locality_name, state_abbrev, postcode, street_locality_pid, building_number_first, street_name, created_at')
     .eq('agent_id', agent.id)
     .is('archived_at', null)
     .order('created_at', { ascending: false })
 
   type MarketRow = {
-    id:            string
-    locality_pid:  string
-    locality_name: string
-    state_abbrev:  string
-    postcode:      string | null
-    created_at:    string
+    id:                    string
+    granularity:           CoreMarketRow['granularity']
+    locality_pid:          string
+    locality_name:         string
+    state_abbrev:          string
+    postcode:              string | null
+    street_locality_pid:   string | null
+    building_number_first: string | null
+    street_name:           string | null
+    created_at:            string
   }
   const marketRows = (rawMarkets as MarketRow[] | null) ?? []
 
@@ -71,12 +75,16 @@ export default async function CoreMarketsSettingsPage() {
   }
 
   const markets: CoreMarketRow[] = marketRows.map((m) => ({
-    id:            m.id,
-    locality_pid:  m.locality_pid,
-    locality_name: m.locality_name,
-    state_abbrev:  m.state_abbrev,
-    postcode:      m.postcode,
-    created_at:    m.created_at,
+    id:                    m.id,
+    granularity:           m.granularity ?? 'suburb',
+    locality_pid:          m.locality_pid,
+    locality_name:         m.locality_name,
+    state_abbrev:          m.state_abbrev,
+    postcode:              m.postcode,
+    street_locality_pid:   m.street_locality_pid,
+    building_number_first: m.building_number_first,
+    street_name:           m.street_name,
+    created_at:            m.created_at,
     import_status: (statusByMarket.get(m.id) as CoreMarketRow['import_status']) ?? null,
   }))
 

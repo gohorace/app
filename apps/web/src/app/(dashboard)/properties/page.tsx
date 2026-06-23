@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { resolvePrimaryAgent } from '@/lib/seats/resolve-agent'
 import { ReferenceTables } from '@/components/reference/reference-tables'
+import { AddPropertyButton } from '@/components/properties/add-property-button'
 import { loadReferenceProperties } from '@/lib/reference/load-properties'
 import { getWorkspaceName } from '@/lib/reference/workspace-name'
 
@@ -26,5 +27,11 @@ export default async function PropertiesPage() {
     : []
   const workspaceName = await getWorkspaceName(admin, agent?.workspace_id ?? null)
 
-  return <ReferenceTables properties={properties} workspaceName={workspaceName} />
+  return (
+    <ReferenceTables
+      properties={properties}
+      workspaceName={workspaceName}
+      headerAction={<AddPropertyButton />}
+    />
+  )
 }
