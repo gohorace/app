@@ -386,6 +386,7 @@ export function ReferenceTables({
   contacts,
   properties,
   workspaceName = 'workspace',
+  headerAction,
 }: {
   /** Pass only the table(s) this route should show — `/contacts` renders the
    *  contacts block, `/properties` the properties block. */
@@ -393,6 +394,9 @@ export function ReferenceTables({
   properties?: PropertyRow[]
   /** Breadcrumb tail — the workspace name (NOT "public"). */
   workspaceName?: string
+  /** HOR-410: optional action rendered in the header (e.g. "Add property").
+   *  The table stays read-only; this is a top-level affordance beside it. */
+  headerAction?: React.ReactNode
 }) {
   const router = useRouter()
 
@@ -420,6 +424,11 @@ export function ReferenceTables({
           <span className={styles.sub}>
             <span className={styles.dot} /> read-only · synced {synced}
           </span>
+          {headerAction && (
+            <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center' }}>
+              {headerAction}
+            </div>
+          )}
         </header>
 
         {contacts && (

@@ -11,21 +11,58 @@
 
 import { useCallback, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { MapPin, Plus, X, Loader2 } from 'lucide-react'
-import { SuburbPicker, type SelectedLocality } from '@/components/core-markets/suburb-picker'
+import { MapPin, Building2, Milestone, Plus, X, Loader2 } from 'lucide-react'
+import {
+  LocationPicker,
+  placeKey,
+  placeToPostBody,
+  type SelectedPlace,
+  type Granularity,
+} from '@/components/core-markets/location-picker'
 import { SectionHeading } from '@/components/ui/section-heading'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 
 export interface CoreMarketRow {
-  id:            string
-  locality_pid:  string
-  locality_name: string
-  state_abbrev:  string
-  postcode:      string | null
-  created_at:    string
+  id:                    string
+  granularity:           Granularity
+  locality_pid:          string
+  locality_name:         string
+  state_abbrev:          string
+  postcode:              string | null
+  street_locality_pid:   string | null
+  building_number_first: string | null
+  street_name:           string | null
+  created_at:            string
   /** Latest import status — null when no import has been enqueued yet. */
   import_status: 'pending' | 'running' | 'complete' | 'error' | null
+}
+
+/** Display label + icon for a market row across the three granularities. */
+function marketLabel(m: CoreMarketRow): string {
+  if (m.granularity === 'street') {
+    return `${m.street_name ?? 'Street'}, ${m.locality_name}`
+  }
+  if (m.granularity === 'building') {
+    return `${m.building_number_first ?? ''} ${m.street_name ?? ''}`.trim() + `, ${m.locality_name}`
+  }
+  return m.locality_name
+}
+
+const GRAN_ICON: Record<Granularity, typeof MapPin> = {
+  suburb:   MapPin,
+  street:   Milestone,
+  building: Building2,
+}
+
+/** Stable key for an existing market, matching LocationPicker's placeKey. */
+function rowKey(m: CoreMarketRow): string {
+  return placeKey({
+    granularity: m.granularity,
+    locality_pid: m.locality_pid,
+    street_locality_pid: m.street_locality_pid,
+    building_number_first: m.building_number_first,
+  })
 }
 
 interface Props {
@@ -80,7 +117,7 @@ export function CoreMarketsSettings({ markets }: Props) {
     <div className="p-4 md:p-8 space-y-5 max-w-[660px]">
       <SectionHeading
         title="Core markets"
-        description="The suburbs you cover. Horace pulls every address inside them and tells you the moment a contact you know moves on one. Pick up to three."
+        description="The patches you cover — a suburb, a street, or a single building. Horace pulls every address inside them and tells you the moment a contact you know moves on one. Pick up to three."
       />
 
       {markets.length === 0 ? (
@@ -89,6 +126,8 @@ export function CoreMarketsSettings({ markets }: Props) {
         <div className="overflow-hidden rounded-md border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3 shadow-[var(--shadow-sm)]">
           {markets.map((m, i) => {
             const statusDef = m.import_status ? STATUS_MAP[m.import_status] : null
+            const Icon = GRAN_ICON[m.granularity] ?? MapPin
+            const label = marketLabel(m)
             return (
               <div
                 key={m.id}
@@ -98,10 +137,10 @@ export function CoreMarketsSettings({ markets }: Props) {
                   i < markets.length - 1 ? 'border-b border-[var(--border-subtle)]' : '',
                 ].join(' ')}
               >
-                <MapPin className="size-4 shrink-0 text-[var(--color-terracotta)]" />
+                <Icon className="size-4 shrink-0 text-[var(--color-terracotta)]" />
                 <div className="min-w-0 flex-1">
                   <span className="text-sm font-semibold text-[var(--fg-primary)]">
-                    {m.locality_name}
+                    {label}
                   </span>
                   <span className="ml-2 font-mono text-xs text-[var(--fg-secondary)]">
                     {m.state_abbrev}{m.postcode ? ` · ${m.postcode}` : ''}
@@ -114,7 +153,7 @@ export function CoreMarketsSettings({ markets }: Props) {
                   type="button"
                   onClick={() => archive(m.id)}
                   disabled={archiving.has(m.id)}
-                  aria-label={`Archive ${m.locality_name}`}
+                  aria-label={`Archive ${label}`}
                   className="flex size-7 shrink-0 items-center justify-center rounded-md border border-[var(--border-subtle)] text-[var(--fg-tertiary)] transition-colors hover:text-[var(--fg-primary)] disabled:cursor-not-allowed"
                 >
                   {archiving.has(m.id)
@@ -166,12 +205,13 @@ function EmptyCard({ onAdd }: { onAdd: () => void }) {
         No markets yet.
       </div>
       <p className="mx-auto mb-4 max-w-[360px] text-sm leading-relaxed text-[var(--fg-secondary)]">
-        Tell Horace which suburbs you cover and it&rsquo;ll pull every address in them,
-        ready to be matched against your contacts.
+        Tell Horace which patches you cover — a suburb, a street, or a single
+        building — and it&rsquo;ll pull every address in them, ready to be matched
+        against your contacts.
       </p>
       <Button onClick={onAdd}>
         <Plus className="size-3.5" />
-        Pick suburbs
+        Pick your patch
       </Button>
     </div>
   )
@@ -188,12 +228,12 @@ function PickerModal({
   onClose:  () => void
   onSaved:  () => void
 }) {
-  const [selected, setSelected]     = useState<SelectedLocality[]>([])
+  const [selected, setSelected]     = useState<SelectedPlace[]>([])
   const [submitting, setSubmitting] = useState(false)
   const [error, setError]           = useState<string | null>(null)
 
   const remaining = Math.max(0, MAX_ACTIVE - existing.length)
-  const disabledLocalityPids = existing.map((m) => m.locality_pid)
+  const disabledKeys = existing.map(rowKey)
 
   const submit = async () => {
     if (selected.length === 0 || submitting) return
@@ -204,11 +244,11 @@ function PickerModal({
         const res = await fetch('/api/core-markets', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ locality_pid: s.locality_pid }),
+          body: JSON.stringify(placeToPostBody(s)),
         })
         if (!res.ok) {
           const body = (await res.json().catch(() => ({}))) as { error?: string }
-          setError(body.error ?? `Couldn't add ${s.locality_name}. Try again?`)
+          setError(body.error ?? `Couldn't add ${s.label}. Try again?`)
           return
         }
       }
@@ -235,11 +275,11 @@ function PickerModal({
               id="cm-settings-modal-title"
               className="font-serif text-xl font-semibold tracking-tight text-[var(--fg-primary)]"
             >
-              {existing.length === 0 ? 'Pick your suburbs' : 'Add another suburb'}
+              {existing.length === 0 ? 'Pick your patch' : 'Add another market'}
             </h2>
             <p className="mt-1.5 text-sm text-[var(--fg-secondary)]">
               {remaining === MAX_ACTIVE
-                ? 'One to three suburbs.'
+                ? 'One to three places — suburb, street, or building.'
                 : `${remaining} more ${remaining === 1 ? 'slot' : 'slots'} available.`}
             </p>
           </div>
@@ -254,14 +294,13 @@ function PickerModal({
           </button>
         </div>
 
-        <SuburbPicker
+        <LocationPicker
           selected={selected}
           onChange={setSelected}
           min={1}
           max={remaining}
-          disabledLocalityPids={disabledLocalityPids}
+          disabledKeys={disabledKeys}
           autoFocus
-          placeholder="e.g. Paddington"
         />
 
         {error && (
@@ -276,10 +315,10 @@ function PickerModal({
             {submitting
               ? 'Adding…'
               : selected.length > 1
-                ? `Add ${selected.length} suburbs`
+                ? `Add ${selected.length} markets`
                 : selected.length === 1
-                  ? 'Add this suburb'
-                  : 'Add suburbs'}
+                  ? 'Add this market'
+                  : 'Add markets'}
           </Button>
         </div>
       </div>
