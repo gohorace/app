@@ -30,17 +30,26 @@ export const INTENT_LABEL: Record<IntentLevel, string> = {
   low:  'Quietly circling',
 }
 
+import { effectiveScoreThreshold, type Sensitivity } from '@/lib/sensitivity/thresholds'
+
 /**
  * Threshold-based intent level. Mirrors the buckets used by the dashboard
  * SignalCard and the contact detail page's intent helper.
  *
- * - score >= 50 → high
- * - score >= 20 → mid
- * - score >= 5  → low
- * - else        → null (no intent — "Quiet")
+ * High-intent bar tracks the workspace Sensitivity setting so the surfaced
+ * signal and the "When something stirs" push pivot off a single dial:
+ *   low      → score >= 75 ⇒ high
+ *   medium   → score >= 50 ⇒ high  (legacy default — preserves existing behaviour)
+ *   high     → score >= 25 ⇒ high
+ *
+ * Mid / low bands stay fixed; they're the "warming" / "circling" rungs below
+ * the high-intent line.
  */
-export function intentForScore(score: number): IntentLevel | null {
-  if (score >= 50) return 'high'
+export function intentForScore(
+  score: number,
+  sensitivity: Sensitivity = 'medium',
+): IntentLevel | null {
+  if (score >= effectiveScoreThreshold(sensitivity)) return 'high'
   if (score >= 20) return 'mid'
   if (score >= 5)  return 'low'
   return null

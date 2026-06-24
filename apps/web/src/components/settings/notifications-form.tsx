@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useRef, useEffect, KeyboardEvent } from 'react'
+import Link from 'next/link'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { RadioCard } from '@/components/ui/radio-card'
 import { Select } from '@/components/ui/select'
@@ -18,8 +18,8 @@ const ALERT_MODES: { value: AlertMode; icon: React.ElementType; label: string; d
   {
     value: 'threshold',
     icon: Bell,
-    label: 'Score milestone',
-    description: 'Alert when a contact reaches a score of 50 or above',
+    label: 'When something stirs',
+    description: "I'll tap you the moment a visitor breaks their pattern. Tuned by your Sensitivity setting.",
   },
   {
     value: 'all',
@@ -236,7 +236,6 @@ function PushStatusCard() {
 interface Props {
   initial: {
     push_alert_mode:     AlertMode
-    alert_threshold:     number
     briefing_emails:     string[]
     timezone:            string
     daily_briefing_hour: number
@@ -245,7 +244,6 @@ interface Props {
 
 export function NotificationsForm({ initial }: Props) {
   const [alertMode,  setAlertMode]  = useState<AlertMode>(initial.push_alert_mode)
-  const [threshold,  setThreshold]  = useState(initial.alert_threshold)
   const [emails,     setEmails]     = useState<string[]>(initial.briefing_emails)
   const [emailInput, setEmailInput] = useState('')
   const [timezone,   setTimezone]   = useState(initial.timezone)
@@ -287,7 +285,6 @@ export function NotificationsForm({ initial }: Props) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         push_alert_mode:     alertMode,
-        alert_threshold:     threshold,
         briefing_emails:     emails,
         timezone,
         daily_briefing_hour: hour,
@@ -328,21 +325,16 @@ export function NotificationsForm({ initial }: Props) {
             ))}
           </div>
 
-          {alertMode === 'threshold' && (
-            <div className="flex items-center gap-3 pt-1">
-              <span className="shrink-0 text-xs text-[var(--fg-secondary)]">Alert at score</span>
-              <Input
-                id="threshold"
-                type="number"
-                min={1}
-                max={999}
-                value={threshold}
-                onChange={(e) => setThreshold(Number(e.target.value))}
-                className="h-8 w-20 text-sm"
-              />
-              <p className="text-xs text-[var(--fg-secondary)]">points or above</p>
-            </div>
-          )}
+          <p className="pt-1 text-xs text-[var(--fg-secondary)]">
+            How much it takes to stir me lives in{' '}
+            <Link
+              href="/settings/scoring"
+              className="text-[var(--color-terracotta)] underline-offset-2 hover:underline"
+            >
+              Sensitivity
+            </Link>
+            .
+          </p>
       </div>
 
       {/* Daily email round-up */}

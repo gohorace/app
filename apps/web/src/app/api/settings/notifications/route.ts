@@ -6,7 +6,6 @@ import { resolvePrimaryAgent } from '@/lib/seats/resolve-agent'
 
 const schema = z.object({
   push_alert_mode:     z.enum(['threshold', 'all', 'hourly_digest']),
-  alert_threshold:     z.number().int().min(1).max(999),
   briefing_emails:     z.array(z.string().email()).max(20),
   timezone:            z.string().min(1).max(100),
   daily_briefing_hour: z.number().int().min(0).max(23),
@@ -28,16 +27,10 @@ export async function POST(request: NextRequest) {
 
   if (!agentRow) return NextResponse.json({ error: 'No agent found' }, { status: 400 })
 
-  const { alert_threshold, ...rest } = parsed.data
-
   const { error } = await admin
     .from('agent_settings')
     .upsert(
-      {
-        agent_id: agentRow.id,
-        ...rest,
-        sms_threshold_score: alert_threshold,
-      },
+      { agent_id: agentRow.id, ...parsed.data },
       { onConflict: 'agent_id' },
     )
 
