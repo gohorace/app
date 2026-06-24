@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database.types'
+import { getEffectiveScoreThresholdForAgent } from '@/lib/sensitivity/thresholds'
 
 type AdminClient = SupabaseClient<Database>
 
@@ -93,13 +94,13 @@ export async function sendSmsIfThresholdCrossed(
 ): Promise<void> {
   const { data: settings } = await supabase
     .from('agent_settings')
-    .select('sms_enabled, sms_threshold_score, agent_phone')
+    .select('sms_enabled, agent_phone')
     .eq('agent_id', agentId)
     .single()
 
   if (!settings?.sms_enabled || !settings.agent_phone) return
 
-  const threshold = settings.sms_threshold_score
+  const threshold = await getEffectiveScoreThresholdForAgent(supabase, agentId)
   if (!(scoreBefore < threshold && scoreAfter >= threshold)) return
 
   if (await isRecentlySent(supabase, agentId, contactId, 'sms_threshold')) return
@@ -165,14 +166,15 @@ export async function sendReturnVisitSms(
 ): Promise<void> {
   const { data: settings } = await supabase
     .from('agent_settings')
-    .select('sms_enabled, agent_phone, sms_threshold_score')
+    .select('sms_enabled, agent_phone')
     .eq('agent_id', agentId)
     .single()
 
   if (!settings?.sms_enabled || !settings.agent_phone) return
 
-  // Only alert for contacts that have already crossed the threshold
-  if (contactScore < settings.sms_threshold_score) return
+  // Only alert for contacts that have already crossed the Sensitivity-derived bar
+  const threshold = await getEffectiveScoreThresholdForAgent(supabase, agentId)
+  if (contactScore < threshold) return
   if (await isRecentlySent(supabase, agentId, contactId, 'sms_return')) return
 
   const { data: contact } = await supabase

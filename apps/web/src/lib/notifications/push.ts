@@ -1,6 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { postToAlertVolumeChannel } from '@/lib/notifications/slack'
 import { vapidSubject } from './vapid'
+import { getEffectiveScoreThresholdForAgent } from '@/lib/sensitivity/thresholds'
 
 const DEDUP_MINUTES = 30
 const VOLUME_CAP_PER_24H = 8
@@ -233,13 +234,7 @@ export async function sendScoreThresholdAlert(
   scoreBefore: number,
 ): Promise<void> {
   const admin = createAdminClient()
-  const { data: settings } = await admin
-    .from('agent_settings')
-    .select('sms_threshold_score')
-    .eq('agent_id', agentId)
-    .maybeSingle()
-
-  const threshold = settings?.sms_threshold_score ?? 50
+  const threshold = await getEffectiveScoreThresholdForAgent(admin, agentId)
   if (!(scoreBefore < threshold && scoreAfter >= threshold)) return
 
   const firstName = contactName.split(' ')[0]

@@ -8,6 +8,7 @@ import {
   sendReturnVisitAlert,
   sendInspectionRevisitAlert,
 } from '../notifications/push'
+import { getEffectiveScoreThresholdForAgent } from '../sensitivity/thresholds'
 
 type AdminClient = SupabaseClient<Database>
 
@@ -131,10 +132,12 @@ export async function scoreEventsForContact(
 
   await supabase.from('score_history').insert(historyRows)
 
-  // Fetch contact name + agent alert mode
-  const [{ data: contact }, { data: agentSettingsRow }] = await Promise.all([
+  // Fetch contact name + agent alert mode + workspace sensitivity-derived
+  // threshold. Sensitivity sets the bar; push_alert_mode sets delivery shape.
+  const [{ data: contact }, { data: agentSettingsRow }, effectiveThreshold] = await Promise.all([
     supabase.from('contacts').select('first_name, last_name, email').eq('id', contactId).maybeSingle(),
-    supabase.from('agent_settings').select('push_alert_mode, sms_threshold_score').eq('agent_id', agentId).maybeSingle(),
+    supabase.from('agent_settings').select('push_alert_mode').eq('agent_id', agentId).maybeSingle(),
+    getEffectiveScoreThresholdForAgent(supabase, agentId),
   ])
 
   const contactName =
@@ -176,7 +179,7 @@ export async function scoreEventsForContact(
       // below when we fire this one — dedup in dispatchPushAlert prevents
       // double-buzz on the same contact.
       recentInspection &&
-      (hasReturnVisit || isThresholdCross(scoreBefore, scoreAfter, agentSettingsRow?.sms_threshold_score) ||
+      (hasReturnVisit || isThresholdCross(scoreBefore, scoreAfter, effectiveThreshold) ||
         (alertMode === 'all' && !hasFormSubmit && !hasReturnVisit))
         ? sendInspectionRevisitAlert(
             agentId,

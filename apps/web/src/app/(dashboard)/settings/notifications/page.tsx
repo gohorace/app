@@ -16,7 +16,7 @@ export default async function NotificationsPage() {
 
   const { data: settings } = await admin
     .from('agent_settings')
-    .select('agent_email, briefing_emails, timezone, daily_briefing_hour, sms_threshold_score, push_alert_mode')
+    .select('agent_email, briefing_emails, timezone, daily_briefing_hour, push_alert_mode')
     .eq('agent_id', agent!.id)
     .single()
 
@@ -36,7 +36,6 @@ export default async function NotificationsPage() {
         <NotificationsForm
           initial={{
             push_alert_mode:     (settings?.push_alert_mode as 'threshold' | 'all' | 'hourly_digest') ?? 'threshold',
-            alert_threshold:      settings?.sms_threshold_score  ?? 50,
             briefing_emails:      defaultEmails,
             timezone:             settings?.timezone             ?? 'Australia/Sydney',
             daily_briefing_hour:  settings?.daily_briefing_hour  ?? 17,

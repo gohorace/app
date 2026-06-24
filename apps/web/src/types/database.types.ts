@@ -12,18 +12,21 @@ export type Database = {
           default_agent_id: string | null; created_at: string
           stripe_customer_id: string | null; stripe_subscription_id: string | null
           subscription_status: string; current_period_end: string | null
+          sensitivity: 'low' | 'medium' | 'high'
         }
         Insert: {
           id?: string; name: string; slug: string; snippet_key?: string; plan?: string
           default_agent_id?: string | null; created_at?: string
           stripe_customer_id?: string | null; stripe_subscription_id?: string | null
           subscription_status?: string; current_period_end?: string | null
+          sensitivity?: 'low' | 'medium' | 'high'
         }
         Update: {
           id?: string; name?: string; slug?: string; snippet_key?: string; plan?: string
           default_agent_id?: string | null; created_at?: string
           stripe_customer_id?: string | null; stripe_subscription_id?: string | null
           subscription_status?: string; current_period_end?: string | null
+          sensitivity?: 'low' | 'medium' | 'high'
         }
         Relationships: []
       }
@@ -74,7 +77,7 @@ export type Database = {
       }
       agent_settings: {
         Row: {
-          agent_id: string; sms_enabled: boolean; sms_threshold_score: number
+          agent_id: string; sms_enabled: boolean
           agent_phone: string | null; agent_email: string | null
           scoring_config: Json; weekly_briefing_day: number
           brand_voice: string | null; email_signature: string | null
@@ -84,7 +87,7 @@ export type Database = {
           created_at: string; updated_at: string
         }
         Insert: {
-          agent_id: string; sms_enabled?: boolean; sms_threshold_score?: number
+          agent_id: string; sms_enabled?: boolean
           agent_phone?: string | null; agent_email?: string | null
           scoring_config?: Json; weekly_briefing_day?: number
           brand_voice?: string | null; email_signature?: string | null
@@ -94,7 +97,7 @@ export type Database = {
           created_at?: string; updated_at?: string
         }
         Update: {
-          agent_id?: string; sms_enabled?: boolean; sms_threshold_score?: number
+          agent_id?: string; sms_enabled?: boolean
           agent_phone?: string | null; agent_email?: string | null
           scoring_config?: Json; weekly_briefing_day?: number
           brand_voice?: string | null; email_signature?: string | null
