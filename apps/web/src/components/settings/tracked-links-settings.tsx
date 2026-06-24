@@ -44,8 +44,8 @@ export function TrackedLinksSettings({ defaultUrl }: Props) {
   return (
     <div className="p-4 md:p-8 space-y-5 max-w-[660px]">
       <SectionHeading
-        title="Tracked links"
-        description="Every contact gets a tracked link you can paste into 1:1 emails. When the recipient clicks, Horace stitches their browser to the contact and identifies all future visits to your site."
+        title="Website URL"
+        description="The one website Horace works with for you. Every contact gets a tracked link to it you can paste into 1:1 emails — when they click, Horace stitches their browser to the contact and identifies all future visits to your site."
       />
 
       <div className="rounded-md border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-[22px] shadow-[var(--shadow-sm)]">

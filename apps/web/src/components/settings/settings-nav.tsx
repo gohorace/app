@@ -60,7 +60,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: '/settings/core-markets', label: 'Core markets', icon: MapPin },
       { href: '/settings/portal', label: 'Portal address', icon: Inbox },
       { href: '/settings/scoring', label: 'Sensitivity', icon: Gauge },
-      { href: '/settings/tracked-links', label: 'Tracked links', icon: Link2 },
+      { href: '/settings/tracked-links', label: 'Website URL', icon: Link2 },
       { href: '/settings/snippet', label: 'Install snippet', icon: Code },
     ],
   },
