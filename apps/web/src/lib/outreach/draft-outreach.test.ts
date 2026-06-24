@@ -4,6 +4,7 @@ import {
   buildReferenceContext,
   substituteSmsLink,
   assembleDrafts,
+  findPersonaLeak,
   type DraftOutreachArgs,
 } from './draft-outreach'
 import type { ContentCandidate, MatchResult, MatchSlot } from './match-content'
@@ -35,6 +36,20 @@ describe('buildReferenceContext (internal — explicit about the signal)', () =>
   it('handles the no-content case', () => {
     const ctx = buildReferenceContext({ rule: 'mixed', suburb: 'Glebe', slots: [] }, 'Sam')
     expect(ctx).toContain('No fresh matching content')
+  })
+})
+
+describe('findPersonaLeak (the draft must read as the agent, not a ghost-writer)', () => {
+  it('catches the exact leak Andy hit', () => {
+    expect(findPersonaLeak("I'm Horace, writing on behalf of your new local agent")).toBeTruthy()
+  })
+  it('catches Horace / on behalf of / AI framings', () => {
+    expect(findPersonaLeak('Horace here')).toBe('Horace')
+    expect(findPersonaLeak('on behalf of the team')).toBe('on behalf of')
+    expect(findPersonaLeak("I'm an AI assistant")).toBeTruthy()
+  })
+  it('passes a clean first-person agent message', () => {
+    expect(findPersonaLeak('Hi Sarah — thought of you. A place at 116 Hilton Terrace just sold. Max')).toBeNull()
   })
 })
 

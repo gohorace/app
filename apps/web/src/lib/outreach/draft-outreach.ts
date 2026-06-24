@@ -98,7 +98,27 @@ export function substituteSmsLink(template: string, url: string | null): string 
 
 // ── Generation ───────────────────────────────────────────────────────
 
-const SYSTEM_PROMPT = `You are Horace — a quiet, perceptive companion writing on behalf of a real-estate agent. Voice: warm, brief, understated, never salesy. No emoji. No exclamation marks.
+// Persona leaks: copy that breaks the "the agent wrote this themselves"
+// illusion (revealing Horace/AI or "on behalf of" framing).
+const PERSONA_LEAK_PATTERNS: ReadonlyArray<{ re: RegExp; label: string }> = [
+  { re: /\bhorace\b/i, label: 'Horace' },
+  { re: /\bon\s+behalf\s+of\b/i, label: 'on behalf of' },
+  { re: /\bwriting\s+for\s+(?:your|the)\s+agent\b/i, label: 'writing for your agent' },
+  { re: /\b(?:as|i'?m|i\s+am)\s+an?\s+(?:ai|assistant|bot)\b/i, label: 'AI/assistant' },
+  { re: /\bon\s+your\s+agent'?s?\s+behalf\b/i, label: "on your agent's behalf" },
+]
+
+export function findPersonaLeak(text: string): string | null {
+  for (const { re, label } of PERSONA_LEAK_PATTERNS) if (re.test(text)) return label
+  return null
+}
+
+const SYSTEM_PROMPT = `You ghost-write outbound messages that a real-estate agent sends to their own contacts. Write in the FIRST PERSON AS THE AGENT — as if the agent personally typed it. Voice: warm, brief, understated, never salesy. No emoji. No exclamation marks.
+
+PERSONA — absolute:
+- You ARE the agent. The recipient must believe the agent wrote this themselves.
+- NEVER mention Horace, an AI, an assistant, automation, or that the message is written "on behalf of" / "for" the agent. No third-party framing of any kind.
+- Sign only as the agent. Never sign or self-describe as anyone else.
 
 THE FIREWALL — hard rule, applies to email, SMS, and the spoken call opener:
 - What the contact did on the agent's website is PRIVATE to the agent. Your copy must NEVER reveal or imply it. The contact must not be able to tell they were ever tracked.
@@ -180,6 +200,13 @@ async function generate(
         nudge = `\nYour previous draft used "${violation}", which violates the firewall. Rewrite every field without that phrasing — never imply the contact was tracked.`
         continue
       }
+      // Persona leak: the message must read as the agent's own, never reveal
+      // Horace/AI or "on behalf of" framing.
+      const leak = findPersonaLeak(subject) ?? findPersonaLeak(body) ?? findPersonaLeak(sms) ?? findPersonaLeak(call_opener)
+      if (leak) {
+        nudge = `\nYour previous draft said "${leak}" — that breaks character. You ARE the agent writing personally. Rewrite with no mention of Horace, AI, or writing "on behalf of" anyone.`
+        continue
+      }
       return { subject, body, sms, call_opener }
     } catch (err) {
       console.error('[ai:draft-outreach] generation failed:', err)
@@ -244,7 +271,7 @@ export async function getOutreachDrafts(args: DraftOutreachArgs & { agentId: str
       const agentFirst = args.agentName.split(' ')[0] || args.agentName
       return generate(client, args.contact.name, first, agentFirst, args.pretext, args.match.slots, args.voice)
     },
-    ['outreach-drafts-v1', args.contactId, args.match.rule, contentKey, voiceKey],
+    ['outreach-drafts-v2', args.contactId, args.match.rule, contentKey, voiceKey],
     { tags: [`outreach:${args.agentId}`], revalidate: 86400 },
   )
   return assembleDrafts(await cached(), args)
