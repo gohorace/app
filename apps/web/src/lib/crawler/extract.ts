@@ -14,6 +14,7 @@
 
 import * as cheerio from 'cheerio'
 import type { CrawlContentType } from './classify'
+import { isStillActive } from './verify'
 
 export interface ExtractedContent {
   content_type: CrawlContentType
@@ -43,8 +44,6 @@ export interface ExtractedContent {
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-
-const SOLD_BANNER_RE = /\b(sold|under\s*offer|under\s*contract)\b/i
 
 function asArray(v: any): any[] {
   if (Array.isArray(v)) return v
@@ -191,9 +190,9 @@ export function extractContent(html: string, url: string, type: CrawlContentType
 
   // still_active: a listing page showing a sold/under-offer banner is no
   // longer live. Sold pages don't carry this flag (handled by sold_date).
+  // Shared with verify.ts so crawl-time and draft-time agree.
   if (type === 'listing') {
-    const heading = `${$('h1').text()} ${$('.status, .property-status, [class*="status"]').first().text()}`
-    out.still_active = !SOLD_BANNER_RE.test(heading)
+    out.still_active = isStillActive(html)
   }
 
   if (type === 'listing' || type === 'sold') {

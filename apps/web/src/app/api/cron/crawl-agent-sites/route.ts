@@ -149,7 +149,21 @@ export async function GET(request: NextRequest) {
       })
       .eq('id', job.id)
 
+    // HOR-386: on a healthy completed crawl, mark any of this agent's listings
+    // that weren't re-seen (gone from the sitemap) as de-listed. Guarded on a
+    // non-empty crawl so a partial/failed discovery can't false-positive.
+    let delisted = 0
+    if (done && (job.total_urls ?? 0) > 0 && job.started_at) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: n } = await admin.rpc('reconcile_crawl_delistings' as any, {
+        p_agent_id: job.agent_id,
+        p_crawl_started_at: job.started_at,
+      })
+      delisted = typeof n === 'number' ? n : 0
+    }
+
     return NextResponse.json({
+      delisted,
       job_id: job.id,
       phase: 'drain',
       batch: batch.length,
