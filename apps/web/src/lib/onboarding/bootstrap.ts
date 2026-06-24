@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { postToSignupsChannel } from '@/lib/notifications/slack'
 import { sendWelcomeEmail } from '@/lib/notifications/welcome'
+import { startTrialForUser } from '@/lib/billing/start-trial'
 import { resolvePrimaryAgent } from '@/lib/seats/resolve-agent'
 import { redirect } from 'next/navigation'
 import type { OnboardingStep } from './state'
@@ -176,6 +177,24 @@ export async function bootstrapOnboardingContext(): Promise<OnboardingContext> {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       firstName: ((agent as any).first_name as string | null) ?? null,
     })
+
+    // Auto-enrol into the 14-day Pro Monthly trial. Best-effort: if Stripe is
+    // unreachable or the price isn't configured for this env, log and continue
+    // — the user can still hit /pricing to retry. Idempotent at the Stripe
+    // layer (start-trial returns 'already_active' if a sub exists).
+    try {
+      const trial = await startTrialForUser({
+        admin,
+        userId: user.id,
+        email: user.email ?? null,
+        plan: 'pro_monthly',
+      })
+      if (!trial.ok && trial.code !== 'already_active') {
+        console.warn('[onboarding] auto-trial skipped:', trial.code, trial.message)
+      }
+    } catch (err) {
+      console.error('[onboarding] auto-trial failed:', err)
+    }
   }
 
   // HOR-161 heal-forward: the wizard's 'pair' step doesn't auto-advance on
