@@ -425,7 +425,7 @@ export function ReferenceTables({
             <span className={styles.dot} /> read-only · synced {synced}
           </span>
           {headerAction && (
-            <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center' }}>
+            <div style={{ display: 'flex', alignItems: 'center' }}>
               {headerAction}
             </div>
           )}
