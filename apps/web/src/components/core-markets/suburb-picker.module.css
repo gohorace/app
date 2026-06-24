@@ -173,3 +173,59 @@
   font-size: 13px;
   color: #B91C1C;
 }
+
+/* ── Granularity toggle (HOR-410) ────────────────────────────────── */
+/* Segmented control above the input: Suburb / Street / Building. */
+.granToggle {
+  display: inline-flex;
+  gap: 2px;
+  margin-bottom: 10px;
+  padding: 3px;
+  background: var(--bg-hover);
+  border: 1px solid var(--border-subtle);
+  border-radius: 9px;
+}
+
+.granOption {
+  appearance: none;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 6px 14px;
+  border-radius: 7px;
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-stone-aa);
+  transition: all 120ms var(--ease-out);
+}
+
+.granOption:hover:not(.granOptionActive) {
+  color: var(--color-ink);
+}
+
+.granOptionActive {
+  background: var(--bg-surface);
+  color: var(--color-ink);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+/* Count hint inside an option row (e.g. "≈ 40 properties"). */
+.optionCount {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--color-terracotta);
+  letter-spacing: 0.02em;
+  margin-left: 8px;
+}
+
+/* "No matches" empty state in the dropdown area. */
+.noResults {
+  margin-top: 8px;
+  padding: 12px 14px;
+  font-size: 13px;
+  color: var(--color-stone-aa);
+  background: var(--bg-hover);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+}

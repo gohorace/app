@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import {
   ArrowLeft,
   ArrowRight,
@@ -19,6 +20,7 @@ import {
   Pencil,
   Repeat,
   Sun,
+  Trash2,
   TrendingUp,
   UserPlus,
   UserCog,
@@ -105,6 +107,7 @@ const CHIP_ICON: Record<ChangeChipIcon, LucideIcon> = {
 
 export function PropertyDetailView({ property, signal, read, roleAttached, reassign }: PropertyDetailViewProps) {
   const { openCompanion } = useCompanion()
+  const router = useRouter()
   const isMobile = useIsMobile()
   const [status, setStatus] = useState<PropertyStatus>(property.status)
   const [statusError, setStatusError] = useState<string | null>(null)
@@ -112,6 +115,7 @@ export function PropertyDetailView({ property, signal, read, roleAttached, reass
   const [attachOpen, setAttachOpen] = useState(false)
   const [reassignOpen, setReassignOpen] = useState(false)
   const [sheetOpen, setSheetOpen] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => setStatus(property.status), [property.id, property.status])
 
@@ -149,6 +153,29 @@ export function PropertyDetailView({ property, signal, read, roleAttached, reass
     } catch {
       setStatus(prev)
       setStatusError('Couldn’t save — check your connection.')
+    }
+  }
+
+  async function deleteProperty() {
+    if (deleting) return
+    const ok = window.confirm(
+      `Delete ${property.address}? It's removed from your workspace. Linked contacts keep their history, and Horace won't re-import this address.`,
+    )
+    if (!ok) return
+    setDeleting(true)
+    setSheetOpen(false)
+    try {
+      const res = await fetch(`/api/properties/${property.id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        setStatusError('Couldn’t delete — try again.')
+        setDeleting(false)
+        return
+      }
+      router.push('/properties')
+      router.refresh()
+    } catch {
+      setStatusError('Couldn’t delete — check your connection.')
+      setDeleting(false)
     }
   }
 
@@ -338,6 +365,14 @@ export function PropertyDetailView({ property, signal, read, roleAttached, reass
                 <Users style={{ width: 13, height: 13 }} /> View all circling contacts
               </a>
             )}
+            <button
+              type="button"
+              onClick={deleteProperty}
+              disabled={deleting}
+              style={{ ...ghostBtnStyle, color: '#9C4A1F', marginLeft: 'auto', cursor: deleting ? 'not-allowed' : 'pointer' }}
+            >
+              <Trash2 style={{ width: 13, height: 13 }} /> {deleting ? 'Deleting…' : 'Delete property'}
+            </button>
           </div>
         )}
 
@@ -445,7 +480,8 @@ export function PropertyDetailView({ property, signal, read, roleAttached, reass
             <div style={sheetStyle}>
               <SheetRow Icon={Feather} label="Draft outreach with Horace" onClick={() => { draftOutreach(); setSheetOpen(false) }} />
               <SheetRow Icon={Pencil} label="Change state" onClick={() => { setSheetOpen(false); document.getElementById('circling')?.scrollIntoView({ behavior: 'smooth' }) }} />
-              <SheetRow Icon={UserPlus} label="Attach contact" last onClick={() => { setAttachOpen(true); setSheetOpen(false) }} />
+              <SheetRow Icon={UserPlus} label="Attach contact" onClick={() => { setAttachOpen(true); setSheetOpen(false) }} />
+              <SheetRow Icon={Trash2} label={deleting ? 'Deleting…' : 'Delete property'} last danger onClick={deleteProperty} />
             </div>
           )}
           <div style={stickyBarStyle}>
@@ -743,10 +779,10 @@ function FilterBtn({ label, active, onClick }: { label: string; active: boolean;
   )
 }
 
-function SheetRow({ Icon, label, last, onClick }: { Icon: LucideIcon; label: string; last?: boolean; onClick: () => void }) {
+function SheetRow({ Icon, label, last, danger, onClick }: { Icon: LucideIcon; label: string; last?: boolean; danger?: boolean; onClick: () => void }) {
   return (
-    <div role="button" onClick={onClick} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 12px', fontSize: 14, color: '#1A1612', fontWeight: 500, borderBottom: last ? 'none' : '1px solid rgba(140,123,107,0.14)', cursor: 'pointer' }}>
-      <Icon style={{ width: 17, height: 17, color: '#8C7B6B' }} />
+    <div role="button" onClick={onClick} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 12px', fontSize: 14, color: danger ? '#9C4A1F' : '#1A1612', fontWeight: 500, borderBottom: last ? 'none' : '1px solid rgba(140,123,107,0.14)', cursor: 'pointer' }}>
+      <Icon style={{ width: 17, height: 17, color: danger ? '#9C4A1F' : '#8C7B6B' }} />
       {label}
     </div>
   )

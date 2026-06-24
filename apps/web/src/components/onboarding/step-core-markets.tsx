@@ -22,7 +22,12 @@ import { useState } from 'react'
 import { ArrowRight, ArrowLeft, Check } from 'lucide-react'
 import styles from './onboarding.module.css'
 import stepStyles from './step-core-markets.module.css'
-import { SuburbPicker, type SelectedLocality } from '@/components/core-markets/suburb-picker'
+import {
+  LocationPicker,
+  placeKey,
+  placeToPostBody,
+  type SelectedPlace,
+} from '@/components/core-markets/location-picker'
 
 interface Props {
   stepNumber: number
@@ -35,11 +40,11 @@ const MIN_REQUIRED = 1
 const MAX_ALLOWED  = 3
 
 export function StepCoreMarkets({ stepNumber, totalSteps, onNext, onBack }: Props) {
-  const [selected, setSelected] = useState<SelectedLocality[]>([])
+  const [selected, setSelected] = useState<SelectedPlace[]>([])
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  /** Localities successfully posted in this submit attempt. */
-  const [accepted, setAccepted] = useState<SelectedLocality[]>([])
+  /** Places successfully posted in this submit attempt. */
+  const [accepted, setAccepted] = useState<SelectedPlace[]>([])
 
   const canSubmit = selected.length >= MIN_REQUIRED && !submitting
 
@@ -47,27 +52,28 @@ export function StepCoreMarkets({ stepNumber, totalSteps, onNext, onBack }: Prop
     if (!canSubmit) return
     setSubmitting(true)
     setError(null)
-    const newlyAccepted: SelectedLocality[] = []
+    const newlyAccepted: SelectedPlace[] = []
     try {
       // Sequential — three POSTs max, each ~150ms. Stopping on the first
       // failure means the agent sees a clean inline error without trying
       // to reason about partial success across N requests.
       for (const s of selected) {
+        const key = placeKey(s)
         // Skip ones already posted (in case the agent retries after a
         // mid-list failure).
-        if (accepted.some((a) => a.locality_pid === s.locality_pid)) {
+        if (accepted.some((a) => placeKey(a) === key)) {
           newlyAccepted.push(s)
           continue
         }
         const res = await fetch('/api/core-markets', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ locality_pid: s.locality_pid }),
+          body: JSON.stringify(placeToPostBody(s)),
         })
         if (!res.ok) {
           const body = (await res.json().catch(() => ({}))) as { error?: string }
           setAccepted([...accepted, ...newlyAccepted])
-          setError(body.error ?? `Couldn't add ${s.locality_name}, ${s.state_abbrev}. Try again?`)
+          setError(body.error ?? `Couldn't add ${s.label}. Try again?`)
           return
         }
         newlyAccepted.push(s)
@@ -94,34 +100,33 @@ export function StepCoreMarkets({ stepNumber, totalSteps, onNext, onBack }: Prop
 
       <h1 className={styles.paneTitle}>Where you work.</h1>
       <p className={styles.paneSub}>
-        Pick up to three suburbs you cover. Horace will bring in every
-        address in those patches and tell you the moment a contact you
-        know moves on one.
+        Pick up to three patches you cover — a whole suburb, a single
+        street, or one building. Horace brings in every address inside
+        them and tells you the moment a contact you know moves on one.
       </p>
 
       <div className={stepStyles.pickerCard}>
-        <SuburbPicker
+        <LocationPicker
           selected={selected}
           onChange={setSelected}
           min={MIN_REQUIRED}
           max={MAX_ALLOWED}
           autoFocus
-          placeholder="e.g. Paddington"
         />
 
         <div className={stepStyles.helpText}>
           {selected.length === 0
-            ? `Choose between ${MIN_REQUIRED} and ${MAX_ALLOWED} suburbs. You can change these anytime in Settings.`
+            ? `Choose between ${MIN_REQUIRED} and ${MAX_ALLOWED} places. You can change these anytime in Settings.`
             : selected.length < MAX_ALLOWED
               ? `${selected.length} selected. Add up to ${MAX_ALLOWED - selected.length} more, or continue.`
-              : 'Three suburbs locked in. Nice patch.'}
+              : 'Three locked in. Nice patch.'}
         </div>
 
         {accepted.length > 0 && (
           <div className={stepStyles.acceptedNote}>
             <Check size={14} aria-hidden />
             <span>
-              Importing {accepted.length} suburb{accepted.length === 1 ? '' : 's'} in the background — Horace will whisper when it&rsquo;s done.
+              Importing {accepted.length} {accepted.length === 1 ? 'place' : 'places'} in the background — Horace will whisper when it&rsquo;s done.
             </span>
           </div>
         )}

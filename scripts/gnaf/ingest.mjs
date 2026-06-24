@@ -611,6 +611,19 @@ async function main() {
     await client.query('ANALYZE gnaf.address_principal')
     await client.query('ANALYZE gnaf.localities')
 
+    // HOR-410: rebuild the derived street + complex references from the
+    // freshly-swapped address_principal so the street/building import
+    // pickers don't drift from the new quarterly data. No-op-safe if the
+    // function isn't present yet (pre-HOR-410 environments).
+    log('refreshing derived references (gnaf.street_localities, gnaf.complexes)')
+    try {
+      await client.query('SELECT gnaf.refresh_address_derivations()')
+      await client.query('ANALYZE gnaf.street_localities')
+      await client.query('ANALYZE gnaf.complexes')
+    } catch (err) {
+      log(`  WARN: refresh_address_derivations() failed or absent — ${err.message}`)
+    }
+
     log('cleaning up gnaf_staging')
     await client.query('DROP SCHEMA gnaf_staging CASCADE')
 

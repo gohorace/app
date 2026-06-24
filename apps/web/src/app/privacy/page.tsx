@@ -38,7 +38,7 @@ export default function PrivacyPage() {
         <header className={styles.hero}>
           <div className={styles.eyebrow}>Privacy</div>
           <h1>Privacy.</h1>
-          <p className={styles.updated}>Last updated: 5 May 2026</p>
+          <p className={styles.updated}>Last updated: 23 June 2026</p>
         </header>
 
         <article className={styles.body}>
@@ -57,6 +57,7 @@ export default function PrivacyPage() {
               <li><a href="#cookies">Cookies</a></li>
               <li><a href="#visitors">Your website&apos;s visitors</a></li>
               <li><a href="#suggested-clause">Suggested clause for your site</a></li>
+              <li><a href="#google-user-data">Use of Google user data</a></li>
               <li><a href="#changes">Changes to this policy</a></li>
               <li><a href="#contact">Contact</a></li>
             </ol>
@@ -137,6 +138,18 @@ export default function PrivacyPage() {
             <p>Horace doesn&apos;t sell your information, share it with third parties for advertising, or use it to train artificial-intelligence models. Horace processes this data on our behalf under their privacy policy at <a href="https://www.gohorace.com/privacy">gohorace.com/privacy</a>.</p>
             <p>You can request access to, correction of, or deletion of your information at any time by contacting us at <em>[your contact email]</em>.</p>
           </blockquote>
+
+          <hr />
+
+          <h2 id="google-user-data">Use of Google user data</h2>
+          <p>Horace requests the <code>gmail.send</code> scope solely to send follow-up emails initiated by you, from your connected Google account, to your own contacts. Horace does not read, store, modify, or delete any messages in your mailbox.</p>
+          <p>Horace&apos;s use and transfer of information received from Google APIs to any other app will adhere to the <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including the Limited Use requirements. Specifically:</p>
+          <ul>
+            <li>We use Google user data only to provide and improve the user-facing email-sending feature within Horace.</li>
+            <li>We do not transfer this data to others except as necessary to provide or improve that feature, to comply with applicable law, or as part of a merger, acquisition, or sale of assets with user notice.</li>
+            <li>We do not use this data for advertising, including personalised, retargeted, or interest-based advertising.</li>
+            <li>We do not allow humans to read this data, except: with your explicit consent for specific messages, where necessary for security purposes (such as investigating abuse), to comply with applicable law, or where the data has been aggregated and anonymised for internal operations.</li>
+          </ul>
 
           <hr />
 

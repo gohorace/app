@@ -2,10 +2,6 @@
   "regions": ["hnd1"],
   "crons": [
     {
-      "path": "/api/cron/daily-briefing",
-      "schedule": "0 7 * * *"
-    },
-    {
       "path": "/api/cron/purge-soft-deleted",
       "schedule": "0 3 * * *"
     }
