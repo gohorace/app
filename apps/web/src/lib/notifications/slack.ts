@@ -30,6 +30,12 @@ export async function postToSignupsChannel(text: string): Promise<void> {
   return postToWebhook('SLACK_SIGNUPS_WEBHOOK_URL', process.env.SLACK_SIGNUPS_WEBHOOK_URL, text)
 }
 
+// HOR-385 · Background-job failures (crawler etc.) → ops channel. Best-effort,
+// skips silently when the webhook isn't configured.
+export async function postToOpsChannel(text: string): Promise<void> {
+  return postToWebhook('SLACK_OPS_WEBHOOK_URL', process.env.SLACK_OPS_WEBHOOK_URL, text)
+}
+
 // HOR-325 · CRM connection requests → #connection-requests. Internal ops
 // message (not Horace's agent-facing voice) — everything the team needs to
 // wire the connection up by hand without a follow-up.
