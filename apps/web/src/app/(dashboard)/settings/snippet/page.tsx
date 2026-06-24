@@ -2,10 +2,12 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { Check } from 'lucide-react'
 import { getAppUrl } from '@/lib/url'
+import { trackingSnippet } from '@/lib/onboarding/snippet'
 import { SectionHeading } from '@/components/ui/section-heading'
 import { CardLabel } from '@/components/ui/card-label'
 import { Badge } from '@/components/ui/badge'
 import { CodeBlock } from '@/components/ui/code-block'
+import { InstallHelp } from './install-help'
 
 export default async function SnippetPage() {
   const supabase = await createClient()
@@ -31,15 +33,7 @@ export default async function SnippetPage() {
   const snippetKey = workspace?.snippet_key ?? 'your-snippet-key'
   const appUrl = getAppUrl() || 'https://your-domain.com'
 
-  const snippetCode = `<!-- Horace Tracker -->
-<script>
-  window.RIQ = {
-    key: '${snippetKey}',
-    apiUrl: '${appUrl}/api',
-    propertyPattern: '/property/' // adjust to match your property URLs
-  };
-</script>
-<script src="${appUrl}/tracker.min.js" defer></script>`
+  const snippetCode = trackingSnippet(snippetKey, appUrl)
 
   const points = [
     'Tracks page views, property views, scroll depth and form submissions.',
@@ -66,7 +60,7 @@ export default async function SnippetPage() {
             <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-[var(--fg-secondary)]">
               <span>Paste before the closing</span>
               <code className="rounded bg-[rgba(140,123,107,0.12)] px-1.5 py-0.5 font-mono">
-                &lt;/body&gt;
+                &lt;/head&gt;
               </code>
               <span>tag on every page.</span>
             </div>
@@ -91,33 +85,7 @@ export default async function SnippetPage() {
             </ul>
           </div>
 
-          {/* Retained from the prior page (not in the prototype): WordPress
-              install path is real and useful for agents on WP sites. */}
-          <div className="rounded-md border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-[22px] shadow-[var(--shadow-sm)]">
-            <CardLabel>WordPress installation</CardLabel>
-            <ol className="flex list-inside list-decimal flex-col gap-2 text-sm text-[var(--fg-secondary)]">
-              <li>Download the Horace WordPress plugin.</li>
-              <li>Install and activate it from your WordPress admin panel.</li>
-              <li>
-                Go to <strong className="text-[var(--fg-primary)]">Settings → Horace</strong>.
-              </li>
-              <li>
-                Paste your snippet key:{' '}
-                <code className="rounded bg-[rgba(140,123,107,0.12)] px-1 py-0.5 font-mono text-xs">
-                  {snippetKey}
-                </code>
-                .
-              </li>
-              <li>
-                Set your property URL pattern (e.g.{' '}
-                <code className="rounded bg-[rgba(140,123,107,0.12)] px-1 font-mono text-xs">
-                  /property/
-                </code>
-                ).
-              </li>
-              <li>Save settings — the snippet will be injected automatically.</li>
-            </ol>
-          </div>
+          <InstallHelp snippet={snippetCode} snippetKey={snippetKey} appUrl={appUrl} />
         </div>
       </div>
     </div>
