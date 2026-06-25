@@ -4,39 +4,71 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { SectionHeading } from '@/components/ui/section-heading'
 import { cn } from '@/lib/utils'
+import { SignatureEditor } from '@/components/settings/signature-editor'
 
 /**
- * Brand voice + signature editor (HOR-356 follow-up). Writes
- * agent_settings.brand_voice / email_signature via PATCH /api/settings/profile.
+ * Brand voice + signature editor. Writes agent_settings.brand_voice plus the
+ * HTML signature trio (email_signature_html, email_signature_logo_url, and
+ * the derived plain-text email_signature) via PATCH /api/settings/profile.
  *
  * These power Horace's email drafting (it writes in `brand_voice` and signs
- * with `email_signature`) and gate the composer dock's `setup` state — until
- * both are set, "Ask Horace to draft" shows "Set up your voice", which deep-
- * links here (/settings#brand-voice).
+ * with the configured signature) and gate the composer dock's `setup` state —
+ * until both are set, "Ask Horace to draft" shows "Set up your voice", which
+ * deep-links here (/settings#brand-voice).
  */
 
 interface BrandVoiceSettingsProps {
   brandVoice: string | null
-  emailSignature: string | null
+  emailSignatureHtml: string | null
+  /** Legacy plain-text signature from before the HTML editor — used as the
+   *  initial editor content for agents who haven't re-saved since the upgrade. */
+  emailSignatureLegacyText: string | null
+  emailSignatureLogoUrl: string | null
 }
 
-// Mirrors the Input component's classes (border-input / bg-background / focus
-// ring), adapted for a multi-line field.
 const textareaClass =
   'flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm leading-relaxed ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50'
 
-export function BrandVoiceSettings({ brandVoice, emailSignature }: BrandVoiceSettingsProps) {
+const SIGNATURE_PLACEHOLDER = 'No signature yet. Paste yours in — Horace will tidy it up.'
+const IMAGES_STRIPPED_COPY =
+  "Pasted images won't survive the send — they'll break for whoever opens your email. Add your logo by URL below and Horace will handle the rest."
+
+/** Wrap a legacy plain-text signature into the editor's HTML shape so the
+ *  TipTap surface rehydrates with the existing value the first time a
+ *  pre-upgrade agent opens this surface. */
+function legacyTextToHtml(text: string): string {
+  const escape = (s: string) =>
+    s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const paras = text.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean)
+  if (paras.length === 0) return ''
+  return paras.map((p) => `<p>${escape(p).replace(/\n/g, '<br>')}</p>`).join('')
+}
+
+export function BrandVoiceSettings({
+  brandVoice,
+  emailSignatureHtml,
+  emailSignatureLegacyText,
+  emailSignatureLogoUrl,
+}: BrandVoiceSettingsProps) {
   const router = useRouter()
   const [voice, setVoice] = useState(brandVoice ?? '')
-  const [signature, setSignature] = useState(emailSignature ?? '')
+  const initialSignatureHtml =
+    emailSignatureHtml ?? (emailSignatureLegacyText ? legacyTextToHtml(emailSignatureLegacyText) : '')
+  const [signatureHtml, setSignatureHtml] = useState(initialSignatureHtml)
+  const [logoUrl, setLogoUrl] = useState(emailSignatureLogoUrl ?? '')
+  const [showImagesStripped, setShowImagesStripped] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const dirty = voice !== (brandVoice ?? '') || signature !== (emailSignature ?? '')
+  const dirty =
+    voice !== (brandVoice ?? '') ||
+    signatureHtml !== initialSignatureHtml ||
+    logoUrl !== (emailSignatureLogoUrl ?? '')
 
   async function save() {
     setSaving(true)
@@ -46,7 +78,11 @@ export function BrandVoiceSettings({ brandVoice, emailSignature }: BrandVoiceSet
       const res = await fetch('/api/settings/profile', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ brand_voice: voice, email_signature: signature }),
+        body: JSON.stringify({
+          brand_voice: voice,
+          email_signature_html: signatureHtml,
+          email_signature_logo_url: logoUrl,
+        }),
       })
       if (!res.ok) {
         const body = (await res.json().catch(() => null)) as { error?: string } | null
@@ -92,20 +128,46 @@ export function BrandVoiceSettings({ brandVoice, emailSignature }: BrandVoiceSet
 
         <div className="space-y-1.5">
           <Label htmlFor="email-signature">Email signature</Label>
-          <textarea
-            id="email-signature"
-            value={signature}
-            onChange={(e) => {
-              setSignature(e.target.value)
+          <SignatureEditor
+            value={signatureHtml}
+            onChange={(html) => {
+              setSignatureHtml(html)
               setSaved(false)
             }}
-            maxLength={1000}
-            rows={4}
-            placeholder={'e.g.\nJames Reid\nReid & Co · Paddington\n0400 000 000'}
-            className={cn(textareaClass, 'min-h-[104px] resize-y font-mono')}
+            onImagesStrippedFromPaste={() => {
+              setShowImagesStripped(true)
+              setSaved(false)
+            }}
+            placeholder={SIGNATURE_PLACEHOLDER}
           />
           <p className="text-xs text-[var(--fg-tertiary)]">
-            Appended verbatim to every Horace draft — multi-line is fine. {signature.length}/1000
+            Paste the one you use in Gmail or Outlook — formatting carries over, images don&rsquo;t.
+          </p>
+          {showImagesStripped && (
+            <div
+              role="status"
+              className="rounded-md border border-[rgba(196,98,45,0.32)] bg-[rgba(196,98,45,0.08)] px-3 py-2.5 text-xs leading-relaxed text-[var(--color-terracotta-text,#9C4A1F)]"
+            >
+              {IMAGES_STRIPPED_COPY}
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="signature-logo-url">Logo image URL</Label>
+          <Input
+            id="signature-logo-url"
+            type="url"
+            value={logoUrl}
+            onChange={(e) => {
+              setLogoUrl(e.target.value)
+              setSaved(false)
+            }}
+            placeholder="https://"
+          />
+          <p className="text-xs text-[var(--fg-tertiary)]">
+            Paste a public link to your logo. Right-click an image online and choose &ldquo;copy image
+            address&rdquo;.
           </p>
         </div>
 

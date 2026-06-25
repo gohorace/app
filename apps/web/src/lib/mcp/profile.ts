@@ -6,6 +6,11 @@ type AdminClient = SupabaseClient<Database>
 export interface AgentProfile {
   brand_voice: string | null
   email_signature: string | null
+  /** Rich-text signature HTML (HOR-xxx). Null for agents who haven't moved to
+   *  the rich-text editor yet — `email_signature` (plain text) is the fallback. */
+  email_signature_html: string | null
+  /** Public logo URL composed into HTML signature at render time. */
+  email_signature_logo_url: string | null
   website_url: string | null
   market_positioning: string | null
 }
@@ -21,17 +26,26 @@ export async function loadProfile(
   admin: AdminClient,
   agentId: string,
 ): Promise<ProfileStatus> {
+  // email_signature_html + email_signature_logo_url aren't in database.types.ts
+  // yet (regen deferred); read them via an `any` cast.
   const { data } = await admin
     .from('agent_settings')
-    .select('brand_voice, email_signature, website_url, market_positioning')
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .select(
+      'brand_voice, email_signature, email_signature_html, email_signature_logo_url, website_url, market_positioning' as any,
+    )
     .eq('agent_id', agentId)
     .maybeSingle()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const row = data as any
 
   const profile: AgentProfile = {
-    brand_voice: nullIfEmpty(data?.brand_voice ?? null),
-    email_signature: nullIfEmpty(data?.email_signature ?? null),
-    website_url: nullIfEmpty(data?.website_url ?? null),
-    market_positioning: nullIfEmpty(data?.market_positioning ?? null),
+    brand_voice: nullIfEmpty(row?.brand_voice ?? null),
+    email_signature: nullIfEmpty(row?.email_signature ?? null),
+    email_signature_html: nullIfEmpty(row?.email_signature_html ?? null),
+    email_signature_logo_url: nullIfEmpty(row?.email_signature_logo_url ?? null),
+    website_url: nullIfEmpty(row?.website_url ?? null),
+    market_positioning: nullIfEmpty(row?.market_positioning ?? null),
   }
 
   const missing_required = REQUIRED_FIELDS.filter((f) => !profile[f])

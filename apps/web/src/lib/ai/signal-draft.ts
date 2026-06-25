@@ -65,11 +65,20 @@ export interface SignalDraft {
 }
 
 /** The agent's configured voice + signature (agent_settings). When supplied,
- *  the draft is written in `brand_voice` and the `email_signature` is appended
- *  verbatim instead of a first-name sign-off. (HOR-356 follow-up) */
+ *  the draft is written in `brand_voice` and a sign-off is suppressed in
+ *  favour of the agent's stored signature (HOR-356 follow-up).
+ *
+ *  Signature shape:
+ *  - `email_signature_html` is the rich-text editor's HTML (HOR-xxx). When set
+ *    it's authoritative — we suppress the plain-text append here and let the
+ *    send wire (signal-card.tsx) splice the styled HTML onto body_html.
+ *  - `email_signature` is the plain-text fallback (also derived from html on
+ *    save). When html is NOT set, this gets appended verbatim to the body so
+ *    legacy plain-text-only consumers keep producing signatures unchanged. */
 export interface AgentVoice {
   brand_voice: string | null
   email_signature: string | null
+  email_signature_html?: string | null
 }
 
 /** A sold property used as a pretext source, returned by the bulk lookup. */
@@ -305,9 +314,10 @@ function buildUserBlock(
   const agentFirst = agentName.split(' ')[0] || agentName
 
   // When the agent has configured a brand voice, write in it. When they've
-  // configured a signature, we append it verbatim after generation — so the
-  // model must NOT write its own sign-off (avoids a double signature).
-  const hasSignature = !!voice?.email_signature
+  // configured a signature (either rich-text or legacy plain-text), we
+  // append/splice it after generation — so the model must NOT write its
+  // own sign-off (avoids a double signature).
+  const hasSignature = !!voice?.email_signature_html || !!voice?.email_signature
   const signOffInstruction = hasSignature
     ? 'Do NOT write any sign-off or signature — the agent\'s signature is appended automatically.'
     : `Sign off with the agent's first name (${agentFirst}) on its own line.`
@@ -375,7 +385,12 @@ export async function generateSignalDraft(
         nudge = `\nYour previous draft used "${violation}", which violates the firewall. Rewrite without that phrasing — lean on the PRETEXT only and never imply the contact was tracked.`
         continue
       }
-      if (voice?.email_signature) {
+      // Plain-text append for legacy consumers (composer dock V2/V3, draft
+      // outreach, MCP) — these can't render HTML signatures, so the plain-text
+      // fallback gets concatenated here. When an HTML signature is configured,
+      // we suppress this append and let the send wire splice the styled block
+      // onto body_html (avoids a double signature in the rendered email).
+      if (voice?.email_signature && !voice?.email_signature_html) {
         body = `${body}\n\n${voice.email_signature}`
       }
       return { subject, body }
@@ -422,8 +437,9 @@ export async function getCachedSignalDraft(args: CachedDraftArgs): Promise<Signa
   const { agentId, agentName, contact, pretext, voice } = args
 
   // Fingerprint the voice so a brand-voice/signature edit busts the cache.
+  // Includes html length so swapping in a fresh signature reflows drafts.
   const voiceKey = voice
-    ? `${(voice.brand_voice ?? '').length}:${(voice.email_signature ?? '').length}:${djb2(`${voice.brand_voice ?? ''}|${voice.email_signature ?? ''}`)}`
+    ? `${(voice.brand_voice ?? '').length}:${(voice.email_signature ?? '').length}:${(voice.email_signature_html ?? '').length}:${djb2(`${voice.brand_voice ?? ''}|${voice.email_signature ?? ''}|${voice.email_signature_html ?? ''}`)}`
     : 'novoice'
 
   const cached = unstable_cache(

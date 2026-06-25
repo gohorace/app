@@ -109,7 +109,14 @@ export async function POST(req: NextRequest) {
     pretext,
     // Draft in the agent's configured voice + signature (gated above, so both
     // are present here). Makes the draft truly "in your voice". (HOR-356)
-    voice: { brand_voice: profile.brand_voice, email_signature: profile.email_signature },
+    // When the agent has an HTML signature configured, signal-draft suppresses
+    // the plain-text append — the composer dock's downstream send wire is
+    // expected to handle the styled HTML signature splice.
+    voice: {
+      brand_voice: profile.brand_voice,
+      email_signature: profile.email_signature,
+      email_signature_html: profile.email_signature_html,
+    },
   })
 
   if (!draft) {

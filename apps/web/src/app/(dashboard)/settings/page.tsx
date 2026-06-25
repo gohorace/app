@@ -17,13 +17,18 @@ export default async function SettingsPage() {
 
   // Time zone is canonical on agent_settings (it also drives the daily
   // briefing); the Profile form edits the same value the Alerts page does.
+  // email_signature_html + email_signature_logo_url aren't in database.types.ts
+  // yet (regen deferred) — read them via an `any` cast.
   const { data: settings } = agent
     ? await admin
         .from('agent_settings')
-        .select('timezone, brand_voice, email_signature')
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .select('timezone, brand_voice, email_signature, email_signature_html, email_signature_logo_url' as any)
         .eq('agent_id', agent.id)
         .maybeSingle()
     : { data: null }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const settingsAny = settings as any
 
   // HOR-203: seat_type isn't in generated types yet — fetch it separately.
   const { data: seatRow } = agent
@@ -56,7 +61,7 @@ export default async function SettingsPage() {
         email={user?.email ?? null}
         avatarUrl={agent?.avatar_url ?? null}
         phone={agent?.phone ?? null}
-        timezone={settings?.timezone ?? null}
+        timezone={settingsAny?.timezone ?? null}
         workspaceName={workspace?.name ?? 'My Agency'}
         seatType={seatType}
       />
@@ -65,8 +70,10 @@ export default async function SettingsPage() {
         * composer dock's setup gate. (HOR-356 follow-up) */}
       <div className="border-t border-[var(--border-subtle)]">
         <BrandVoiceSettings
-          brandVoice={settings?.brand_voice ?? null}
-          emailSignature={settings?.email_signature ?? null}
+          brandVoice={settingsAny?.brand_voice ?? null}
+          emailSignatureHtml={settingsAny?.email_signature_html ?? null}
+          emailSignatureLegacyText={settingsAny?.email_signature ?? null}
+          emailSignatureLogoUrl={settingsAny?.email_signature_logo_url ?? null}
         />
       </div>
     </div>
