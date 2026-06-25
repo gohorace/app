@@ -89,6 +89,10 @@ interface DraftResponse {
   body?: string
   setup_required?: boolean
   missing?: string[]
+  /** HOR-xxx: styled HTML signature block (logo + sanitised HTML) when the
+   *  agent has configured one. Rendered as a read-only preview below the
+   *  TipTap editor and spliced onto body_html at Send time. */
+  signature_html?: string | null
 }
 
 interface RecipientCheck {
@@ -191,6 +195,9 @@ function ComposerDockV2({ payload, onClose, rightOffset = 24, focusNonce = 0 }: 
   const [scheduledLabel, setScheduledLabel] = useState<string | null>(null)
   const [writing, setWriting] = useState(false)
   const [bodyEmpty, setBodyEmpty] = useState(true)
+  // HTML signature block returned by /api/email/draft (HOR-xxx). Rendered as
+  // a read-only preview below the editor and spliced onto body_html on Send.
+  const [signatureHtml, setSignatureHtml] = useState<string | null>(null)
 
   // Resolve the recipient email from the contact record when not supplied.
   useEffect(() => {
@@ -283,6 +290,7 @@ function ComposerDockV2({ payload, onClose, rightOffset = 24, focusNonce = 0 }: 
         setBodyEmpty(editor.isEmpty)
         programmaticFill.current = false
       }
+      setSignatureHtml(data.signature_html ?? null)
       setDraftedByHorace(true)
       setWriting(true)
       setScenario('drafted')
@@ -355,6 +363,10 @@ function ComposerDockV2({ payload, onClose, rightOffset = 24, focusNonce = 0 }: 
       const bodyHtml = editor.getHTML().trim()
       if (!subject.trim() || !bodyHtml || bodyHtml === '<p></p>') return
       setScenario('sending')
+      // HOR-xxx: when the agent has an HTML signature, splice it onto
+      // body_html so the recipient sees the styled signature + logo. The
+      // editor surface stays signature-free (preview is read-only below).
+      const finalBodyHtml = signatureHtml ? `${bodyHtml}${signatureHtml}` : bodyHtml
       try {
         const res = await fetch('/api/email/send', {
           method: 'POST',
@@ -363,7 +375,7 @@ function ComposerDockV2({ payload, onClose, rightOffset = 24, focusNonce = 0 }: 
             contact_id: payload.contactId,
             to_email: recipient,
             subject: subject.trim(),
-            body_html: bodyHtml,
+            body_html: finalBodyHtml,
             tracked,
             source: payload.source,
             ...(scheduledAtIso ? { scheduled_at: scheduledAtIso } : {}),
@@ -386,7 +398,7 @@ function ComposerDockV2({ payload, onClose, rightOffset = 24, focusNonce = 0 }: 
         setScenario('failed-send')
       }
     },
-    [editor, subject, tracked, recipient, payload.contactId, payload.source, onClose],
+    [editor, subject, tracked, recipient, payload.contactId, payload.source, signatureHtml, onClose],
   )
 
   const initials = useMemo(() => initialsFor(name), [name])
@@ -523,6 +535,7 @@ function ComposerDockV2({ payload, onClose, rightOffset = 24, focusNonce = 0 }: 
             }}
             editor={editor}
             showAgainButton={scenario === 'drafted' || scenario === 'edited'}
+            signatureHtml={signatureHtml}
           />
         )}
       </div>
@@ -822,6 +835,7 @@ function WriteableBody({
   onStartWriting,
   editor,
   showAgainButton,
+  signatureHtml,
 }: {
   scenario: ComposerScenario
   firstName: string
@@ -830,6 +844,7 @@ function WriteableBody({
   onStartWriting: () => void
   editor: ReturnType<typeof useEditor>
   showAgainButton: boolean
+  signatureHtml: string | null
 }) {
   if (showIdle) {
     return (
@@ -906,6 +921,7 @@ function WriteableBody({
         </div>
       )}
       <EditorContent editor={editor} />
+      <SignaturePreview html={signatureHtml} />
       {showAgainButton && (
         <button
           type="button"
@@ -917,6 +933,27 @@ function WriteableBody({
         </button>
       )}
     </div>
+  )
+}
+
+/** Read-only HTML signature preview rendered below the editor (HOR-xxx).
+ *  The composer keeps the editor body signature-free; this preview shows
+ *  what gets spliced onto the outbound email at Send. */
+function SignaturePreview({ html }: { html: string | null }) {
+  if (!html) return null
+  return (
+    <div
+      aria-label="Email signature"
+      style={{
+        marginTop: 14,
+        paddingTop: 12,
+        borderTop: '1px dashed var(--border-default)',
+        fontSize: 13,
+        color: 'var(--color-ink)',
+        lineHeight: 1.5,
+      }}
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
   )
 }
 
@@ -1435,6 +1472,10 @@ interface DraftResponseV3 {
   sources?: ContentSource[]
   setup_required?: boolean
   missing?: string[]
+  /** HOR-xxx: styled HTML signature block (logo + sanitised HTML) when the
+   *  agent has configured one. Preview-only in the editor; spliced onto
+   *  body_html at Send. */
+  signature_html?: string | null
 }
 
 // — Contact resolution shape ———————————————————————————————————————————————
@@ -1510,6 +1551,8 @@ function ComposerDockV3({ payload, onClose, rightOffset = 24, focusNonce = 0 }: 
   const [subject, setSubject] = useState('')
   const [draftedByHorace, setDraftedByHorace] = useState(false)
   const [bodyEmpty, setBodyEmpty] = useState(true)
+  // HTML signature block from /api/email/draft. Preview only; spliced on Send.
+  const [signatureHtml, setSignatureHtml] = useState<string | null>(null)
 
   const editor = useEditor({
     extensions: [
@@ -1620,6 +1663,7 @@ function ComposerDockV3({ payload, onClose, rightOffset = 24, focusNonce = 0 }: 
       }
       setSources(data.sources ?? [])
       setActiveSoldIdx(0)
+      setSignatureHtml(data.signature_html ?? null)
       // Seed an SMS draft derived from the email body so the SMS channel has
       // something useful when first opened. Truncated to 160 chars.
       setSmsText(deriveSmsFromBody(data.body, contact.firstName))
@@ -1729,6 +1773,10 @@ function ComposerDockV3({ payload, onClose, rightOffset = 24, focusNonce = 0 }: 
       if (!subject.trim() || !bodyHtml || bodyHtml === '<p></p>') return
       setScenario('sending')
       setSendErrored(false)
+      // HOR-xxx: splice the styled HTML signature onto body_html at Send so
+      // the logo + signature reach the recipient. Editor surface stays
+      // signature-free (preview is read-only below).
+      const finalBodyHtml = signatureHtml ? `${bodyHtml}${signatureHtml}` : bodyHtml
       try {
         const res = await fetch('/api/email/send', {
           method: 'POST',
@@ -1737,7 +1785,7 @@ function ComposerDockV3({ payload, onClose, rightOffset = 24, focusNonce = 0 }: 
             contact_id: payload.contactId,
             to_email: contact.email,
             subject: subject.trim(),
-            body_html: bodyHtml,
+            body_html: finalBodyHtml,
             tracked: tracking,
             source: payload.source,
             ...(scheduledAtIso ? { scheduled_at: scheduledAtIso } : {}),
@@ -1761,7 +1809,7 @@ function ComposerDockV3({ payload, onClose, rightOffset = 24, focusNonce = 0 }: 
         setSendErrored(true)
       }
     },
-    [editor, subject, tracking, contact.email, payload.contactId, payload.source, onClose],
+    [editor, subject, tracking, contact.email, payload.contactId, payload.source, signatureHtml, onClose],
   )
 
   // ── Copy (SMS) ───────────────────────────────────────────────────────────
@@ -1865,7 +1913,7 @@ function ComposerDockV3({ payload, onClose, rightOffset = 24, focusNonce = 0 }: 
             onAskHorace={runDraft}
           />
         ) : mode === 'email' ? (
-          <V3EmailDraftedBody editor={editor} />
+          <V3EmailDraftedBody editor={editor} signatureHtml={signatureHtml} />
         ) : mode === 'sms' ? (
           <V3SmsBody value={smsText} onChange={setSmsText} />
         ) : (
@@ -2898,11 +2946,20 @@ function V3CenteredState({ children }: { children: React.ReactNode }) {
 }
 
 // ── V3 Email drafted body — the TipTap editor styled borderless to match
-//     the design's "borderless, auto-growing textarea" look.
-function V3EmailDraftedBody({ editor }: { editor: ReturnType<typeof useEditor> }) {
+//     the design's "borderless, auto-growing textarea" look. Below the editor
+//     a read-only preview of the agent's HTML signature shows what gets
+//     spliced onto the outbound email at Send (HOR-xxx).
+function V3EmailDraftedBody({
+  editor,
+  signatureHtml,
+}: {
+  editor: ReturnType<typeof useEditor>
+  signatureHtml: string | null
+}) {
   return (
     <div style={{ padding: '14px 18px 18px' }} role="tabpanel" aria-label="Email draft">
       <EditorContent editor={editor} />
+      <SignaturePreview html={signatureHtml} />
     </div>
   )
 }

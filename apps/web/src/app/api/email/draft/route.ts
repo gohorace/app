@@ -32,6 +32,7 @@ import {
   getCachedSignalDraft,
   type SoldAlt,
 } from '@/lib/ai/signal-draft'
+import { composeSignatureHtml } from '@/lib/email/signature'
 import type { ContentSource, ContentSourceAlt } from '@/lib/email/types'
 
 export const runtime = 'nodejs'
@@ -124,13 +125,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'draft_unavailable' }, { status: 502 })
   }
 
-  // Composer dock (V2 + V3) doesn't know about HTML signatures — when the
-  // agent has one, signal-draft skipped the plain-text append above to keep
-  // the digest send wire's HTML splice from doubling up. Restore the
-  // plain-text signature here so the composer body still shows a complete
-  // sign-off to the agent. (HOR-xxx)
+  // HTML signature block (HOR-xxx) — returned alongside the body so the
+  // composer dock can render a read-only preview below the editor and splice
+  // it onto body_html at Send time. When the agent has no HTML signature
+  // configured we fall back to the plain-text append (existing behaviour).
+  const hasHtmlSignature =
+    !!profile.email_signature_html || !!profile.email_signature_logo_url
+  const signatureHtml = hasHtmlSignature
+    ? composeSignatureHtml({
+        html: profile.email_signature_html,
+        logoUrl: profile.email_signature_logo_url,
+      })
+    : null
   const draftBody =
-    profile.email_signature_html && profile.email_signature
+    !hasHtmlSignature && profile.email_signature
       ? `${draft.body}\n\n${profile.email_signature}`
       : draft.body
 
@@ -147,6 +155,7 @@ export async function POST(req: NextRequest) {
       body: draftBody,
       pretext_label: pretext.label,
       sources,
+      signature_html: signatureHtml,
     },
     { status: 200 },
   )
