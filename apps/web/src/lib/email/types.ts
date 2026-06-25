@@ -114,6 +114,49 @@ export interface EmailSendErrorBody {
   detail?: unknown
 }
 
+// ── Insight & Content sources (composer dock V3 — Outreach Review re-skin) ──
+
+/** Source class shown in the dock's Insight & Content panel.
+ *  `sold` is populated today from the signal-draft recent-sold pretext.
+ *  `listings` and `reports` are reserved for HOR-383 (Site Content in Outreach)
+ *  — the type union exists so rows light up automatically when the crawler lands. */
+export type ContentSourceType = 'listings' | 'sold' | 'reports'
+
+/** Relevance tag rendered on each source row.
+ *  `relevant` = Horace predicts this content is useful for the draft.
+ *  `viewed` = the prospect actually viewed it on site (HOR-383 only). */
+export type RelevanceTag = 'viewed' | 'relevant'
+
+/** One alternative the agent can swap into the active sold row. */
+export interface ContentSourceAlt {
+  /** Stable id for the alt (e.g. property id). Used as React key + popover state. */
+  id: string
+  /** Display label shown in the swap popover, e.g. "8 Gurner St · sold $1.98M". */
+  label: string
+  /** Text to find-replace in the body when picked (street + suburb). */
+  address: string
+  /** Text to find-replace in the body when picked (price string). */
+  price: string
+}
+
+/** One row in the Insight & Content panel. */
+export interface ContentSource {
+  /** Stable id (typically the source url or a synthetic key). */
+  id: string
+  type: ContentSourceType
+  /** Display label, e.g. "Sold — 14 Renny St, Paddington · $2.34M". */
+  label: string
+  /** Optional outbound link for the source. */
+  url?: string
+  tag: RelevanceTag
+  /** Address currently embedded in the draft (sold rows only). */
+  address?: string
+  /** Price currently embedded in the draft (sold rows only). */
+  price?: string
+  /** When present, the row shows a "Swap" affordance with these alts. */
+  alts?: ContentSourceAlt[]
+}
+
 // ── OAuth / Gmail ───────────────────────────────────────────────────────────
 
 /** Decoded payload of the HMAC state cookie set during /connect → /callback. */

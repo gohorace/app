@@ -27,6 +27,11 @@ export type ComposerScenario =
 /** Recipient-compliance guardrail (detachable layer #3). */
 export type ComposerGuardrail = null | 'unsubscribed' | 'excluded' | 'untracked'
 
+/** Outreach channel the dock opens in. Email is the default + the only channel
+ *  with a backend send pipeline today; SMS is copy-to-clipboard and Call is
+ *  reference-only (Outreach Review re-skin). */
+export type ComposerChannel = 'email' | 'sms' | 'call'
+
 /**
  * Lightweight signal context passed from the Stream / Companion so the draft
  * endpoint can pre-load the moment that triggered the compose. Kept loose —
@@ -57,6 +62,13 @@ export interface OpenComposerOptions {
   draft?: { subject: string; body: string }
   /** Which UI surface opened the dock — preserved for send attribution. */
   source: Extract<EmailSendSource, 'stream' | 'contact' | 'companion'>
+  /** Channel to land in when the V3 dock is enabled. Defaults to 'email'.
+   *  Ignored by the V2 (email-only) shell. */
+  defaultChannel?: ComposerChannel
+  /** Recipient phone (E.164 or local-format string) for the SMS/Call channels
+   *  in the V3 dock. Optional — when omitted the dock resolves it from the
+   *  contact record on open. */
+  recipientPhone?: string | null
 }
 
 /** Public API exposed by `useComposerDock()`. */

@@ -80,6 +80,18 @@ export interface RecentSoldHit {
   last_activity_at: string | null
 }
 
+/** A sold property the agent can swap into the active sold row of the
+ *  composer's Insight & Content panel. Includes the id and price so the dock
+ *  can find-replace the address/price in the email + SMS body on swap. */
+export interface SoldAlt {
+  id: string
+  street_number: string | null
+  street_name: string | null
+  suburb: string | null
+  price: number | null
+  last_activity_at: string | null
+}
+
 // ── 1. Pretext sourcing ─────────────────────────────────────────────────────
 
 /**
@@ -114,6 +126,36 @@ export async function fetchRecentSoldBySuburb(
     if (row.suburb && !out.has(row.suburb)) out.set(row.suburb, row)
   }
   return out
+}
+
+/**
+ * Fetch up to `limit` recent-sold properties in a single suburb so the
+ * composer's swap popover (Outreach Review re-skin) has alternatives the
+ * agent can substitute into the draft. Returns an empty array when the
+ * suburb is null/empty or nothing has sold in the window.
+ *
+ * Workspace-scoped via `agent_id`. Ordered by recency.
+ */
+export async function fetchSoldAlts(
+  admin: AdminClient,
+  agentId: string,
+  suburb: string | null,
+  limit = 5,
+  windowDays = 90,
+): Promise<SoldAlt[]> {
+  if (!suburb) return []
+  const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000).toISOString()
+  const { data } = await admin
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .from('properties' as any)
+    .select('id, street_number, street_name, suburb, price, last_activity_at')
+    .eq('agent_id', agentId)
+    .eq('status', 'sold')
+    .eq('suburb', suburb)
+    .gte('last_activity_at', since)
+    .order('last_activity_at', { ascending: false })
+    .limit(limit)
+  return (data ?? []) as SoldAlt[]
 }
 
 /**

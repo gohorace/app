@@ -28,8 +28,11 @@ import { resolvePrimaryAgent } from '@/lib/seats/resolve-agent'
 import {
   derivePretext,
   fetchRecentSoldBySuburb,
+  fetchSoldAlts,
   getCachedSignalDraft,
+  type SoldAlt,
 } from '@/lib/ai/signal-draft'
+import type { ContentSource, ContentSourceAlt } from '@/lib/email/types'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -115,10 +118,83 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'draft_unavailable' }, { status: 502 })
   }
 
+  // ── Insight & Content sources (composer V3 — Outreach Review re-skin) ──
+  // The sold row populates from the same recent-sold pretext. `listings` and
+  // `reports` come from HOR-383 (Site Content in Outreach), not built yet —
+  // they ship as empty arrays so the panel renders gracefully today and the
+  // rows light up automatically when the crawler lands.
+  const sources = await buildContentSources(admin, auth.agentId, contact.suburb, pretext.source)
+
   return NextResponse.json(
-    { subject: draft.subject, body: draft.body, pretext_label: pretext.label },
+    {
+      subject: draft.subject,
+      body: draft.body,
+      pretext_label: pretext.label,
+      sources,
+    },
     { status: 200 },
   )
+}
+
+// ── Sources ────────────────────────────────────────────────────────────────
+
+async function buildContentSources(
+  admin: ReturnType<typeof createAdminClient>,
+  agentId: string,
+  suburb: string | null,
+  pretextSource: string,
+): Promise<ContentSource[]> {
+  // Only the recent-sold pretext has real content to surface today. Other
+  // pretexts (prior-relationship, local-intro) ship no rows — the panel
+  // hides itself when sources are empty.
+  if (pretextSource !== 'recent-sold' || !suburb) return []
+
+  const alts = await fetchSoldAlts(admin, agentId, suburb, 5)
+  if (alts.length === 0) return []
+
+  const active = alts[0]
+  const activeAddress = formatAddress(active, suburb)
+  const activePrice = formatPrice(active.price)
+
+  const altItems: ContentSourceAlt[] = alts.map((a) => ({
+    id: a.id,
+    label: `${formatStreet(a) || 'Recent sale'} · sold ${formatPrice(a.price)}`,
+    address: formatAddress(a, suburb),
+    price: formatPrice(a.price),
+  }))
+
+  return [
+    {
+      id: `sold:${active.id}`,
+      type: 'sold',
+      label: `Sold — ${activeAddress} · ${activePrice}`,
+      tag: 'relevant',
+      address: activeAddress,
+      price: activePrice,
+      alts: altItems,
+    },
+  ]
+}
+
+function formatStreet(a: SoldAlt): string {
+  return [a.street_number, a.street_name].filter(Boolean).join(' ').trim()
+}
+
+function formatAddress(a: SoldAlt, suburb: string): string {
+  const street = formatStreet(a)
+  return street ? `${street}, ${suburb}` : `a home in ${suburb}`
+}
+
+function formatPrice(price: number | null): string {
+  if (price == null || !Number.isFinite(price)) return '—'
+  if (price >= 1_000_000) {
+    const m = price / 1_000_000
+    return `$${m.toFixed(m >= 10 ? 1 : 2).replace(/\.?0+$/, '')}M`
+  }
+  if (price >= 1_000) {
+    return `$${Math.round(price / 1000)}k`
+  }
+  return `$${price.toLocaleString('en-AU')}`
 }
 
 // ── Auth ──────────────────────────────────────────────────────────────────

@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   derivePretext,
+  fetchSoldAlts,
   findBannedPhrase,
   type RecentSoldHit,
+  type SoldAlt,
 } from './signal-draft'
 
 /**
@@ -136,5 +138,59 @@ describe('derivePretext — source priority', () => {
         expect(p.label.length).toBeGreaterThan(0)
       }
     }
+  })
+})
+
+// ── fetchSoldAlts — composer swap-popover backing data ─────────────────────
+
+describe('fetchSoldAlts', () => {
+  it('returns [] when suburb is null without touching the DB', async () => {
+    const from = vi.fn()
+    const admin = { from } as unknown as Parameters<typeof fetchSoldAlts>[0]
+    const out = await fetchSoldAlts(admin, 'agent-1', null)
+    expect(out).toEqual([])
+    expect(from).not.toHaveBeenCalled()
+  })
+
+  it('queries with the agent + suburb + sold + window and applies the limit', async () => {
+    const calls: Array<[string, unknown]> = []
+    const rows: SoldAlt[] = [
+      { id: 'p1', street_number: '14', street_name: 'Renny St', suburb: 'Paddington', price: 2340000, last_activity_at: '2026-06-01T00:00:00Z' },
+      { id: 'p2', street_number: '8', street_name: 'Gurner St', suburb: 'Paddington', price: 1980000, last_activity_at: '2026-05-21T00:00:00Z' },
+    ]
+    // Chain builder that records the method invocations and returns itself
+    // until the .limit() terminator, which resolves with the fake data.
+    const builder = {
+      select: (...args: unknown[]) => (calls.push(['select', args]), builder),
+      eq: (...args: unknown[]) => (calls.push(['eq', args]), builder),
+      in: (...args: unknown[]) => (calls.push(['in', args]), builder),
+      gte: (...args: unknown[]) => (calls.push(['gte', args]), builder),
+      order: (...args: unknown[]) => (calls.push(['order', args]), builder),
+      limit: (...args: unknown[]) => {
+        calls.push(['limit', args])
+        return Promise.resolve({ data: rows, error: null })
+      },
+    }
+    const admin = {
+      from: (table: string) => {
+        calls.push(['from', [table]])
+        return builder
+      },
+    } as unknown as Parameters<typeof fetchSoldAlts>[0]
+
+    const out = await fetchSoldAlts(admin, 'agent-1', 'Paddington', 5)
+    expect(out).toEqual(rows)
+    expect(calls.find((c) => c[0] === 'eq' && (c[1] as unknown[])[0] === 'status')?.[1]).toEqual(['status', 'sold'])
+    expect(calls.find((c) => c[0] === 'eq' && (c[1] as unknown[])[0] === 'agent_id')?.[1]).toEqual(['agent_id', 'agent-1'])
+    expect(calls.find((c) => c[0] === 'eq' && (c[1] as unknown[])[0] === 'suburb')?.[1]).toEqual(['suburb', 'Paddington'])
+    expect(calls.find((c) => c[0] === 'limit')?.[1]).toEqual([5])
+  })
+
+  it('returns [] when the suburb is the empty string', async () => {
+    const from = vi.fn()
+    const admin = { from } as unknown as Parameters<typeof fetchSoldAlts>[0]
+    const out = await fetchSoldAlts(admin, 'agent-1', '')
+    expect(out).toEqual([])
+    expect(from).not.toHaveBeenCalled()
   })
 })
