@@ -21,7 +21,7 @@ function unauthorizedResponse() {
 }
 
 const MCP_PROTOCOL_VERSION = '2025-06-18'
-const SERVER_INFO = { name: 'horace', version: '0.1.0' }
+const SERVER_INFO = { name: 'horace', version: '0.2.0' }
 
 interface JsonRpcRequest {
   jsonrpc: '2.0'
