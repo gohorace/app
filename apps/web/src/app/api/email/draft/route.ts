@@ -110,8 +110,7 @@ export async function POST(req: NextRequest) {
     // Draft in the agent's configured voice + signature (gated above, so both
     // are present here). Makes the draft truly "in your voice". (HOR-356)
     // When the agent has an HTML signature configured, signal-draft suppresses
-    // the plain-text append — the composer dock's downstream send wire is
-    // expected to handle the styled HTML signature splice.
+    // the plain-text append — the digest send wire splices the styled HTML on.
     voice: {
       brand_voice: profile.brand_voice,
       email_signature: profile.email_signature,
@@ -125,6 +124,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'draft_unavailable' }, { status: 502 })
   }
 
+  // Composer dock (V2 + V3) doesn't know about HTML signatures — when the
+  // agent has one, signal-draft skipped the plain-text append above to keep
+  // the digest send wire's HTML splice from doubling up. Restore the
+  // plain-text signature here so the composer body still shows a complete
+  // sign-off to the agent. (HOR-xxx)
+  const draftBody =
+    profile.email_signature_html && profile.email_signature
+      ? `${draft.body}\n\n${profile.email_signature}`
+      : draft.body
+
   // ── Insight & Content sources (composer V3 — Outreach Review re-skin) ──
   // The sold row populates from the same recent-sold pretext. `listings` and
   // `reports` come from HOR-383 (Site Content in Outreach), not built yet —
@@ -135,7 +144,7 @@ export async function POST(req: NextRequest) {
   return NextResponse.json(
     {
       subject: draft.subject,
-      body: draft.body,
+      body: draftBody,
       pretext_label: pretext.label,
       sources,
     },
