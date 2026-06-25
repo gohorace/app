@@ -275,7 +275,7 @@ export function PropertyDetailView({ property, signal, read, roleAttached, reass
               <TrendingUp style={{ width: 11, height: 11 }} /> {read.provenance}
             </span>
             <button type="button" onClick={askFollowUp} style={textBtnStyle}>
-              <Feather style={{ width: 12, height: 12 }} /> Ask a follow-up
+              <Feather style={{ width: 12, height: 12 }} /> Ask Horace
             </button>
           </div>
         </div>
@@ -492,7 +492,7 @@ export function PropertyDetailView({ property, signal, read, roleAttached, reass
               </Link>
             ) : (
               <button type="button" onClick={draftOutreach} style={{ ...primaryBtnStyle, flex: 1, justifyContent: 'center', padding: '14px 18px', fontSize: 15 }}>
-                <Feather style={{ width: 16, height: 16 }} /> Draft with Horace
+                <Feather style={{ width: 16, height: 16 }} /> Draft outreach with Horace
               </button>
             )}
             <button
