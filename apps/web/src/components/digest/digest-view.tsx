@@ -1,5 +1,6 @@
 'use client'
 
+import { useCallback, useEffect, useState } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -281,17 +282,97 @@ function Stream({ signals }: { signals: DigestSignal[] }) {
   const { openComposer } = useComposerDock()
   const router = useRouter()
 
+  // Optimistic Clear state. POST writes to `dismissed_signals` on the
+  // server; the row is excluded next render. Local set hides the card
+  // immediately + drives the counter + lets Undo restore without a
+  // round-trip. Demo cards never get a Clear handler so they never enter.
+  const [clearedIds, setClearedIds] = useState<Set<string>>(new Set())
+  // Single-shot Undo (Gmail-style) — only the most-recent clear is
+  // restorable. Subsequent clears replace this; the previous clear stays
+  // cleared. Keeping a queue is more code than the v1 spec asks for.
+  const [undoTarget, setUndoTarget] = useState<{ id: string; name: string } | null>(null)
+  // Whether the agent cleared anything this session. Drives the
+  // cleared-day state copy — distinct from a naturally-quiet day, which
+  // the page renders before this component ever mounts.
+  const [clearedAny, setClearedAny] = useState(false)
+
+  // Auto-dismiss the Undo toast after ~8s so it never lingers past
+  // working memory. A new clear resets the timer.
+  useEffect(() => {
+    if (!undoTarget) return
+    const t = setTimeout(() => setUndoTarget(null), 8000)
+    return () => clearTimeout(t)
+  }, [undoTarget])
+
+  const handleClear = useCallback(
+    async (data: StreamCardData) => {
+      setClearedIds((prev) => {
+        const next = new Set(prev)
+        next.add(data.contactId)
+        return next
+      })
+      setUndoTarget({ id: data.contactId, name: data.name })
+      setClearedAny(true)
+      try {
+        const res = await fetch('/api/stream/clear', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ contactId: data.contactId }),
+        })
+        if (!res.ok) throw new Error(`clear_failed_${res.status}`)
+      } catch (err) {
+        // Roll back the optimistic hide so the card returns and the
+        // agent isn't left thinking they've cleared something that
+        // didn't persist. Best-effort logging — no user toast for the
+        // failure case yet (the optimistic restore IS the feedback).
+        console.error('[stream/clear] POST failed:', err)
+        setClearedIds((prev) => {
+          const next = new Set(prev)
+          next.delete(data.contactId)
+          return next
+        })
+        setUndoTarget(null)
+      }
+    },
+    [],
+  )
+
+  const handleUndo = useCallback(async () => {
+    const target = undoTarget
+    if (!target) return
+    setUndoTarget(null)
+    setClearedIds((prev) => {
+      const next = new Set(prev)
+      next.delete(target.id)
+      return next
+    })
+    try {
+      const res = await fetch('/api/stream/clear', {
+        method: 'DELETE',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ contactId: target.id }),
+      })
+      if (!res.ok) throw new Error(`unclear_failed_${res.status}`)
+    } catch (err) {
+      // The optimistic restore already brought the card back; the
+      // server still has the row, which means a refresh would re-hide
+      // it. Surfacing this honestly would need a real toast lib (none
+      // installed yet); for v1, log + accept the small inconsistency.
+      console.error('[stream/clear] DELETE failed:', err)
+    }
+  }, [undoTarget])
+
   // Resolve each signal's Stream tier once, then group/suppress on it.
-  const tiered = signals.map((s) => ({ signal: s, tier: streamTierFor(s) }))
+  const tiered = signals
+    .filter((s) => !clearedIds.has(s.contactId))
+    .map((s) => ({ signal: s, tier: streamTierFor(s) }))
 
   // Quiet cards are dashboard residue on a busy day — suppress them when
   // there's real work in the stream. They stand alone only on a quiet day (§4).
   const hasRealWork = tiered.some((t) => t.tier !== 'quiet')
   const visible = hasRealWork ? tiered.filter((t) => t.tier !== 'quiet') : tiered
 
-  // Volume of signals warranting a look. The in-card Send/Skip decision flow
-  // was retired with the inline draft (Stream Card handoff §6); a "mark
-  // handled" affordance may return later, so the counter is static for now.
+  // Volume of signals to clear. Drops as the agent clears.
   const workable = visible.filter((t) => isWorkableSignal(t.signal)).length
 
   const groups = STREAM_TIER_ORDER.map((tier) => ({
@@ -326,45 +407,56 @@ function Stream({ signals }: { signals: DigestSignal[] }) {
         )}
       </div>
 
-      {/* Ranked roster, grouped by tier */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
-        {groups.map((g) => (
-          <div key={g.tier} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {groups.length > 1 && (
-              <div style={{ fontSize: 11.5, fontWeight: 600, color: '#9C4A1F', letterSpacing: '0.01em' }}>
-                {STREAM_TIER_LABEL[g.tier]}
-              </div>
-            )}
-            {g.items.map((s) => (
-              <StreamCardMini
-                key={s.contactId}
-                data={toStreamCardData(s)}
-                onAsk={() => askAbout(s)}
-                // Whole-card affordance → contact record (HOR-343). Demo cards
-                // have no real contact page, so they stay non-clickable.
-                onOpen={
-                  s.contactId.startsWith('demo-')
-                    ? undefined
-                    : () => router.push(`/contacts/${s.contactId}`)
-                }
-                // Email → composer dock (HOR-361). The dock resolves the
-                // recipient from the contact; we pass the signal as context.
-                onEmail={
-                  s.contactId.startsWith('demo-')
-                    ? undefined
-                    : () =>
-                        openComposer({
-                          contactId: s.contactId,
-                          contactName: s.name && s.name !== 'A contact' ? s.name : undefined,
-                          source: 'stream',
-                          signalContext: { label: s.insight, detail: s.suburb ?? undefined },
-                        })
-                }
-              />
-            ))}
-          </div>
-        ))}
-      </div>
+      {/* Cleared-day state (emotional payoff). Only fires when the agent
+        * cleared their way down to zero this session — a naturally-quiet
+        * day is handled by EmptyState before Stream mounts.
+        * TODO(voice review): copy is the spec's draft, sign-off needed
+        * before this ships. */}
+      {visible.length === 0 && clearedAny ? (
+        <ClearedDayState />
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
+          {groups.map((g) => (
+            <div key={g.tier} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {groups.length > 1 && (
+                <div style={{ fontSize: 11.5, fontWeight: 600, color: '#9C4A1F', letterSpacing: '0.01em' }}>
+                  {STREAM_TIER_LABEL[g.tier]}
+                </div>
+              )}
+              {g.items.map((s) => (
+                <StreamCardMini
+                  key={s.contactId}
+                  data={toStreamCardData(s)}
+                  onAsk={() => askAbout(s)}
+                  // Whole-card affordance → contact record (HOR-343). Demo cards
+                  // have no real contact page, so they stay non-clickable.
+                  onOpen={
+                    s.contactId.startsWith('demo-')
+                      ? undefined
+                      : () => router.push(`/contacts/${s.contactId}`)
+                  }
+                  // Email → composer dock (HOR-361). The dock resolves the
+                  // recipient from the contact; we pass the signal as context.
+                  onEmail={
+                    s.contactId.startsWith('demo-')
+                      ? undefined
+                      : () =>
+                          openComposer({
+                            contactId: s.contactId,
+                            contactName: s.name && s.name !== 'A contact' ? s.name : undefined,
+                            source: 'stream',
+                            signalContext: { label: s.insight, detail: s.suburb ?? undefined },
+                          })
+                  }
+                  // Clear — every real card. Demo cards skip it (no contact
+                  // record to suppress).
+                  onClear={s.contactId.startsWith('demo-') ? undefined : handleClear}
+                />
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Closing rule + signoff */}
       <div
@@ -382,7 +474,104 @@ function Stream({ signals }: { signals: DigestSignal[] }) {
         That&rsquo;s the morning. — Horace
         <span style={{ flex: 1, height: 1, background: 'rgba(140,123,107,0.2)' }} />
       </div>
+
+      {/* Single-shot Undo toast, bottom-pinned. Most-recent clear only. */}
+      {undoTarget && <UndoToast name={undoTarget.name} onUndo={handleUndo} />}
     </>
+  )
+}
+
+// ── Cleared-day state — the emotional payoff of clearing the stream ─────────
+function ClearedDayState() {
+  return (
+    <div
+      style={{
+        padding: '22px 24px',
+        background: '#FAF7F2',
+        border: '1px solid rgba(61,82,70,0.18)',
+        borderRadius: 12,
+        display: 'flex',
+        gap: 14,
+        alignItems: 'flex-start',
+      }}
+    >
+      <Image
+        src="/horace-charcoal.png"
+        alt=""
+        width={36}
+        height={36}
+        style={{ width: 36, height: 36, borderRadius: '50%', background: '#2E2823', flexShrink: 0 }}
+      />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div
+          style={{
+            fontSize: 10,
+            fontWeight: 600,
+            letterSpacing: '0.1em',
+            textTransform: 'uppercase',
+            color: '#8C7B6B',
+            marginBottom: 6,
+          }}
+        >
+          Horace says
+        </div>
+        <p
+          className="horace-nudge"
+          style={{ margin: 0, fontSize: 16, lineHeight: 1.65, color: '#1A1612' }}
+        >
+          That&rsquo;s the street clear for today. I&rsquo;m still watching —
+          I&rsquo;ll tap you if something stirs.
+        </p>
+      </div>
+    </div>
+  )
+}
+
+// ── Undo toast — bottom-pinned, ~8s, single-shot ────────────────────────────
+function UndoToast({ name, onUndo }: { name: string; onUndo: () => void }) {
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      style={{
+        position: 'fixed',
+        bottom: 24,
+        left: '50%',
+        transform: 'translateX(-50%)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 14,
+        padding: '10px 14px 10px 16px',
+        background: '#2E2823',
+        color: '#FBF4EE',
+        borderRadius: 10,
+        boxShadow: '0 8px 24px rgba(26,22,18,0.22)',
+        fontFamily: 'var(--font-body)',
+        fontSize: 13.5,
+        zIndex: 60,
+        maxWidth: '92vw',
+      }}
+    >
+      <span style={{ opacity: 0.92 }}>
+        Cleared <span style={{ opacity: 0.75 }}>· {name}</span>
+      </span>
+      <button
+        type="button"
+        onClick={onUndo}
+        style={{
+          background: 'transparent',
+          border: 'none',
+          color: '#F5D5BC',
+          fontWeight: 600,
+          fontSize: 13.5,
+          cursor: 'pointer',
+          padding: '4px 6px',
+          fontFamily: 'inherit',
+        }}
+      >
+        Undo
+      </button>
+    </div>
   )
 }
 
