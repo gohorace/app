@@ -1168,7 +1168,7 @@ export default function PlaybookClient() {
               <div className={styles['audit-eyebrow']}>Site audit</div>
               <p>
                 Not sure where your site stands against this list?{' '}
-                <span>Run the audit — I&apos;ll score your site and hand you the shortlist, specific to you.</span>
+                <span>Run the audit — I&apos;ll grade your site and hand you the shortlist, specific to you.</span>
               </p>
             </div>
             <a className={styles['audit-cta']} href={SITE_AUDIT_HREF}>

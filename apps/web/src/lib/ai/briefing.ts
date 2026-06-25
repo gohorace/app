@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { unstable_cache } from 'next/cache'
+import { intentForScore, INTENT_LABEL } from '@/lib/design/intent'
 
 export interface ContactEvent {
   event_type: string
@@ -61,17 +62,24 @@ export async function generateContactInsight(
     })
     .join('\n')
 
+  const tier = intentForScore(contact.score)
+  const signal = tier ? INTENT_LABEL[tier].toLowerCase() : 'quiet — no behaviour signal yet'
+  const drift =
+    contact.score_change > 0 ? 'behaviour is intensifying this week'
+    : contact.score_change < 0 ? 'behaviour is cooling this week'
+    : 'behaviour is steady this week'
+
   const prompt = `You are writing a concise intelligence brief for a real estate agent named ${agentFirst}.
 
 Contact: ${name}${contact.email ? ` (${contact.email})` : ''}
-Lead score: ${contact.score} (${contact.score_change > 0 ? `+${contact.score_change}` : contact.score_change} this week)
+Behaviour signal: ${signal} — ${drift}
 Last seen: ${contact.last_seen_at ? new Date(contact.last_seen_at).toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' }) : 'unknown'}
 
 Recent activity:
 ${eventLines || '- No recent events'}
 
 Write two things:
-1. why_now: 1–2 sentences explaining why this person deserves attention right now. Be specific about what they did. Be direct, no fluff.
+1. why_now: 1–2 sentences explaining why this person deserves attention right now. Be specific about what they did. Be direct, no fluff. Never refer to a numeric score or points — describe the behaviour qualitatively.
 2. action: one specific action ${agentFirst} should take — e.g. "Call ${name} today and ask if they're still thinking of selling." Be concrete.
 
 Respond in JSON only:
@@ -128,7 +136,9 @@ export async function generateBriefingNarrative(
         : l.topEventType === 'property_view'
           ? 'viewed a listing'
           : 'was active'
-    return `${name} (score ${l.score}, ${event})`
+    const tier = intentForScore(l.score)
+    const signal = tier ? INTENT_LABEL[tier].toLowerCase() : 'quiet'
+    return `${name} (${signal}, ${event})`
   }).join('; ')
 
   const prompt = `You are Horace — a quiet, intelligent real estate market intelligence system.
@@ -142,6 +152,7 @@ Rules:
 - Name the 1–2 most notable contacts and what they did.
 - End with a sense of what the agent should do with this information.
 - Under 60 words.
+- Never refer to numeric scores or points — describe shifts qualitatively (intensifying, cooling, stirring, returning).
 
 Example style: "Three contacts stirred today. Emma's been back twice — something's shifting. Tom raised his hand with a form. The moment is yours."
 

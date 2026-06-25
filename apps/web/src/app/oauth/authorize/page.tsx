@@ -126,7 +126,7 @@ export default async function AuthorizePage({
           <div className="border rounded-md p-3 text-xs space-y-1.5 bg-muted/40">
             <p className="font-medium text-foreground">By authorizing, you allow this app to:</p>
             <ul className="list-disc list-inside text-muted-foreground space-y-0.5">
-              <li>Read your contacts, scores, and website activity</li>
+              <li>Read your contacts, engagement signals, and website activity</li>
               <li>Create campaigns and decorate / shorten links on your behalf</li>
               <li>Send SMS via your Twilio number to contacts in this workspace</li>
               <li>Record outreach and notes</li>
