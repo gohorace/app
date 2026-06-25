@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import { Playfair_Display, DM_Sans, DM_Mono } from 'next/font/google'
 import Script from 'next/script'
+import { SpeedInsights } from '@vercel/speed-insights/next'
 import { PushManager } from '@/components/push-manager'
 import './globals.css'
 
@@ -95,6 +96,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
         {/* End Google Tag Manager (noscript) */}
         <PushManager />
         {children}
+        <SpeedInsights />
       </body>
     </html>
   )
