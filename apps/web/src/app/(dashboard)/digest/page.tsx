@@ -79,11 +79,32 @@ export default async function DigestPage({
     agent.email ||
     'Your Agent'
 
+  // ── Cleared-card suppression (Stream "Clear" — feat/stream-clear) ────────
+  // Per-card Clear writes a `stream:clear:contact:<id>` row into
+  // `dismissed_signals` (expires_at = NULL → suppress indefinitely until
+  // manual un-clear via the Undo toast). The deviation engine that would
+  // auto-resurface a cleared contact on a new pattern-break does not exist
+  // yet; this is the stub Joel flagged in the handoff. Do NOT swap NULL
+  // for a timer — that rebuilds snooze.
+  const STREAM_CLEAR_PREFIX = 'stream:clear:contact:'
+  const { data: clearedRows } = await admin
+    .from('dismissed_signals' as never)
+    .select('scope')
+    .eq('agent_id', agent.id)
+    .like('scope', `${STREAM_CLEAR_PREFIX}%`)
+  const clearedIds = new Set<string>(
+    ((clearedRows ?? []) as Array<{ scope: string }>)
+      .map((r) => r.scope.slice(STREAM_CLEAR_PREFIX.length))
+      .filter(Boolean),
+  )
+
   // ── Fetch leads via the briefing RPC ─────────────────────────────────────
   const { data: rawLeads } = await admin.rpc('get_daily_briefing_data', {
     p_agent_id: agent.id,
   })
-  const leads = rawLeads ?? []
+  // Drop cleared leads before enrichment — every kept lead pays for an
+  // Anthropic insight + pretext + draft, so filter as early as possible.
+  const leads = (rawLeads ?? []).filter((l) => !clearedIds.has(l.contact_id))
 
   // No signal yet → show the demo roster so new agents see a concrete
   // preview of what the surface looks like with real data. websiteUrl and
@@ -305,10 +326,13 @@ export default async function DigestPage({
   // Contacts who were active but have gone quiet are, by definition, NOT in
   // the active roster above. Surface them separately from score_history so the
   // agent can re-engage before the trail goes cold.
+  // Cleared contacts are excluded by union — anything in `clearedIds` is
+  // suppressed from the cooling-down rail as well as the active stream.
+  const suppressed = new Set([...leads.map((l) => l.contact_id), ...clearedIds])
   const coolingSignals = await fetchCoolingSignals(
     admin,
     agent.id,
-    new Set(leads.map((l) => l.contact_id)),
+    suppressed,
     new Date(),
   )
   const signalsWithCooling = [...signals, ...coolingSignals]

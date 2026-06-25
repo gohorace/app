@@ -121,6 +121,10 @@ interface StreamCardMiniProps {
   /** Opens the tracked-email composer dock for this card (HOR-361). Omitted →
    *  Email button is inert (e.g. demo cards). */
   onEmail?: (data: StreamCardData) => void
+  /** Per-card Clear (Stream "Clear" handoff) — the dismiss-until-deviation
+   *  affordance. Subordinate to the contact actions, top-right header.
+   *  Omitted → no Clear control (demo cards, cleared-state echoes). */
+  onClear?: (data: StreamCardData) => void
 }
 
 // ── Timestamp — ≤24h by the hour, live green + pulsing; older grey ────────────
@@ -237,7 +241,7 @@ function CTARow({ phone, onEmail }: { phone?: string | null; onEmail?: () => voi
   )
 }
 
-export function StreamCardMini({ data, onAsk, onOpen, onEmail }: StreamCardMiniProps) {
+export function StreamCardMini({ data, onAsk, onOpen, onEmail, onClear }: StreamCardMiniProps) {
   const shade = STREAM_TIERS[data.tier]
   const clickable = Boolean(onOpen)
   return (
@@ -295,6 +299,34 @@ export function StreamCardMini({ data, onAsk, onOpen, onEmail }: StreamCardMiniP
           >
             <Feather style={{ width: 13, height: 13, color: STONE }} aria-hidden /> Ask Horace
           </button>
+          {/* Clear — subordinate to Email/Phone/SMS and to Ask Horace.
+            * Plain text, no border, no chrome. "I've dealt with this," not
+            * a primary outreach. Hidden when no handler is wired (demo). */}
+          {onClear && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                onClear(data)
+              }}
+              aria-label={`Clear ${data.name} from the stream`}
+              title="Clear — Horace stops surfacing this contact until something stirs again"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                padding: '6px 6px',
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                fontFamily: 'var(--font-body)',
+                fontSize: 12.5,
+                color: STONE,
+                letterSpacing: '0.005em',
+              }}
+            >
+              Clear
+            </button>
+          )}
         </div>
       </div>
 
