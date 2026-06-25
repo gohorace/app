@@ -259,6 +259,24 @@ export function ContactDetailView({
     })
   }
 
+  // Phone → composer dock on the Call notes tab. The spoken opener + signal-
+  // aware coaching ("your eyes only") render from `signalContext.label`. The
+  // dock's Call button fires `tel:`; Log call records the touch and dismisses.
+  function openPhoneCall() {
+    if (!contact.phone) return
+    openComposer({
+      contactId: contact.id,
+      recipient: contact.email ?? undefined,
+      recipientPhone: contact.phone,
+      contactName: companionName,
+      source: 'contact',
+      defaultChannel: 'call',
+      signalContext: contact.nudge
+        ? { label: contact.nudge, detail: contact.suburb ?? undefined }
+        : undefined,
+    })
+  }
+
   // "Ask Horace" on the read card → Companion in *read* context.
   function openAsk() {
     openCompanion({
@@ -511,7 +529,8 @@ export function ContactDetailView({
               <ChannelActionRow
                 onEmail={openEmailDraft}
                 emailDisabled={!contact.email}
-                phone={contact.phone}
+                onPhone={openPhoneCall}
+                phoneDisabled={!contact.phone}
               />
             )}
           </div>
@@ -769,43 +788,25 @@ export function ContactDetailView({
               <Mail style={{ width: 16, height: 16 }} />
               Email
             </button>
-            {contact.phone ? (
-              <a
-                href={`tel:${contact.phone}`}
-                aria-label="Phone"
-                style={{
-                  width: 50,
-                  borderRadius: 9,
-                  background: '#FAF7F2',
-                  border: '1px solid rgba(140,123,107,0.2)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  textDecoration: 'none',
-                }}
-              >
-                <Phone style={{ width: 18, height: 18, color: '#1A1612' }} />
-              </a>
-            ) : (
-              <button
-                type="button"
-                aria-label="Phone (no number on file)"
-                disabled
-                style={{
-                  width: 50,
-                  borderRadius: 9,
-                  background: '#FAF7F2',
-                  border: '1px solid rgba(140,123,107,0.2)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  opacity: 0.5,
-                  cursor: 'not-allowed',
-                }}
-              >
-                <Phone style={{ width: 18, height: 18, color: '#8C7B6B' }} />
-              </button>
-            )}
+            <button
+              type="button"
+              aria-label={contact.phone ? 'Phone' : 'Phone (no number on file)'}
+              onClick={openPhoneCall}
+              disabled={!contact.phone}
+              style={{
+                width: 50,
+                borderRadius: 9,
+                background: '#FAF7F2',
+                border: '1px solid rgba(140,123,107,0.2)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                opacity: contact.phone ? 1 : 0.5,
+                cursor: contact.phone ? 'pointer' : 'not-allowed',
+              }}
+            >
+              <Phone style={{ width: 18, height: 18, color: contact.phone ? '#1A1612' : '#8C7B6B' }} />
+            </button>
             <button
               type="button"
               aria-label="More actions"
@@ -1046,16 +1047,19 @@ function RoleControl({ held, onPick }: { held: Set<ContactRole>; onPick: () => v
 // ── Channel action row — Email (primary) · Phone · SMS·soon ────────────────
 // Same grammar as the stream card's CTA row, so both surfaces share one mental
 // model. Email opens the dock with autoDraft + signalContext from the read;
-// Phone reveals/dials when a number is on file; SMS is a disabled placeholder.
+// Phone opens the dock on the Call notes tab with a scripted opener + private
+// coaching; SMS is a disabled placeholder.
 
 function ChannelActionRow({
   onEmail,
   emailDisabled,
-  phone,
+  onPhone,
+  phoneDisabled,
 }: {
   onEmail: () => void
   emailDisabled: boolean
-  phone: string | null
+  onPhone: () => void
+  phoneDisabled: boolean
 }) {
   const base: React.CSSProperties = {
     display: 'inline-flex',
@@ -1088,20 +1092,21 @@ function ChannelActionRow({
         <Mail style={{ width: 14, height: 14 }} aria-hidden /> Email
       </button>
 
-      {phone ? (
-        <a href={`tel:${phone}`} style={{ ...base, border: '1px solid rgba(140,123,107,0.2)', color: '#1A1612', textDecoration: 'none' }}>
-          <Phone style={{ width: 14, height: 14, color: '#8C7B6B' }} aria-hidden /> Phone
-        </a>
-      ) : (
-        <button
-          type="button"
-          disabled
-          title="No phone number on file"
-          style={{ ...base, border: '1px solid rgba(140,123,107,0.2)', color: 'rgba(140,123,107,0.7)', background: 'transparent', cursor: 'not-allowed' }}
-        >
-          <Phone style={{ width: 14, height: 14, color: 'rgba(140,123,107,0.7)' }} aria-hidden /> Phone
-        </button>
-      )}
+      <button
+        type="button"
+        onClick={onPhone}
+        disabled={phoneDisabled}
+        title={phoneDisabled ? 'No phone number on file' : undefined}
+        style={{
+          ...base,
+          border: '1px solid rgba(140,123,107,0.2)',
+          color: phoneDisabled ? 'rgba(140,123,107,0.7)' : '#1A1612',
+          background: 'transparent',
+          cursor: phoneDisabled ? 'not-allowed' : 'pointer',
+        }}
+      >
+        <Phone style={{ width: 14, height: 14, color: phoneDisabled ? 'rgba(140,123,107,0.7)' : '#8C7B6B' }} aria-hidden /> Phone
+      </button>
 
       <span style={{ ...base, border: '1px dashed rgba(140,123,107,0.2)', color: 'rgba(140,123,107,0.85)', cursor: 'not-allowed' }}>
         <MessageSquare style={{ width: 14, height: 14, color: 'rgba(140,123,107,0.7)' }} aria-hidden /> SMS

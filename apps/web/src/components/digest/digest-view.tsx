@@ -453,6 +453,21 @@ function Stream({ signals }: { signals: DigestSignal[] }) {
                             signalContext: { label: s.insight, detail: s.suburb ?? undefined },
                           })
                   }
+                  // Phone → composer dock, Call notes tab. The dock resolves
+                  // the phone from the contact; the signal label drives the
+                  // private coaching note ("your eyes only") on the script.
+                  onPhone={
+                    s.contactId.startsWith('demo-')
+                      ? undefined
+                      : () =>
+                          openComposer({
+                            contactId: s.contactId,
+                            contactName: s.name && s.name !== 'A contact' ? s.name : undefined,
+                            source: 'stream',
+                            defaultChannel: 'call',
+                            signalContext: { label: s.insight, detail: s.suburb ?? undefined },
+                          })
+                  }
                   // Clear — every card, including demo. Demo cards branch
                   // inside handleClear to skip the round-trip.
                   onClear={handleClear}

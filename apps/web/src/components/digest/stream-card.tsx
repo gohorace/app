@@ -110,6 +110,9 @@ interface StreamCardMiniProps {
   /** Opens the tracked-email composer dock for this card. Omitted → Email
    *  button is inert (e.g. demo cards). */
   onEmail?: (data: StreamCardData) => void
+  /** Opens the composer dock on the Call notes tab for this card. Omitted →
+   *  Phone button falls back to a plain `tel:` link. */
+  onPhone?: (data: StreamCardData) => void
   /** Per-card Clear (Stream "Clear" handoff) — the dismiss-until-deviation
    *  affordance. Subordinate to the contact actions, top-right header.
    *  Omitted → no Clear control (demo cards, cleared-state echoes). */
@@ -157,7 +160,7 @@ function TierBadge({ shade }: { shade: TierShade }) {
   )
 }
 
-function CTARow({ phone, onEmail }: { phone?: string | null; onEmail?: () => void }) {
+function CTARow({ phone, onEmail, onPhone }: { phone?: string | null; onEmail?: () => void; onPhone?: () => void }) {
   const base: React.CSSProperties = {
     display: 'inline-flex',
     alignItems: 'center',
@@ -193,7 +196,18 @@ function CTARow({ phone, onEmail }: { phone?: string | null; onEmail?: () => voi
         <Mail style={{ width: 14, height: 14 }} aria-hidden /> Email
       </button>
 
-      {phone ? (
+      {onPhone ? (
+        // Open the composer dock on the Call notes tab. The dock resolves the
+        // phone number from the contact on mount — surface-level `phone` is
+        // not plumbed through the digest signal yet.
+        <button
+          type="button"
+          onClick={onPhone}
+          style={{ ...base, border: `1px solid ${SUBTLE}`, color: INK, background: 'transparent', cursor: 'pointer' }}
+        >
+          <Phone style={{ width: 14, height: 14, color: STONE }} aria-hidden /> Phone
+        </button>
+      ) : phone ? (
         <a href={`tel:${phone}`} style={{ ...base, border: `1px solid ${SUBTLE}`, color: INK, textDecoration: 'none', cursor: 'pointer' }}>
           <Phone style={{ width: 14, height: 14, color: STONE }} aria-hidden /> Phone
         </a>
@@ -224,7 +238,7 @@ function CTARow({ phone, onEmail }: { phone?: string | null; onEmail?: () => voi
   )
 }
 
-export function StreamCardMini({ data, onAsk, onOpen, onEmail, onClear }: StreamCardMiniProps) {
+export function StreamCardMini({ data, onAsk, onOpen, onEmail, onPhone, onClear }: StreamCardMiniProps) {
   const shade = STREAM_TIERS[data.tier]
   const clickable = Boolean(onOpen)
   return (
@@ -330,7 +344,11 @@ export function StreamCardMini({ data, onAsk, onOpen, onEmail, onClear }: Stream
         {data.observation}
       </p>
 
-      <CTARow phone={data.phone} onEmail={onEmail ? () => onEmail(data) : undefined} />
+      <CTARow
+        phone={data.phone}
+        onEmail={onEmail ? () => onEmail(data) : undefined}
+        onPhone={onPhone ? () => onPhone(data) : undefined}
+      />
     </div>
   )
 }

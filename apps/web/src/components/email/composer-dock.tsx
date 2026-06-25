@@ -1577,6 +1577,21 @@ function ComposerDockV3({ payload, onClose, rightOffset = 24, focusNonce = 0 }: 
   const [scheduledLabel, setScheduledLabel] = useState<string | null>(null)
   const [sendErrored, setSendErrored] = useState(false)
 
+  // ── Call state — Call → Log call → logged (auto-close) ──────────────────
+  // Reference-only flow: tapping Call fires the native dialer; tapping Log
+  // call records the touch (placeholder until the call-log endpoint exists)
+  // and dismisses the dock. No backend wire today.
+  const [callState, setCallState] = useState<'idle' | 'called' | 'logged'>('idle')
+  const onCall = useCallback(() => {
+    if (!contact.phone) return
+    window.location.href = `tel:${contact.phone}`
+    setCallState('called')
+  }, [contact.phone])
+  const onLogCall = useCallback(() => {
+    setCallState('logged')
+    setTimeout(() => onClose(), 1200)
+  }, [onClose])
+
   // ── Draft (Ask Horace) ───────────────────────────────────────────────────
   const runDraft = useCallback(async () => {
     setScenario('drafting')
@@ -1867,6 +1882,10 @@ function ComposerDockV3({ payload, onClose, rightOffset = 24, focusNonce = 0 }: 
         tracking={tracking}
         sendMenuOpen={sendMenuOpen}
         copyState={copyState}
+        callState={callState}
+        callPhone={contact.phone}
+        onCall={onCall}
+        onLogCall={onLogCall}
         onSend={() => submit()}
         onSendMenuToggle={() => {
           if (canSend || sendErrored) setSendMenuOpen((v) => !v)
@@ -3024,6 +3043,10 @@ function V3Footer({
   tracking,
   sendMenuOpen,
   copyState,
+  callState,
+  callPhone,
+  onCall,
+  onLogCall,
   onSend,
   onSendMenuToggle,
   onSendMenuSelect,
@@ -3039,6 +3062,10 @@ function V3Footer({
   tracking: boolean
   sendMenuOpen: boolean
   copyState: 'idle' | 'copied'
+  callState: 'idle' | 'called' | 'logged'
+  callPhone: string | null
+  onCall: () => void
+  onLogCall: () => void
   onSend: () => void
   onSendMenuToggle: () => void
   onSendMenuSelect: (action: 'send-now' | 'schedule' | 'save-draft') => void
@@ -3156,11 +3183,20 @@ function V3Footer({
       )}
 
       {mode === 'call' && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, color: V3.stone }}>
-          <Info size={13} strokeWidth={1.8} />
-          <span style={{ fontSize: 12, fontWeight: 500, fontFamily: V3.font }}>
-            Reference while you call — nothing is sent.
-          </span>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7, color: V3.stone, minWidth: 0 }}>
+            <Info size={13} strokeWidth={1.8} style={{ flexShrink: 0 }} />
+            <span style={{ fontSize: 12, fontWeight: 500, fontFamily: V3.font, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {callState === 'called'
+                ? 'When you’re done, log it.'
+                : callState === 'logged'
+                  ? 'Call logged · just now'
+                  : 'Reference while you call — nothing is sent.'}
+            </span>
+          </div>
+          {callState !== 'logged' && (
+            <V3CallButton state={callState} phone={callPhone} onCall={onCall} onLogCall={onLogCall} />
+          )}
         </div>
       )}
     </div>
@@ -3234,6 +3270,52 @@ function V3SendSplit({
         <ChevronDown size={14} strokeWidth={2} />
       </button>
     </div>
+  )
+}
+
+// V3 Call/Log-call button. Idle: terracotta "Call" (fires tel:). Called: moss
+// "Log call" (records the touch and closes). When no phone is on file the
+// idle button is disabled with a tooltip.
+function V3CallButton({
+  state,
+  phone,
+  onCall,
+  onLogCall,
+}: {
+  state: 'idle' | 'called' | 'logged'
+  phone: string | null
+  onCall: () => void
+  onLogCall: () => void
+}) {
+  const called = state === 'called'
+  const disabled = !called && !phone
+  return (
+    <button
+      type="button"
+      onClick={called ? onLogCall : onCall}
+      disabled={disabled}
+      title={disabled ? 'No phone number on file' : undefined}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 7,
+        flexShrink: 0,
+        padding: '9px 15px',
+        border: 'none',
+        borderRadius: 8,
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        fontFamily: V3.font,
+        fontSize: 13,
+        fontWeight: 600,
+        background: called ? V3.moss : V3.terracotta,
+        color: V3.cream,
+        opacity: disabled ? 0.5 : 1,
+        transition: 'background 150ms, opacity 150ms',
+      }}
+    >
+      {called ? <Check size={14} strokeWidth={2.2} /> : <Phone size={14} strokeWidth={1.8} />}
+      {called ? 'Log call' : 'Call'}
+    </button>
   )
 }
 
