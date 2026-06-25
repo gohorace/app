@@ -416,9 +416,7 @@ function Stream({ signals }: { signals: DigestSignal[] }) {
 
       {/* Cleared-day state (emotional payoff). Only fires when the agent
         * cleared their way down to zero this session — a naturally-quiet
-        * day is handled by EmptyState before Stream mounts.
-        * TODO(voice review): copy is the spec's draft, sign-off needed
-        * before this ships. */}
+        * day is handled by EmptyState before Stream mounts. */}
       {visible.length === 0 && clearedAny ? (
         <ClearedDayState />
       ) : (
@@ -526,8 +524,8 @@ function ClearedDayState() {
           className="horace-nudge"
           style={{ margin: 0, fontSize: 16, lineHeight: 1.65, color: '#1A1612' }}
         >
-          That&rsquo;s the street clear for today. I&rsquo;m still watching —
-          I&rsquo;ll tap you if something stirs.
+          That&rsquo;s the street clear for today. I&rsquo;ll keep watching —
+          when something stirs, you&rsquo;ll hear it here first.
         </p>
       </div>
     </div>
