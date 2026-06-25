@@ -17,6 +17,7 @@ import {
   Lock,
   Mail,
   MapPin,
+  MessageSquare,
   MoreHorizontal,
   Pencil,
   Phone,
@@ -38,11 +39,10 @@ import { tierForScore, weeklyDelta, whatChanged, readProvenance } from '@/lib/co
 import { HoraceReadCard } from '@/components/shared/horace-read-card'
 import { AttachRoleDialog } from './attach-role-dialog'
 import { NotesThread } from '@/components/notes/notes-thread'
-import { OpenComposerButton } from '@/components/email/open-composer-button'
+import { useComposerDock } from '@/components/email/composer-dock-context'
 import { AddToListSheet } from '@/components/lists/add-to-list-sheet'
 import { buildEmailSendIndex, type EmailSendSummary } from '@/lib/contacts/email-engagement'
 import { useCompanion } from '@/components/companion/companion-context'
-import { QuillIcon } from '@/components/ui/quill-icon'
 
 export interface ContactDetailViewProps {
   contact: {
@@ -118,6 +118,7 @@ export function ContactDetailView({
 }: ContactDetailViewProps) {
   const router = useRouter()
   const { openCompanion } = useCompanion()
+  const { openComposer } = useComposerDock()
   const isMobile = useIsMobile()
   const [timelineFilter, setTimelineFilter] = useState<TimelineFilter>('all')
   const [attachOpen, setAttachOpen] = useState(false)
@@ -240,14 +241,43 @@ export function ContactDetailView({
     }
   }
 
-  function openDraft() {
-    openCompanion({
-      prompt: `Draft a follow-up to ${companionName}`,
-      contextLabel: `Contact: ${companionName}`,
+  // Email → tracked-email composer dock, opened in the auto-draft state so
+  // Horace pre-loads a draft tuned to the read. The dock owns the rest of the
+  // compose lifecycle (tracking on by default; an untracked toggle lives inside
+  // the dock, never at the top level).
+  function openEmailDraft() {
+    if (!contact.email) return
+    openComposer({
+      contactId: contact.id,
+      recipient: contact.email,
+      contactName: companionName,
+      source: 'contact',
+      autoDraft: true,
+      signalContext: contact.nudge
+        ? { label: contact.nudge, detail: contact.suburb ?? undefined }
+        : undefined,
     })
   }
 
-  // "Ask a follow-up" on the read card → Companion in *read* context.
+  // Phone → composer dock on the Call notes tab. The spoken opener + signal-
+  // aware coaching ("your eyes only") render from `signalContext.label`. The
+  // dock's Call button fires `tel:`; Log call records the touch and dismisses.
+  function openPhoneCall() {
+    if (!contact.phone) return
+    openComposer({
+      contactId: contact.id,
+      recipient: contact.email ?? undefined,
+      recipientPhone: contact.phone,
+      contactName: companionName,
+      source: 'contact',
+      defaultChannel: 'call',
+      signalContext: contact.nudge
+        ? { label: contact.nudge, detail: contact.suburb ?? undefined }
+        : undefined,
+    })
+  }
+
+  // "Ask Horace" on the read card → Companion in *read* context.
   function openAsk() {
     openCompanion({
       prompt: `Tell me more about why ${companionName} matters right now`,
@@ -465,6 +495,8 @@ export function ContactDetailView({
         )}
 
         {/* ── ACTION ─────────────────────────────────────────────────────── */}
+        {/* Read says what's happening; the suggestion says what to do; the
+            channel row lets you do it. Three things, one card. */}
         <div style={{ marginTop: 28 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 10 }}>
             <Zap style={{ width: 13, height: 13, color: '#C4622D' }} />
@@ -482,51 +514,26 @@ export function ContactDetailView({
             }}
           >
             <div
-              style={{
-                display: 'flex',
-                alignItems: 'flex-start',
-                gap: 14,
-                flexDirection: isMobile ? 'column' : 'row',
-              }}
+              className="font-display"
+              style={{ fontSize: isMobile ? 17 : 18.5, fontWeight: 600, color: '#1A1612', marginBottom: 4 }}
             >
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div
-                  className="font-display"
-                  style={{ fontSize: isMobile ? 17 : 18.5, fontWeight: 600, color: '#1A1612', marginBottom: 4 }}
-                >
-                  {primaryTitleForTier(tier.word)}
-                </div>
-                <p style={{ margin: 0, fontSize: 13, color: '#5E5246', lineHeight: 1.5, textWrap: 'pretty' }}>
-                  {contact.recommendation && contact.recommendation.trim().length > 0
-                    ? contact.recommendation
-                    : 'Horace can draft a follow-up tuned to what they’ve been looking at — review it, tweak the tone, and send in your voice.'}
-                </p>
-              </div>
-              {!isMobile && (
-                <button type="button" onClick={openDraft} style={primaryDraftBtnStyle}>
-                  <QuillIcon style={{ width: 15, height: 15 }} />
-                  Draft with Horace
-                </button>
-              )}
+              {primaryTitleForTier(tier.word)}
             </div>
-          </div>
+            <p style={{ margin: 0, fontSize: 13, color: '#5E5246', lineHeight: 1.5, textWrap: 'pretty' }}>
+              {contact.recommendation && contact.recommendation.trim().length > 0
+                ? contact.recommendation
+                : 'Horace can draft a follow-up tuned to what they’ve been looking at — review it, tweak the tone, and send in your voice.'}
+            </p>
 
-          {/* "or" act-now set — moves into the mobile overflow sheet */}
-          {!isMobile && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 11, color: '#8C7B6B', marginRight: 2 }}>or</span>
-              <ContactActionButton phone={contact.phone} email={contact.email} />
-              {contact.email && (
-                <OpenComposerButton
-                  contactId={contact.id}
-                  recipient={contact.email}
-                  contactName={companionName}
-                  source="contact"
-                  buttonStyle={ghostBtnStyle}
-                />
-              )}
-            </div>
-          )}
+            {!isMobile && (
+              <ChannelActionRow
+                onEmail={openEmailDraft}
+                emailDisabled={!contact.email}
+                onPhone={openPhoneCall}
+                phoneDisabled={!contact.phone}
+              />
+            )}
+          </div>
         </div>
 
         {/* ── CONTEXT ────────────────────────────────────────────────────── */}
@@ -740,6 +747,9 @@ export function ContactDetailView({
       </div>
 
       {/* ── Mobile sticky CTA + overflow sheet ───────────────────────────── */}
+      {/* Email is the primary sticky CTA. Phone sits beside it (channel-named,
+          icon-only to keep the bar compact). SMS·soon + the management actions
+          (edit / add to list / attach role) live in the overflow sheet. */}
       {isMobile && (
         <>
           {overflowOpen && (
@@ -752,19 +762,7 @@ export function ContactDetailView({
                   onClick={() => { openEdit(); setOverflowOpen(false) }}
                 />
               )}
-              <ContactSheetRow phone={contact.phone} email={contact.email} />
-              {contact.email && (
-                <OpenComposerButton
-                  contactId={contact.id}
-                  recipient={contact.email}
-                  contactName={companionName}
-                  source="contact"
-                >
-                  {({ onClick }) => (
-                    <SheetRow Icon={Mail} label="Send tracked email" onClick={() => { onClick(); setOverflowOpen(false) }} />
-                  )}
-                </OpenComposerButton>
-              )}
+              <SheetRow Icon={MessageSquare} label="SMS · soon" disabled />
               <SheetRow Icon={Plus} label="Add to list" onClick={() => { setAddToListOpen(true); setOverflowOpen(false) }} />
               {!isAnon && (
                 <SheetRow Icon={Home} label="Attach role" last onClick={() => { setAttachOpen(true); setOverflowOpen(false) }} />
@@ -772,9 +770,42 @@ export function ContactDetailView({
             </div>
           )}
           <div style={stickyBarStyle}>
-            <button type="button" onClick={openDraft} style={{ ...primaryDraftBtnStyle, flex: 1, justifyContent: 'center', padding: '14px 18px', fontSize: 15 }}>
-              <QuillIcon style={{ width: 16, height: 16 }} />
-              Draft with Horace
+            <button
+              type="button"
+              onClick={openEmailDraft}
+              disabled={!contact.email}
+              style={{
+                ...primaryDraftBtnStyle,
+                flex: 1,
+                justifyContent: 'center',
+                padding: '14px 18px',
+                fontSize: 15,
+                opacity: contact.email ? 1 : 0.5,
+                cursor: contact.email ? 'pointer' : 'not-allowed',
+              }}
+              title={contact.email ? undefined : 'This contact has no email address on file'}
+            >
+              <Mail style={{ width: 16, height: 16 }} />
+              Email
+            </button>
+            <button
+              type="button"
+              aria-label={contact.phone ? 'Phone' : 'Phone (no number on file)'}
+              onClick={openPhoneCall}
+              disabled={!contact.phone}
+              style={{
+                width: 50,
+                borderRadius: 9,
+                background: '#FAF7F2',
+                border: '1px solid rgba(140,123,107,0.2)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                opacity: contact.phone ? 1 : 0.5,
+                cursor: contact.phone ? 'pointer' : 'not-allowed',
+              }}
+            >
+              <Phone style={{ width: 18, height: 18, color: contact.phone ? '#1A1612' : '#8C7B6B' }} />
             </button>
             <button
               type="button"
@@ -1013,43 +1044,88 @@ function RoleControl({ held, onPick }: { held: Set<ContactRole>; onPick: () => v
   )
 }
 
-// ── Contact (tel/mailto) action — desktop ghost + mobile sheet row ───────────
+// ── Channel action row — Email (primary) · Phone · SMS·soon ────────────────
+// Same grammar as the stream card's CTA row, so both surfaces share one mental
+// model. Email opens the dock with autoDraft + signalContext from the read;
+// Phone opens the dock on the Call notes tab with a scripted opener + private
+// coaching; SMS is a disabled placeholder.
 
-function ContactActionButton({ phone, email }: { phone: string | null; email: string | null }) {
-  if (phone) {
-    return (
-      <a href={`tel:${phone}`} style={ghostBtnStyle}>
-        <Phone style={{ width: 13, height: 13 }} />
-        Contact
-      </a>
-    )
-  }
-  if (email) {
-    return (
-      <a href={`mailto:${email}`} style={ghostBtnStyle}>
-        <Mail style={{ width: 13, height: 13 }} />
-        Contact
-      </a>
-    )
+function ChannelActionRow({
+  onEmail,
+  emailDisabled,
+  onPhone,
+  phoneDisabled,
+}: {
+  onEmail: () => void
+  emailDisabled: boolean
+  onPhone: () => void
+  phoneDisabled: boolean
+}) {
+  const base: React.CSSProperties = {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 7,
+    padding: '9px 15px',
+    borderRadius: 9,
+    fontSize: 13.5,
+    fontWeight: 500,
+    fontFamily: 'var(--font-body)',
   }
   return (
-    <button type="button" disabled style={{ ...ghostBtnStyle, opacity: 0.5, cursor: 'not-allowed' }} title="No phone or email on file">
-      <Phone style={{ width: 13, height: 13 }} />
-      Contact
-    </button>
-  )
-}
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
+      <button
+        type="button"
+        onClick={onEmail}
+        disabled={emailDisabled}
+        title={emailDisabled ? 'This contact has no email address on file' : undefined}
+        style={{
+          ...base,
+          fontWeight: 600,
+          border: 'none',
+          background: '#C4622D',
+          color: '#FBF4EE',
+          cursor: emailDisabled ? 'not-allowed' : 'pointer',
+          opacity: emailDisabled ? 0.5 : 1,
+          boxShadow: '0 2px 8px rgba(196,98,45,0.24)',
+        }}
+      >
+        <Mail style={{ width: 14, height: 14 }} aria-hidden /> Email
+      </button>
 
-function ContactSheetRow({ phone, email }: { phone: string | null; email: string | null }) {
-  const href = phone ? `tel:${phone}` : email ? `mailto:${email}` : null
-  const Icon = phone ? Phone : Mail
-  if (!href) {
-    return <SheetRow Icon={Phone} label="Contact" disabled />
-  }
-  return (
-    <a href={href} style={{ textDecoration: 'none' }}>
-      <SheetRow Icon={Icon} label="Contact" />
-    </a>
+      <button
+        type="button"
+        onClick={onPhone}
+        disabled={phoneDisabled}
+        title={phoneDisabled ? 'No phone number on file' : undefined}
+        style={{
+          ...base,
+          border: '1px solid rgba(140,123,107,0.2)',
+          color: phoneDisabled ? 'rgba(140,123,107,0.7)' : '#1A1612',
+          background: 'transparent',
+          cursor: phoneDisabled ? 'not-allowed' : 'pointer',
+        }}
+      >
+        <Phone style={{ width: 14, height: 14, color: phoneDisabled ? 'rgba(140,123,107,0.7)' : '#8C7B6B' }} aria-hidden /> Phone
+      </button>
+
+      <span style={{ ...base, border: '1px dashed rgba(140,123,107,0.2)', color: 'rgba(140,123,107,0.85)', cursor: 'not-allowed' }}>
+        <MessageSquare style={{ width: 14, height: 14, color: 'rgba(140,123,107,0.7)' }} aria-hidden /> SMS
+        <span
+          style={{
+            padding: '1px 7px',
+            borderRadius: 9999,
+            background: 'rgba(140,123,107,0.16)',
+            fontSize: 9.5,
+            fontWeight: 600,
+            letterSpacing: '0.05em',
+            color: '#8C7B6B',
+            textTransform: 'uppercase',
+          }}
+        >
+          Soon
+        </span>
+      </span>
+    </div>
   )
 }
 
@@ -1393,22 +1469,6 @@ const primaryDraftBtnStyle: React.CSSProperties = {
   whiteSpace: 'nowrap',
   textDecoration: 'none',
   boxShadow: '0 2px 8px rgba(196,98,45,0.28)',
-}
-
-const ghostBtnStyle: React.CSSProperties = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: 6,
-  padding: '8px 13px',
-  borderRadius: 8,
-  background: 'transparent',
-  color: '#1A1612',
-  fontSize: 12.5,
-  fontWeight: 500,
-  border: '1px solid rgba(140,123,107,0.2)',
-  cursor: 'pointer',
-  fontFamily: 'var(--font-body)',
-  textDecoration: 'none',
 }
 
 const iconBtnStyle: React.CSSProperties = {

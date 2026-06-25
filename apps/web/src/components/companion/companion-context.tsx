@@ -14,7 +14,7 @@ import type {
  * CompanionContext — global access to the companion drawer.
  *
  * Pages call `useCompanion().openCompanion({ prompt, contextLabel })`
- * from any "Ask Horace" / "Draft with Horace" / dismiss CTA. The
+ * from any "Ask Horace" / dismiss CTA. The
  * provider owns ephemeral state (open + active prompt + contextLabel);
  * the drawer rebuilds its conversation from that on each open. State
  * is lost on reload — persistence is HOR-257 (v2-D4).

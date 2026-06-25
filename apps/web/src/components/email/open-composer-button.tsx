@@ -34,7 +34,7 @@ export function OpenComposerButton({
   autoDraft = false,
   signalContext,
   buttonStyle,
-  label = 'Send tracked email',
+  label = 'Email',
   icon = true,
   children,
 }: OpenComposerButtonProps) {

@@ -3,8 +3,8 @@
  *
  * Promotes Horace's read from an inline label+paragraph into a first-class
  * carded object: a Horace mark, the read, a provenance footer ("Auto · from
- * your data" + what it was built from), and an "Ask a follow-up" entry into
- * the Companion in *read* context. The "what changed" chips (the evidence
+ * your data" + what it was built from), and an "Ask Horace" entry into the
+ * Companion in *read* context. The "what changed" chips (the evidence
  * behind the read) and the Stream deep-link sit beneath the card.
  *
  * Built as a shared component so the Contact and Property detail screens render
@@ -169,7 +169,7 @@ export function HoraceReadCard({
               fontFamily: 'var(--font-body)',
             }}
           >
-            <QuillIcon style={{ width: 13, height: 13 }} /> Ask a follow-up
+            <QuillIcon style={{ width: 13, height: 13 }} /> Ask Horace
           </button>
         </div>
       </div>
