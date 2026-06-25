@@ -32,6 +32,7 @@ import {
   getCachedSignalDraft,
   type SoldAlt,
 } from '@/lib/ai/signal-draft'
+import { composeSignatureHtml } from '@/lib/email/signature'
 import type { ContentSource, ContentSourceAlt } from '@/lib/email/types'
 
 export const runtime = 'nodejs'
@@ -109,7 +110,13 @@ export async function POST(req: NextRequest) {
     pretext,
     // Draft in the agent's configured voice + signature (gated above, so both
     // are present here). Makes the draft truly "in your voice". (HOR-356)
-    voice: { brand_voice: profile.brand_voice, email_signature: profile.email_signature },
+    // When the agent has an HTML signature configured, signal-draft suppresses
+    // the plain-text append — the digest send wire splices the styled HTML on.
+    voice: {
+      brand_voice: profile.brand_voice,
+      email_signature: profile.email_signature,
+      email_signature_html: profile.email_signature_html,
+    },
   })
 
   if (!draft) {
@@ -117,6 +124,23 @@ export async function POST(req: NextRequest) {
     // `failed-draft` ("Horace couldn't draft this one").
     return NextResponse.json({ error: 'draft_unavailable' }, { status: 502 })
   }
+
+  // HTML signature block (HOR-xxx) — returned alongside the body so the
+  // composer dock can render a read-only preview below the editor and splice
+  // it onto body_html at Send time. When the agent has no HTML signature
+  // configured we fall back to the plain-text append (existing behaviour).
+  const hasHtmlSignature =
+    !!profile.email_signature_html || !!profile.email_signature_logo_url
+  const signatureHtml = hasHtmlSignature
+    ? composeSignatureHtml({
+        html: profile.email_signature_html,
+        logoUrl: profile.email_signature_logo_url,
+      })
+    : null
+  const draftBody =
+    !hasHtmlSignature && profile.email_signature
+      ? `${draft.body}\n\n${profile.email_signature}`
+      : draft.body
 
   // ── Insight & Content sources (composer V3 — Outreach Review re-skin) ──
   // The sold row populates from the same recent-sold pretext. `listings` and
@@ -128,9 +152,10 @@ export async function POST(req: NextRequest) {
   return NextResponse.json(
     {
       subject: draft.subject,
-      body: draft.body,
+      body: draftBody,
       pretext_label: pretext.label,
       sources,
+      signature_html: signatureHtml,
     },
     { status: 200 },
   )

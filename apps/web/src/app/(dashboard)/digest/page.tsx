@@ -67,12 +67,28 @@ export default async function DigestPage({
   const attentionCount = await fetchAttentionCount(admin, agent.id)
 
   // HOR-138: workspace site URL for the "Post on social" activity prompt.
+  // Also pulls brand voice + signature (HOR-xxx) so signal-draft can write
+  // in the agent's voice and the Send wire can splice the HTML signature
+  // onto outbound emails. The HTML/logo columns aren't in database.types.ts
+  // yet (regen deferred); read them via an `any` cast.
   const { data: settings } = await admin
     .from('agent_settings')
-    .select('website_url')
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .select(
+      'website_url, brand_voice, email_signature, email_signature_html, email_signature_logo_url' as any,
+    )
     .eq('agent_id', agent.id)
     .maybeSingle()
-  const websiteUrl = settings?.website_url ?? null
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const settingsAny = settings as any
+  const websiteUrl = settingsAny?.website_url ?? null
+  const voice = {
+    brand_voice: (settingsAny?.brand_voice as string | null) ?? null,
+    email_signature: (settingsAny?.email_signature as string | null) ?? null,
+    email_signature_html: (settingsAny?.email_signature_html as string | null) ?? null,
+  }
+  const signatureLogoUrl: string | null = settingsAny?.email_signature_logo_url ?? null
+  const hasVoice = !!voice.brand_voice || !!voice.email_signature || !!voice.email_signature_html
 
   const agentName =
     [agent.first_name, agent.last_name].filter(Boolean).join(' ') ||
@@ -237,6 +253,10 @@ export default async function DigestPage({
               email:      lead.email,
             },
             pretext,
+            // Pipe voice into the firewall-safe drafter. When the agent has an
+            // HTML signature, signal-draft suppresses the plain-text append —
+            // the Send wire (signal-card.tsx) splices the styled HTML on.
+            voice: hasVoice ? voice : undefined,
           }).catch(() => null)
         : null
 
@@ -313,6 +333,11 @@ export default async function DigestPage({
       // card-without-draft still renders honestly.
       pretext: l.pretext?.label,
       draft:   l.draft,
+      // HTML signature data so the Send wire can splice the styled block
+      // onto outbound emails (HOR-xxx). Both null when the agent hasn't
+      // upgraded — Send falls back to the legacy plain-text path.
+      agentSignatureHtml: voice.email_signature_html,
+      agentSignatureLogoUrl: signatureLogoUrl,
     }
   })
 

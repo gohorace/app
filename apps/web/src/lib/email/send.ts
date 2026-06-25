@@ -600,24 +600,49 @@ function normalizePayload(p: EmailSendPayload): NormalizedPayload {
   // isomorphic-dompurify alternative pulls in jsdom which trips up
   // Next.js's `Collecting page data` step (missing default-stylesheet.css).
   //
-  // Allowlist mirrors what TipTap StarterKit + Link extension can emit:
-  // basic block + inline marks, lists, links. No tables/images/iframes/etc.
+  // Allowlist covers TipTap StarterKit + Link extension output PLUS the
+  // styled email-signature block (HOR-xxx): `<img>` for the agent's logo and
+  // a constrained set of inline styles on `p`/`span`/`div`/`img` so the
+  // signature keeps its layout. `<img>` is locked to http/https schemes
+  // (no `cid:`, no `data:`, no `javascript:`).
   const cleanHtml = sanitizeHtml(rawHtml, {
     allowedTags: [
       'p', 'br', 'span', 'div',
       'b', 'strong', 'i', 'em', 'u',
       'a',
+      'img',
       'ul', 'ol', 'li',
       'blockquote', 'code',
     ],
     allowedAttributes: {
       a: ['href', 'target', 'rel'],
+      img: ['src', 'alt', 'style'],
+      p: ['style'],
+      span: ['style'],
+      div: ['style'],
     },
     allowedSchemes: ['http', 'https', 'mailto', 'tel'],
-    allowedSchemesByTag: { a: ['http', 'https', 'mailto', 'tel'] },
+    allowedSchemesByTag: {
+      a: ['http', 'https', 'mailto', 'tel'],
+      img: ['http', 'https'],
+    },
+    allowedStyles: {
+      '*': {
+        color: [/^#(?:[0-9a-f]{3}){1,2}$/i, /^rgb\(/i, /^rgba\(/i, /^[a-z\-]+$/i],
+        'font-weight': [/^(?:bold|normal|\d{3})$/i],
+        'font-style': [/^(?:italic|normal)$/i],
+        'text-decoration': [/^(?:underline|none)$/i],
+        margin: [/^[0-9 .pxem%-]+$/i],
+        'max-height': [/^[0-9.]+(?:px|em|%)$/i],
+        'max-width': [/^[0-9.]+(?:px|em|%)$/i],
+        height: [/^[0-9.]+(?:px|em|%)$/i],
+        width: [/^[0-9.]+(?:px|em|%)$/i],
+        display: [/^(?:block|inline|inline-block)$/i],
+      },
+    },
     disallowedTagsMode: 'discard',
-    // Strip on* event handlers + any style attribute (any non-allowed attr
-    // is dropped because allowedAttributes is an explicit whitelist).
+    // Strip on* event handlers (allowedAttributes is an explicit whitelist
+    // so anything not listed — class, data-*, on* — is dropped).
   })
 
   const bodyText = (p.body_text ?? '').trim() || derivePlainText(cleanHtml)

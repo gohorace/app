@@ -35,6 +35,7 @@ import {
 } from 'lucide-react'
 import { useCompanion } from '@/components/companion/companion-context'
 import { INTENT_AVATAR_BG, type IntentLevel } from '@/lib/design/intent'
+import { composeSignatureHtml, signatureToPlainText } from '@/lib/email/signature'
 
 // ── Data contract ─────────────────────────────────────────────────────────────
 
@@ -95,6 +96,11 @@ export interface DigestSignal {
    *  surfaced outside the active roster — the Stream uses it directly instead
    *  of deriving the tier from `tier` + `intent`. */
   streamTier?: 'act' | 'heating' | 'cooling' | 'steady' | 'quiet'
+  /** Agent's sanitised HTML signature (HOR-xxx). When present, the Send wire
+   *  splices `composeSignatureHtml({html, logoUrl})` onto body_html instead of
+   *  relying on the plain-text fallback embedded in the model output. */
+  agentSignatureHtml?: string | null
+  agentSignatureLogoUrl?: string | null
 }
 
 /**
@@ -410,6 +416,19 @@ export function SignalCard({ signal, onClear }: SignalCardProps) {
     }
     if (!signal.draft) return
     setSending(true)
+    // HOR-xxx: when the agent has an HTML signature, splice the styled block
+    // onto body_html (signal-draft suppresses its plain-text append in that
+    // case). body_text gets the derived plain-text signature so HTML and
+    // plain-text alternatives stay in sync.
+    const sigHtml = signal.agentSignatureHtml ?? null
+    const sigLogoUrl = signal.agentSignatureLogoUrl ?? null
+    const hasHtmlSignature = !!sigHtml || !!sigLogoUrl
+    const body_html = hasHtmlSignature
+      ? plainTextToHtml(body) + composeSignatureHtml({ html: sigHtml, logoUrl: sigLogoUrl })
+      : plainTextToHtml(body)
+    const body_text = hasHtmlSignature && sigHtml
+      ? `${body}\n\n${signatureToPlainText(sigHtml)}`
+      : body
     try {
       const res = await fetch('/api/email/send', {
         method: 'POST',
@@ -417,8 +436,8 @@ export function SignalCard({ signal, onClear }: SignalCardProps) {
         body: JSON.stringify({
           contact_id: signal.contactId,
           subject: signal.draft.subject,
-          body_html: plainTextToHtml(body),
-          body_text: body,
+          body_html,
+          body_text,
           tracked: true,
           source: 'digest_prompt',
         }),
