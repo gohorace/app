@@ -80,6 +80,38 @@ export interface RecentSoldHit {
   last_activity_at: string | null
 }
 
+/** A sold property the agent can swap into the active sold row of the
+ *  composer's Insight & Content panel. Includes the id so the dock can
+ *  find-replace the address in the email + SMS body on swap.
+ *
+ *  Price is read out of the row's jsonb `metadata` (key `price`, when
+ *  present); the `properties` table itself has no top-level price column. */
+export interface SoldAlt {
+  id: string
+  street_number: string | null
+  street_name: string | null
+  suburb: string | null
+  /** Extracted from `metadata->>price` when the row has one; null otherwise.
+   *  Most G-NAF-sourced rows have empty metadata, so this is usually null. */
+  price: number | null
+  last_activity_at: string | null
+}
+
+/**
+ * Resolve the workspace id for an agent. `properties` is scoped by
+ * `workspace_id`, not `agent_id` — without this hop the sold-property fetchers
+ * silently return [] (which was the case for `fetchRecentSoldBySuburb` until
+ * this fix landed).
+ */
+async function workspaceIdForAgent(admin: AdminClient, agentId: string): Promise<string | null> {
+  const { data } = await admin
+    .from('agents')
+    .select('workspace_id')
+    .eq('id', agentId)
+    .maybeSingle()
+  return data?.workspace_id ?? null
+}
+
 // ── 1. Pretext sourcing ─────────────────────────────────────────────────────
 
 /**
@@ -87,7 +119,8 @@ export interface RecentSoldHit {
  * `derivePretext` call is a cheap Map lookup, not an N+1.
  *
  * Returns a map keyed by suburb → the freshest sold hit, or empty when no
- * suburbs were passed. The query is workspace-scoped via `agent_id`.
+ * suburbs were passed. The query is workspace-scoped via `workspace_id`
+ * (resolved internally from `agentId`).
  */
 export async function fetchRecentSoldBySuburb(
   admin: AdminClient,
@@ -98,12 +131,15 @@ export async function fetchRecentSoldBySuburb(
   const wanted = [...new Set(suburbs.filter((s): s is string => Boolean(s)))]
   if (wanted.length === 0) return new Map()
 
+  const workspaceId = await workspaceIdForAgent(admin, agentId)
+  if (!workspaceId) return new Map()
+
   const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000).toISOString()
   const { data } = await admin
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .from('properties' as any)
     .select('street_number, street_name, suburb, last_activity_at')
-    .eq('agent_id', agentId)
+    .eq('workspace_id', workspaceId)
     .eq('status', 'sold')
     .in('suburb', wanted)
     .gte('last_activity_at', since)
@@ -114,6 +150,61 @@ export async function fetchRecentSoldBySuburb(
     if (row.suburb && !out.has(row.suburb)) out.set(row.suburb, row)
   }
   return out
+}
+
+/**
+ * Fetch up to `limit` recent-sold properties in a single suburb so the
+ * composer's swap popover (Outreach Review re-skin) has alternatives the
+ * agent can substitute into the draft. Returns an empty array when the
+ * suburb is null/empty or nothing has sold in the window.
+ *
+ * Workspace-scoped via `workspace_id` (resolved internally from `agentId`).
+ * Ordered by recency. `price` is pulled out of jsonb `metadata` and may be
+ * null for G-NAF-sourced rows that ship without one.
+ */
+export async function fetchSoldAlts(
+  admin: AdminClient,
+  agentId: string,
+  suburb: string | null,
+  limit = 5,
+  windowDays = 90,
+): Promise<SoldAlt[]> {
+  if (!suburb) return []
+  const workspaceId = await workspaceIdForAgent(admin, agentId)
+  if (!workspaceId) return []
+
+  const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000).toISOString()
+  const { data } = await admin
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .from('properties' as any)
+    .select('id, street_number, street_name, suburb, metadata, last_activity_at')
+    .eq('workspace_id', workspaceId)
+    .eq('status', 'sold')
+    .eq('suburb', suburb)
+    .gte('last_activity_at', since)
+    .order('last_activity_at', { ascending: false })
+    .limit(limit)
+
+  return ((data ?? []) as Array<Omit<SoldAlt, 'price'> & { metadata: Record<string, unknown> | null }>).map((row) => ({
+    id: row.id,
+    street_number: row.street_number,
+    street_name: row.street_name,
+    suburb: row.suburb,
+    price: extractPriceFromMetadata(row.metadata),
+    last_activity_at: row.last_activity_at,
+  }))
+}
+
+function extractPriceFromMetadata(metadata: Record<string, unknown> | null | undefined): number | null {
+  if (!metadata) return null
+  const raw = metadata.price ?? metadata.sale_price ?? metadata.sold_price
+  if (typeof raw === 'number' && Number.isFinite(raw)) return raw
+  if (typeof raw === 'string') {
+    const cleaned = raw.replace(/[^\d.]/g, '')
+    const n = Number.parseFloat(cleaned)
+    return Number.isFinite(n) ? n : null
+  }
+  return null
 }
 
 /**
