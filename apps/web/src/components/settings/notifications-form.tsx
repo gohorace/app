@@ -208,7 +208,7 @@ function PushStatusCard() {
               : 'bg-destructive/10 text-destructive border border-destructive/20'
           )}>
             {simResult.ok
-              ? `✓ Fired for ${simResult.contact} — +${simResult.scoreDelta} pts (score now ${simResult.newScore}). Check your notifications.`
+              ? `✓ Fired for ${simResult.contact} — their behaviour pattern shifted. Check your notifications.`
               : `✗ ${simResult.error}`}
           </div>
         )}

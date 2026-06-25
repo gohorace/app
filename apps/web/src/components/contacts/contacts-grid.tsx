@@ -709,7 +709,7 @@ export function ContactsGrid({ contacts, initialQ = '', agentId, appUrl, selecte
                 {selectedList.kind === 'saved_filter'
                   ? '· filters hydrated from this view'
                   : selectedList.kind === 'builtin'
-                  ? '· computed live from intent score'
+                  ? '· computed live from behaviour signals'
                   : '· showing only members'}
               </span>
               <button

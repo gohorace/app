@@ -29,6 +29,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database.types'
 import type { CompanionAction, ConversationTurn, HoraceMessage, MessageReference } from '@/lib/companion/types'
 import { getContactEmailSends, type EmailSendSummary } from '@/lib/contacts/email-engagement'
+import { intentForScore, INTENT_LABEL } from '@/lib/design/intent'
 
 type AdminClient = SupabaseClient<Database>
 
@@ -226,6 +227,7 @@ Hard rules:
 - When EMAIL ENGAGEMENT is present you CAN and should answer whether your emails to that contact were opened or clicked — cite the specific counts and dates shown. When it is absent for the person asked about, say there's no tracked email to them yet rather than implying an open or click that isn't in the data.
 - Email opens are an imperfect signal — mail apps and security scanners can load the tracking pixel without a human reading anything. Say a message was "opened", never "read", and treat a click as the stronger, more reliable sign of genuine interest. Don't over-claim opens.
 - You are a thinking partner and signal reader, not a CRM. Do not invent tasks, deal stages, or follow-up reminders.
+- Never refer to a contact's numeric "score" or "rating" or "points" — Horace doesn't talk that way any more. Describe the behaviour signal qualitatively (e.g. "high intent", "worth watching", "quietly circling", or "quiet — no signal yet") using the phrasing given in CONTACTS. If asked "what's their score", answer in those terms, not a number.
 - Answer open-ended and casual questions ("what can you help me with?", "help me think about Brian") naturally — but ALWAYS through the JSON envelope, with your reply in "text". Never respond with bare prose outside the JSON.
 
 THE FIREWALL (hard rule — applies to every email you draft):
@@ -244,7 +246,9 @@ export function buildGroundingBlock(g: Grounding, prompt: string, history: Conve
       const seen = c.lastSeen
         ? new Date(c.lastSeen).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })
         : 'not seen yet'
-      lines.push(`- ${c.name}${c.email ? ` (${c.email})` : ''} · score ${c.score} · last seen ${seen} · id=${c.id}`)
+      const tier = intentForScore(c.score)
+      const signal = tier ? INTENT_LABEL[tier].toLowerCase() : 'quiet — no behaviour signal yet'
+      lines.push(`- ${c.name}${c.email ? ` (${c.email})` : ''} · ${signal} · last seen ${seen} · id=${c.id}`)
     }
   } else {
     lines.push('CONTACTS: none on file yet.')
