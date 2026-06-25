@@ -158,7 +158,7 @@ async function buildContentSources(
 
   const altItems: ContentSourceAlt[] = alts.map((a) => ({
     id: a.id,
-    label: `${formatStreet(a) || 'Recent sale'} · sold ${formatPrice(a.price)}`,
+    label: formatAltLabel(a),
     address: formatAddress(a, suburb),
     price: formatPrice(a.price),
   }))
@@ -167,7 +167,9 @@ async function buildContentSources(
     {
       id: `sold:${active.id}`,
       type: 'sold',
-      label: `Sold — ${activeAddress} · ${activePrice}`,
+      label: activePrice
+        ? `Sold — ${activeAddress} · ${activePrice}`
+        : `Sold — ${activeAddress}`,
       tag: 'relevant',
       address: activeAddress,
       price: activePrice,
@@ -185,8 +187,17 @@ function formatAddress(a: SoldAlt, suburb: string): string {
   return street ? `${street}, ${suburb}` : `a home in ${suburb}`
 }
 
+function formatAltLabel(a: SoldAlt): string {
+  const street = formatStreet(a) || 'Recent sale'
+  const price = formatPrice(a.price)
+  return price ? `${street} · sold ${price}` : `${street} · recently sold`
+}
+
+/** Returns a price like `$2.34M` / `$840k`, or empty string when price is
+ *  unknown (G-NAF imports usually have empty metadata). Callers should treat
+ *  empty as "no price to display". */
 function formatPrice(price: number | null): string {
-  if (price == null || !Number.isFinite(price)) return '—'
+  if (price == null || !Number.isFinite(price)) return ''
   if (price >= 1_000_000) {
     const m = price / 1_000_000
     return `$${m.toFixed(m >= 10 ? 1 : 2).replace(/\.?0+$/, '')}M`

@@ -1657,16 +1657,25 @@ function ComposerDockV3({ payload, onClose, rightOffset = 24, focusNonce = 0 }: 
         return
       }
       // Find-replace street+price in the email body HTML and the SMS text.
+      // Price replacement is skipped when either side is unknown (G-NAF rows
+      // often have empty metadata) so we never strip a real price out of the
+      // body and leave dangling grammar behind.
       const oldStreet = oldAlt.address.split(',')[0].trim()
       const nextStreet = nextAlt.address.split(',')[0].trim()
+      const swapPrice = !!oldAlt.price && !!nextAlt.price
+      const transform = (s: string) => {
+        let out = replaceAll(s, oldStreet, nextStreet)
+        if (swapPrice) out = replaceAll(out, oldAlt.price, nextAlt.price)
+        return out
+      }
       const html = editor.getHTML()
-      const newHtml = replaceAll(replaceAll(html, oldStreet, nextStreet), oldAlt.price, nextAlt.price)
+      const newHtml = transform(html)
       if (newHtml !== html) {
         programmaticFill.current = true
         editor.commands.setContent(newHtml, false)
         programmaticFill.current = false
       }
-      setSmsText((prev) => replaceAll(replaceAll(prev, oldStreet, nextStreet), oldAlt.price, nextAlt.price))
+      setSmsText((prev) => transform(prev))
       setSources((prev) =>
         prev.map((s) =>
           s.type === 'sold'
@@ -1829,21 +1838,22 @@ function ComposerDockV3({ payload, onClose, rightOffset = 24, focusNonce = 0 }: 
           />
         )}
 
-        {mode === 'email' && (
-          <V3EmailBody
+        {!drafted ? (
+          // Shared pre-draft body for ALL channels. One Ask-Horace click
+          // populates the email body, the SMS text, and the call coaching in a
+          // single round-trip, so the agent can hop tabs freely without each
+          // channel having its own draft button.
+          <V3PreDraftBody
             scenario={scenario}
+            mode={mode}
             firstName={contact.firstName}
-            drafted={drafted}
-            editor={editor}
             onAskHorace={runDraft}
           />
-        )}
-
-        {mode === 'sms' && (
+        ) : mode === 'email' ? (
+          <V3EmailDraftedBody editor={editor} />
+        ) : mode === 'sms' ? (
           <V3SmsBody value={smsText} onChange={setSmsText} />
-        )}
-
-        {mode === 'call' && (
+        ) : (
           <V3CallBody firstName={contact.firstName} signalLabel={payload.signalContext?.label} />
         )}
       </div>
@@ -1902,15 +1912,26 @@ function replaceAll(haystack: string, needle: string, replacement: string): stri
 }
 
 /** Build a 160-char SMS draft from the firewall-safe email body so the SMS
- *  channel has a sensible starting point. Keeps the first non-greeting sentence
- *  + a generic close. Truncated hard at 158 chars + "…". */
+ *  channel has a sensible starting point. Splits the body into paragraphs,
+ *  skips obvious salutations ("Hi Sarah,", "Sarah,") and sign-offs ("Warm
+ *  regards,", "James Reid"), uses the first real content paragraph, and
+ *  prepends a fresh `Hi {first},` opener. Truncated hard at 158 chars + "…". */
 function deriveSmsFromBody(body: string, firstName: string): string {
-  const lines = body
-    .split(/\n+/)
-    .map((l) => l.trim())
-    .filter((l) => l && !/^(hi|hello|hey|warm regards|kind regards|regards|cheers|thanks),?$/i.test(l))
-  const opener = `Hi ${firstName.split(/\s+/)[0]}, `
-  let text = opener + (lines[0] ?? '')
+  const first = firstName.split(/\s+/)[0] || firstName
+  const paragraphs = body
+    .split(/\n\s*\n/)
+    .map((p) => p.trim().replace(/\n+/g, ' '))
+    .filter(Boolean)
+  // A paragraph is a salutation/signoff/signature when it's a short fragment
+  // (≤4 words like "Sarah," / "James Reid") OR it starts with a greeting or
+  // sign-off word. Pick the first paragraph that isn't.
+  const isShortAside = (p: string) => p.split(/\s+/).length <= 4
+  const startsWithSalutationOrSignoff = (p: string) =>
+    /^(hi|hello|hey|dear|warm regards|kind regards|regards|cheers|thanks|best|sincerely)\b/i.test(p)
+  const content =
+    paragraphs.find((p) => !isShortAside(p) && !startsWithSalutationOrSignoff(p)) ?? paragraphs[0] ?? ''
+  const opener = `Hi ${first}, `
+  let text = opener + content
   if (text.length <= 160) return text
   text = text.slice(0, 158).replace(/\s+\S*$/, '') + '…'
   return text
@@ -2701,19 +2722,20 @@ function V3MuteRow({ label, on, onToggle }: { label: string; on: boolean; onTogg
   )
 }
 
-// ── V3 Email body (drafted + empty) ───────────────────────────────────────
+// ── V3 Pre-draft body (shared across all channels) ────────────────────────
+// Renders whenever Horace hasn't produced a draft yet, regardless of which
+// channel tab is active. One Ask-Horace click populates email + SMS + call
+// coaching together, so the agent never has to re-ask per channel.
 
-function V3EmailBody({
+function V3PreDraftBody({
   scenario,
+  mode,
   firstName,
-  drafted,
-  editor,
   onAskHorace,
 }: {
   scenario: ComposerScenario
+  mode: ComposerChannel
   firstName: string
-  drafted: boolean
-  editor: ReturnType<typeof useEditor>
   onAskHorace: () => void
 }) {
   if (scenario === 'drafting') {
@@ -2725,9 +2747,7 @@ function V3EmailBody({
   }
   if (scenario === 'failed-draft') {
     return (
-      <div style={{ padding: '32px 24px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 12 }}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/horace-parchment.png" alt="" width={36} height={36} style={{ borderRadius: '50%' }} />
+      <V3CenteredState>
         <p style={{ margin: 0, fontSize: 13, color: V3.stoneAA, fontFamily: V3.font, maxWidth: 270, lineHeight: 1.5 }}>
           Horace couldn&apos;t draft this one. Try again, or write it yourself.
         </p>
@@ -2741,7 +2761,7 @@ function V3EmailBody({
             padding: '8px 15px',
             borderRadius: 9999,
             background: V3.surface,
-            border: `1px solid rgba(196,98,45,0.25)`,
+            border: '1px solid rgba(196,98,45,0.25)',
             cursor: 'pointer',
             fontFamily: V3.font,
             fontWeight: 600,
@@ -2751,14 +2771,12 @@ function V3EmailBody({
         >
           Ask Horace again
         </button>
-      </div>
+      </V3CenteredState>
     )
   }
   if (scenario === 'setup') {
     return (
-      <div style={{ padding: '32px 24px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 12 }}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/horace-parchment.png" alt="" width={36} height={36} style={{ borderRadius: '50%' }} />
+      <V3CenteredState>
         <p style={{ margin: 0, fontSize: 13, color: V3.stoneAA, fontFamily: V3.font, maxWidth: 270, lineHeight: 1.5 }}>
           Before I draft in your voice, I need your brand voice and signature — a two-minute setup.
         </p>
@@ -2779,77 +2797,90 @@ function V3EmailBody({
         >
           Set up your voice
         </a>
-      </div>
+      </V3CenteredState>
     )
   }
-  if (!drafted) {
-    // Empty / pre-draft state — Ask Horace pill (matches design exactly)
-    return (
-      <div
+  // Default: empty / pre-draft. Show the Ask Horace pill regardless of
+  // channel. Bottom copy adapts to the channel ("email" / "message" / "call").
+  const channelNoun = mode === 'email' ? 'email' : mode === 'sms' ? 'message' : 'call'
+  return (
+    <div
+      style={{
+        padding: '48px 24px 40px',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        textAlign: 'center',
+        minHeight: 196,
+      }}
+      role="tabpanel"
+      aria-label={`${mode} draft — empty`}
+    >
+      <button
+        type="button"
+        onClick={onAskHorace}
         style={{
-          padding: '48px 24px 40px',
-          display: 'flex',
-          flexDirection: 'column',
+          display: 'inline-flex',
           alignItems: 'center',
-          textAlign: 'center',
-          minHeight: 196,
+          gap: 12,
+          background: V3.surface,
+          border: '1px solid rgba(196,98,45,0.25)',
+          borderRadius: 9999,
+          padding: '9px 22px 9px 11px',
+          cursor: 'pointer',
+          animation: 'or-glowPulse 2.6s ease-in-out infinite',
         }}
-        role="tabpanel"
-        aria-label="Email draft — empty"
       >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/horace-parchment.png" alt="Horace" width={38} height={38} style={{ borderRadius: '50%', objectFit: 'cover', flexShrink: 0, display: 'block' }} />
+        <span style={{ textAlign: 'left' }}>
+          <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: V3.ink, fontFamily: V3.font }}>
+            Ask Horace to draft
+          </span>
+          <span style={{ display: 'block', fontSize: 12, color: V3.stone, fontFamily: V3.font, marginTop: 1 }}>
+            From {firstName}&apos;s recent activity
+          </span>
+        </span>
+      </button>
+      <div style={{ marginTop: 18, fontSize: 13.5, color: V3.stone, fontFamily: V3.font, lineHeight: 1.5 }}>
+        It&apos;s your {channelNoun}, in your voice —
+        <br />
         <button
           type="button"
           onClick={onAskHorace}
           style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 12,
-            background: V3.surface,
-            border: `1px solid rgba(196,98,45,0.25)`,
-            borderRadius: 9999,
-            padding: '9px 22px 9px 11px',
+            background: 'none',
+            border: 'none',
+            padding: 0,
             cursor: 'pointer',
-            animation: 'or-glowPulse 2.6s ease-in-out infinite',
+            color: V3.terracotta,
+            textDecoration: 'underline',
+            fontWeight: 600,
+            fontFamily: V3.font,
+            fontSize: 13.5,
           }}
         >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/horace-parchment.png" alt="Horace" width={38} height={38} style={{ borderRadius: '50%', objectFit: 'cover', flexShrink: 0, display: 'block' }} />
-          <span style={{ textAlign: 'left' }}>
-            <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: V3.ink, fontFamily: V3.font }}>
-              Ask Horace to draft
-            </span>
-            <span style={{ display: 'block', fontSize: 12, color: V3.stone, fontFamily: V3.font, marginTop: 1 }}>
-              From {firstName}&apos;s recent activity
-            </span>
-          </span>
+          just start writing
         </button>
-        <div style={{ marginTop: 18, fontSize: 13.5, color: V3.stone, fontFamily: V3.font, lineHeight: 1.5 }}>
-          It&apos;s your email, in your voice —
-          <br />
-          <button
-            type="button"
-            onClick={onAskHorace}
-            style={{
-              background: 'none',
-              border: 'none',
-              padding: 0,
-              cursor: 'pointer',
-              color: V3.terracotta,
-              textDecoration: 'underline',
-              fontWeight: 600,
-              fontFamily: V3.font,
-              fontSize: 13.5,
-            }}
-          >
-            just start writing
-          </button>
-          .
-        </div>
+        .
       </div>
-    )
-  }
-  // Drafted / edited / sending — the TipTap editor renders here, styled
-  // borderless to match the design's "borderless, auto-growing textarea" look.
+    </div>
+  )
+}
+
+function V3CenteredState({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ padding: '32px 24px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 12 }}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/horace-parchment.png" alt="" width={36} height={36} style={{ borderRadius: '50%' }} />
+      {children}
+    </div>
+  )
+}
+
+// ── V3 Email drafted body — the TipTap editor styled borderless to match
+//     the design's "borderless, auto-growing textarea" look.
+function V3EmailDraftedBody({ editor }: { editor: ReturnType<typeof useEditor> }) {
   return (
     <div style={{ padding: '14px 18px 18px' }} role="tabpanel" aria-label="Email draft">
       <EditorContent editor={editor} />

@@ -152,23 +152,26 @@ describe('fetchSoldAlts', () => {
     expect(from).not.toHaveBeenCalled()
   })
 
-  it('queries with the agent + suburb + sold + window and applies the limit', async () => {
+  it('resolves workspace_id from agent_id, then queries sold properties scoped by workspace + suburb', async () => {
     const calls: Array<[string, unknown]> = []
-    const rows: SoldAlt[] = [
-      { id: 'p1', street_number: '14', street_name: 'Renny St', suburb: 'Paddington', price: 2340000, last_activity_at: '2026-06-01T00:00:00Z' },
-      { id: 'p2', street_number: '8', street_name: 'Gurner St', suburb: 'Paddington', price: 1980000, last_activity_at: '2026-05-21T00:00:00Z' },
+    // Properties rows are returned with `metadata` (not a top-level price col);
+    // the fetcher extracts price from metadata.price.
+    const propertiesRows = [
+      { id: 'p1', street_number: '14', street_name: 'Renny St', suburb: 'Paddington', metadata: { price: 2340000 }, last_activity_at: '2026-06-01T00:00:00Z' },
+      { id: 'p2', street_number: '8',  street_name: 'Gurner St', suburb: 'Paddington', metadata: {},                  last_activity_at: '2026-05-21T00:00:00Z' },
     ]
-    // Chain builder that records the method invocations and returns itself
-    // until the .limit() terminator, which resolves with the fake data.
+    // One shared chainable builder. `.maybeSingle()` terminates the agents
+    // lookup; `.limit()` terminates the properties query.
     const builder = {
       select: (...args: unknown[]) => (calls.push(['select', args]), builder),
       eq: (...args: unknown[]) => (calls.push(['eq', args]), builder),
       in: (...args: unknown[]) => (calls.push(['in', args]), builder),
       gte: (...args: unknown[]) => (calls.push(['gte', args]), builder),
       order: (...args: unknown[]) => (calls.push(['order', args]), builder),
+      maybeSingle: () => Promise.resolve({ data: { workspace_id: 'ws-1' }, error: null }),
       limit: (...args: unknown[]) => {
         calls.push(['limit', args])
-        return Promise.resolve({ data: rows, error: null })
+        return Promise.resolve({ data: propertiesRows, error: null })
       },
     }
     const admin = {
@@ -178,12 +181,37 @@ describe('fetchSoldAlts', () => {
       },
     } as unknown as Parameters<typeof fetchSoldAlts>[0]
 
-    const out = await fetchSoldAlts(admin, 'agent-1', 'Paddington', 5)
-    expect(out).toEqual(rows)
+    const out: SoldAlt[] = await fetchSoldAlts(admin, 'agent-1', 'Paddington', 5)
+
+    // Workspace resolution happened before the properties query.
+    const fromCalls = calls.filter((c) => c[0] === 'from').map((c) => (c[1] as unknown[])[0])
+    expect(fromCalls).toEqual(['agents', 'properties'])
+    // Properties query is scoped by workspace_id (not agent_id) + status + suburb.
+    expect(calls.find((c) => c[0] === 'eq' && (c[1] as unknown[])[0] === 'workspace_id')?.[1]).toEqual(['workspace_id', 'ws-1'])
     expect(calls.find((c) => c[0] === 'eq' && (c[1] as unknown[])[0] === 'status')?.[1]).toEqual(['status', 'sold'])
-    expect(calls.find((c) => c[0] === 'eq' && (c[1] as unknown[])[0] === 'agent_id')?.[1]).toEqual(['agent_id', 'agent-1'])
     expect(calls.find((c) => c[0] === 'eq' && (c[1] as unknown[])[0] === 'suburb')?.[1]).toEqual(['suburb', 'Paddington'])
     expect(calls.find((c) => c[0] === 'limit')?.[1]).toEqual([5])
+    // Output shape: price extracted from metadata when present, null otherwise.
+    expect(out).toHaveLength(2)
+    expect(out[0].price).toBe(2340000)
+    expect(out[1].price).toBeNull()
+  })
+
+  it('returns [] when the agent has no workspace (broken seat)', async () => {
+    const builder = {
+      select: () => builder,
+      eq: () => builder,
+      maybeSingle: () => Promise.resolve({ data: null, error: null }),
+      // properties.limit would crash if reached — its presence is just to keep
+      // the chain type-safe.
+      in: () => builder,
+      gte: () => builder,
+      order: () => builder,
+      limit: () => Promise.reject(new Error('properties query should not run when workspace lookup is empty')),
+    }
+    const admin = { from: () => builder } as unknown as Parameters<typeof fetchSoldAlts>[0]
+    const out = await fetchSoldAlts(admin, 'orphan-agent', 'Paddington', 5)
+    expect(out).toEqual([])
   })
 
   it('returns [] when the suburb is the empty string', async () => {
