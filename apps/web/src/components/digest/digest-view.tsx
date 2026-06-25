@@ -313,6 +313,10 @@ function Stream({ signals }: { signals: DigestSignal[] }) {
       })
       setUndoTarget({ id: data.contactId, name: data.name })
       setClearedAny(true)
+      // Demo cards (SAMPLE DATA / ?demo=1) never persist — their
+      // contactId is `demo-…`, not a real UUID, so the route would 422.
+      // The optimistic hide IS the affordance for sample-data preview.
+      if (data.contactId.startsWith('demo-')) return
       try {
         const res = await fetch('/api/stream/clear', {
           method: 'POST',
@@ -346,6 +350,9 @@ function Stream({ signals }: { signals: DigestSignal[] }) {
       next.delete(target.id)
       return next
     })
+    // Mirror handleClear: demo cards never hit the server, so undo
+    // is pure UI too.
+    if (target.id.startsWith('demo-')) return
     try {
       const res = await fetch('/api/stream/clear', {
         method: 'DELETE',
@@ -448,9 +455,9 @@ function Stream({ signals }: { signals: DigestSignal[] }) {
                             signalContext: { label: s.insight, detail: s.suburb ?? undefined },
                           })
                   }
-                  // Clear — every real card. Demo cards skip it (no contact
-                  // record to suppress).
-                  onClear={s.contactId.startsWith('demo-') ? undefined : handleClear}
+                  // Clear — every card, including demo. Demo cards branch
+                  // inside handleClear to skip the round-trip.
+                  onClear={handleClear}
                 />
               ))}
             </div>
