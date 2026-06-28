@@ -200,6 +200,50 @@
 .chipX { display: inline-flex; margin-left: 1px; opacity: 0.6; }
 .chipX:hover { opacity: 1; }
 
+/* search — right-aligned in the bar, matches chip styling */
+.search {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border: 0.5px solid var(--t-border-tertiary);
+  border-radius: var(--radius-md);
+  background: var(--t-bg-primary);
+  min-width: 220px;
+  transition: border-color var(--duration-fast) var(--ease-out);
+}
+.search:hover { border-color: var(--t-border-secondary); }
+.search:focus-within { border-color: var(--t-focus); }
+.search[data-on='true'] { border-color: var(--t-border-secondary); }
+.search svg { color: var(--t-text-tertiary); flex: none; }
+.search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font-family: var(--font-body);
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--t-text-primary);
+  padding: 0;
+}
+.search input::placeholder { color: var(--t-text-tertiary); }
+/* hide the native search clear (we render our own X) */
+.search input::-webkit-search-cancel-button,
+.search input::-webkit-search-decoration { -webkit-appearance: none; appearance: none; }
+.searchClear {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 16px; height: 16px;
+  border: 0; padding: 0;
+  background: transparent;
+  color: var(--t-text-tertiary);
+  cursor: pointer;
+  opacity: 0.7;
+}
+.searchClear:hover { opacity: 1; color: var(--t-text-secondary); }
+
 /* ── Grid ──────────────────────────────────────── */
 
 /* bounded scroll region (both axes) — fills the space between the header bar
@@ -245,6 +289,8 @@
   text-align: inherit;
   font: inherit;
   color: inherit;
+  min-width: 0;
+  overflow: hidden;
 }
 .colhead:hover .colname { color: var(--t-text-primary); }
 .colname {
@@ -254,12 +300,22 @@
   letter-spacing: 0.005em;
   color: var(--t-text-secondary);
   text-transform: lowercase;
+  white-space: nowrap;
+  flex: 0 1 auto;
+  min-width: 0;
 }
+/* num-column headers (right-aligned) clip the column NAME on the left when
+   they overflow — give the name priority and let the type label drop first. */
+.grid thead th.num .coltype { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: clip; }
+.grid thead th.num .colname { flex: 0 0 auto; }
 .coltype {
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--t-text-tertiary);
   text-transform: lowercase;
+  white-space: nowrap;
+  flex: 0 1 auto;
+  min-width: 0;
 }
 .caret {
   margin-left: 2px;
@@ -476,6 +532,8 @@ th[aria-sort='descending'] .caret { opacity: 1; color: var(--t-text-secondary); 
   /* timestamp flows left under the title block instead of being pushed
      hard right on a cramped line */
   .sub { margin-left: 0; }
-  /* header bar wraps: name + count on line one, query chips on line two (left-aligned) */
+  /* header bar wraps: name + count on line one, query chips on line two (left-aligned),
+     search on line three (full-width) */
   .chips { flex-basis: 100%; justify-content: flex-start; }
+  .search { margin-left: 0; flex-basis: 100%; min-width: 0; }
 }
