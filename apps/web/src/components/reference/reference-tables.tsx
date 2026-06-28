@@ -47,6 +47,7 @@ const IconChevL = (p: SvgProps) => (<Svg {...p}><path d="M15 6l-6 6 6 6" /></Svg
 const IconChevR = (p: SvgProps) => (<Svg {...p}><path d="M9 6l6 6-6 6" /></Svg>)
 const IconX = (p: SvgProps) => (<Svg {...p}><path d="M18 6L6 18M6 6l12 12" /></Svg>)
 const IconOpen = (p: SvgProps) => (<Svg {...p}><path d="M7 17L17 7M8 7h9v9" /></Svg>)
+const IconSearch = (p: SvgProps) => (<Svg {...p}><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></Svg>)
 const CaretUp = (p: SvgProps) => (<Svg s={11} {...p}><path d="M6 15l6-6 6 6" /></Svg>)
 const CaretDown = (p: SvgProps) => (<Svg s={11} {...p}><path d="M6 9l6 6 6-6" /></Svg>)
 
@@ -144,7 +145,7 @@ const PAGE = 50
 
 // ── generic table block ───────────────────────────────────────────────
 function TableBlock<T extends { id: string }>({
-  table, name, columns, rows, signalKey, signalOf, onOpen,
+  table, name, columns, rows, signalKey, signalOf, searchOf, searchPlaceholder, onOpen,
 }: {
   table: string
   name: string
@@ -152,6 +153,10 @@ function TableBlock<T extends { id: string }>({
   rows: T[]
   signalKey: string
   signalOf: (r: T) => SignalValue
+  /** Returns the searchable text for a row (matched case-insensitively against
+   *  the query). Omit to hide the search affordance. */
+  searchOf?: (r: T) => string
+  searchPlaceholder?: string
   onOpen: (row: T) => void
 }) {
   const [sort, setSort] = React.useState<SortState>({
@@ -161,6 +166,7 @@ function TableBlock<T extends { id: string }>({
   const [page, setPage] = React.useState(0)
   const [filters, setFilters] = React.useState<SignalValue[]>([])
   const [filterOpen, setFilterOpen] = React.useState(false)
+  const [query, setQuery] = React.useState('')
   const [loading, setLoading] = React.useState(true)
 
   React.useEffect(() => {
@@ -170,12 +176,18 @@ function TableBlock<T extends { id: string }>({
 
   const col = (k: string) => columns.find((c) => c.key === k)!
 
-  // ── client-side sort / filter / paginate (replace with server query
-  //    params when wiring real data) ────────────────────────────────────
+  // ── client-side search / sort / filter / paginate (replace with server
+  //    query params when wiring real data) ─────────────────────────────
+  const searched = React.useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q || !searchOf) return rows
+    return rows.filter((r) => searchOf(r).toLowerCase().includes(q))
+  }, [rows, query, searchOf])
+
   const filtered = React.useMemo(() => {
-    if (filters.length === 0) return rows
-    return rows.filter((r) => filters.includes(signalOf(r)))
-  }, [rows, filters, signalOf])
+    if (filters.length === 0) return searched
+    return searched.filter((r) => filters.includes(signalOf(r)))
+  }, [searched, filters, signalOf])
 
   const sorted = React.useMemo(() => {
     const sv = col(sort.key).sortVal
@@ -210,6 +222,7 @@ function TableBlock<T extends { id: string }>({
     setPage(0)
   }
   const clearFilter = () => { setFilters([]); setPage(0) }
+  const onQueryChange = (v: string) => { setQuery(v); setPage(0) }
 
   const minWidth = columns.reduce((a, c) => a + c.w, 0)
 
@@ -257,6 +270,29 @@ function TableBlock<T extends { id: string }>({
             <IconSort s={13} /> {sort.key} <b>{sort.dir === 'asc' ? '↑' : '↓'}</b>
           </button>
         </div>
+        {searchOf && (
+          <div className={styles.search} data-on={query.length > 0}>
+            <IconSearch s={13} />
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => onQueryChange(e.target.value)}
+              placeholder={searchPlaceholder ?? `search ${name}`}
+              aria-label={`search ${name}`}
+              spellCheck={false}
+              autoCorrect="off"
+              autoCapitalize="off"
+            />
+            {query && (
+              <button
+                type="button"
+                className={styles.searchClear}
+                onClick={() => onQueryChange('')}
+                aria-label="clear search"
+              ><IconX s={12} /></button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* grid */}
@@ -356,10 +392,10 @@ const CONTACT_COLUMNS: Column<ContactRow>[] = [
   { key: 'email', type: 'text', w: 232, skelW: '76%', title: (r) => r.email ?? 'null',
     sortVal: (r) => (r.email ? r.email.toLowerCase() : null),
     render: (r) => (r.email ? <span className={styles.vSecondary}>{r.email}</span> : <NullCell field="email" />) },
-  { key: 'intent', type: 'int2', w: 84, num: true, skelW: '38%', sortVal: (r) => r.intent, render: (r) => r.intent },
+  { key: 'intent', type: 'int2', w: 116, num: true, skelW: '38%', sortVal: (r) => r.intent, render: (r) => r.intent },
   { key: 'signal', type: 'enum', w: 134, skelW: '70%',
     sortVal: (r) => SIGNAL_ORDER[r.signal], render: (r) => <Signal value={r.signal} /> },
-  { key: 'sessions_7d', type: 'int2', w: 112, num: true, skelW: '34%',
+  { key: 'sessions_7d', type: 'int2', w: 156, num: true, skelW: '34%',
     sortVal: (r) => r.sessions_7d, render: (r) => r.sessions_7d },
   { key: 'last_seen', type: 'timestamptz', w: 190, skelW: '88%', defaultSort: true,
     sortVal: (r) => r.last_seen, title: (r) => r.last_seen ?? 'null',
@@ -370,9 +406,9 @@ const PROPERTY_COLUMNS: Column<PropertyRow>[] = [
   { key: 'id', type: 'uuid', w: 132, skelW: '52%', sortVal: (r) => r.id, render: (r) => <IdCell id={r.id} /> },
   { key: 'address', type: 'text', w: 288, skelW: '84%', title: (r) => r.address,
     sortVal: (r) => r.address.toLowerCase(), render: (r) => <OpenTag>{r.address}</OpenTag> },
-  { key: 'views_7d', type: 'int4', w: 104, num: true, skelW: '44%',
+  { key: 'views_7d', type: 'int4', w: 132, num: true, skelW: '44%',
     sortVal: (r) => r.views_7d, render: (r) => num(r.views_7d) },
-  { key: 'visitors', type: 'int4', w: 104, num: true, skelW: '40%',
+  { key: 'visitors', type: 'int4', w: 132, num: true, skelW: '40%',
     sortVal: (r) => r.visitors, render: (r) => num(r.visitors) },
   { key: 'top_signal', type: 'enum', w: 134, skelW: '70%',
     sortVal: (r) => SIGNAL_ORDER[r.top_signal], render: (r) => <Signal value={r.top_signal} /> },
@@ -439,6 +475,8 @@ export function ReferenceTables({
             rows={contacts}
             signalKey="signal"
             signalOf={(r) => r.signal}
+            searchOf={(r) => `${r.name} ${r.email ?? ''}`}
+            searchPlaceholder="search name or email"
             onOpen={(r) => router.push(`/contacts/${r.id}`)}
           />
         )}
@@ -450,6 +488,8 @@ export function ReferenceTables({
             rows={properties}
             signalKey="top_signal"
             signalOf={(r) => r.top_signal}
+            searchOf={(r) => r.address}
+            searchPlaceholder="search address"
             onOpen={(r) => router.push(`/properties/${r.id}`)}
           />
         )}
