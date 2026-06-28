@@ -2,15 +2,17 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { resolvePrimaryAgent } from '@/lib/seats/resolve-agent'
-import { buildDailyBriefingEmail } from '@/lib/notifications/email'
-import { generateContactInsight, generateBriefingNarrative } from '@/lib/ai/briefing'
-import type { LeadWithInsight, ContactEvent } from '@/lib/ai/briefing'
+import { buildStirringEmail } from '@/lib/notifications/email'
 
 /**
- * GET /api/debug/briefing-preview?to=email@example.com
+ * GET /api/debug/briefing-preview?render=1[&familiar=N&anonymous=M][&to=email]
  *
- * Sends a real daily briefing email to the specified address using live agent
- * data. Requires an active session. Remove this route after preview is done.
+ * Previews the "Something's stirring" notification email. By default the texture
+ * line is keyed to the agent's live firing contacts (familiar = resolved
+ * identity, anonymous = activity with no name yet). Pass ?familiar= / ?anonymous=
+ * to force a specific variant and eyeball the copy table. ?render=1 returns the
+ * HTML in the browser; ?to= sends a real (subject-prefixed) email via Resend.
+ * Requires an active session. Remove this route after preview is done.
  */
 export async function GET(request: NextRequest) {
   // Auth — must be a logged-in agent
@@ -20,6 +22,8 @@ export async function GET(request: NextRequest) {
 
   const to = request.nextUrl.searchParams.get('to')
   const render = request.nextUrl.searchParams.get('render')
+  const familiarOverride = request.nextUrl.searchParams.get('familiar')
+  const anonymousOverride = request.nextUrl.searchParams.get('anonymous')
 
   // ?to= only required when actually sending
   if (!render && !to) return NextResponse.json({ error: 'Missing ?to= param' }, { status: 400 })
@@ -40,75 +44,29 @@ export async function GET(request: NextRequest) {
 
   if (!agent) return NextResponse.json({ error: 'Agent not found' }, { status: 404 })
 
-  const agentName = [agent.first_name, agent.last_name].filter(Boolean).join(' ') || agent.email || 'Agent'
-
-  // Fetch top contacts by score with recent activity
+  // Live bucket from the same RPC the cron uses.
   const { data: rawLeads } = await admin.rpc('get_daily_briefing_data', {
     p_agent_id: agent.id,
   })
+  const leads = rawLeads ?? []
+  const liveFamiliar = leads.filter(
+    (l) => (l as { identified_at?: string | null }).identified_at != null,
+  ).length
+  const liveAnonymous = leads.length - liveFamiliar
 
-  // Fall back to top contacts by score if no daily activity data
-  let leads = rawLeads ?? []
-  if (leads.length === 0) {
-    const { data: topContacts } = await admin
-      .from('contacts')
-      .select('id, first_name, last_name, email, score')
-      .eq('agent_id', agent.id)
-      .gte('score', 5)
-      .order('score', { ascending: false })
-      .limit(3)
+  const familiar = familiarOverride != null
+    ? Math.max(0, parseInt(familiarOverride, 10) || 0)
+    : liveFamiliar
+  const anonymous = anonymousOverride != null
+    ? Math.max(0, parseInt(anonymousOverride, 10) || 0)
+    : liveAnonymous
 
-    leads = (topContacts ?? []).map(c => ({
-      contact_id: c.id,
-      first_name: c.first_name,
-      last_name: c.last_name,
-      email: c.email,
-      score: c.score,
-      score_change: 0,
-      event_count: 0,
-      last_seen_at: null,
-    }))
-  }
-
-  // Init Anthropic
-  const anthropicKey = process.env.ANTHROPIC_API_KEY
-  let anthropic: import('@anthropic-ai/sdk').default | null = null
-  if (anthropicKey) {
-    const Anthropic = (await import('@anthropic-ai/sdk')).default
-    anthropic = new Anthropic({ apiKey: anthropicKey })
-  }
-
-  // Generate per-contact insights
-  const leadsWithInsights: LeadWithInsight[] = await Promise.all(
-    leads.map(async (lead) => {
-      const { data: events } = await admin.rpc('get_contact_events', {
-        p_contact_id: lead.contact_id,
-      })
-
-      const recentEvents: ContactEvent[] = (events ?? []).slice(0, 10).map((e) => ({
-        event_type: e.event_type,
-        properties: (e.properties ?? {}) as Record<string, unknown>,
-        score_delta: e.score_delta,
-        occurred_at: e.occurred_at,
-      }))
-
-      const insight = anthropic
-        ? await generateContactInsight(anthropic, agentName, lead, recentEvents)
-        : {
-            why_now: `${[lead.first_name, lead.last_name].filter(Boolean).join(' ') || lead.email || 'This contact'} has been active on your website.`,
-            action: `Follow up with ${lead.first_name ?? 'this contact'} today.`,
-          }
-
-      return { ...lead, insight }
-    }),
-  )
-
-  // Generate narrative intro
-  const narrative = anthropic
-    ? await generateBriefingNarrative(anthropic, agentName, leads, 'today')
-    : `${leads.length} contact${leads.length === 1 ? '' : 's'} worth your attention today.`
-
-  const { subject, html } = buildDailyBriefingEmail(agentName, leadsWithInsights, narrative, appUrl)
+  const { subject, html } = buildStirringEmail({
+    firstName: agent.first_name,
+    familiar,
+    anonymous,
+    appUrl,
+  })
 
   // ?render=1 — return HTML directly in the browser (no email needed)
   if (render === '1') {
@@ -138,7 +96,7 @@ export async function GET(request: NextRequest) {
     ok: true,
     to,
     subject: `[Preview] ${subject}`,
-    leads: leads.length,
-    aiEnabled: !!anthropic,
+    familiar,
+    anonymous,
   })
 }

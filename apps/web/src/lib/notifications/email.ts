@@ -1,4 +1,5 @@
 import type { LeadWithInsight } from '@/lib/ai/briefing'
+import { selectTextureLine, isTextureFallback } from '@/lib/notifications/texture-line'
 
 export type { LeadWithInsight }
 
@@ -337,6 +338,72 @@ export function buildDailyBriefingEmail(
   `
 
   return { subject, html: shell(leadsBody, footerContent) }
+}
+
+// ── "Something's stirring" notification email (texture line) ───────────────────
+
+/**
+ * The notification email — the tap on the shoulder whose only job is to get the
+ * agent to open their Stream. No named entities, no counts, no signal list: just
+ * one line of texture describing the *kinds* of things stirring, keyed to the
+ * actual mix at send time so it stays true however the Stream moves afterward.
+ * See lib/notifications/texture-line.ts and the handoff.
+ */
+export function buildStirringEmail(args: {
+  firstName: string | null
+  /** Count of firing entities Horace has a resolved name for. */
+  familiar: number
+  /** Count of firing entities with activity but no name yet. */
+  anonymous: number
+  appUrl: string
+}): { subject: string; html: string } {
+  const { firstName, familiar, anonymous, appUrl } = args
+  const first = (firstName ?? '').trim()
+
+  const subject = `Something's stirring`
+
+  const greeting = first ? `Morning ${escapeHtml(first)}.` : 'Morning.'
+
+  const textureLine = selectTextureLine({ familiar, anonymous })
+  // The fixed follow-on sentence already names Horace, so the fallback (which
+  // also names Horace) renders on its own — otherwise it reads as a stutter.
+  const texturePara = isTextureFallback(textureLine)
+    ? escapeHtml(textureLine)
+    : `${escapeHtml(textureLine)} Horace thinks they&rsquo;re worth a look.`
+
+  const signOff = `
+    <div style="margin-top:24px;padding-top:20px;border-top:1px solid ${T.border};">
+      <p style="margin:0;font-size:13px;color:${T.charcoal};line-height:1.6;font-style:italic;">Seize the moment — Horace</p>
+    </div>
+  `
+
+  const bodyContent = `
+    <p style="margin:0 0 16px;font-size:15px;color:${T.ink};line-height:1.6;">${greeting}</p>
+    <p style="margin:0 0 24px;font-size:15px;color:${T.charcoal};line-height:1.65;">${texturePara}</p>
+
+    <div style="margin:4px 0;text-align:center;">
+      <a href="${appUrl}/digest" style="display:inline-block;background:${T.ink};color:${T.cream};text-decoration:none;font-size:13px;font-weight:600;padding:11px 26px;border-radius:6px;">
+        Open your Stream →
+      </a>
+    </div>
+    ${signOff}
+    <div style="height:20px;"></div>
+  `
+
+  const footerContent = `
+    <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+      <tr>
+        <td style="font-size:11px;color:${T.stone};">
+          ${first ? `For ${escapeHtml(first)}` : 'From Horace'}
+        </td>
+        <td align="right" style="font-size:11px;">
+          <a href="${appUrl}/settings/notifications" style="color:${T.stone};text-decoration:none;border-bottom:1px solid ${T.border};">Manage preferences</a>
+        </td>
+      </tr>
+    </table>
+  `
+
+  return { subject, html: shell(bodyContent, footerContent) }
 }
 
 // ── Weekly briefing email ─────────────────────────────────────────────────────

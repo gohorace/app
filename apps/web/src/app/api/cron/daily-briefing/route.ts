@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { revalidateTag } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { buildDailyBriefingEmail } from '@/lib/notifications/email'
+import { buildDailyBriefingEmail, buildStirringEmail } from '@/lib/notifications/email'
 import type { DigestInspection, DigestInspectionScan } from '@/lib/notifications/email'
-import { generateContactInsight, generateBriefingNarrative } from '@/lib/ai/briefing'
-import type { LeadWithInsight, ContactEvent } from '@/lib/ai/briefing'
+import { generateBriefingNarrative } from '@/lib/ai/briefing'
 
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get('authorization')
@@ -105,68 +104,57 @@ export async function GET(request: NextRequest) {
 
       const leads = rawLeads ?? []
 
-      // Generate per-contact AI insights
-      const leadsWithInsights: LeadWithInsight[] = await Promise.all(
-        leads.map(async (lead) => {
-          const { data: events } = await admin.rpc('get_contact_events', {
-            p_contact_id: lead.contact_id,
-          })
+      let subject: string
+      let html: string
 
-          const recentEvents: ContactEvent[] = (events ?? [])
-            .slice(0, 10)
-            .map((e) => ({
-              event_type: e.event_type,
-              properties: (e.properties ?? {}) as Record<string, unknown>,
-              score_delta: e.score_delta,
-              occurred_at: e.occurred_at,
-            }))
+      if (leads.length === 0) {
+        // Quiet day — keep the existing reassurance empty-state email
+        // (subject "quiet today", Horace-voiced narrative, plus any open-home
+        // recaps). This path is deliberately unchanged.
+        const narrative = anthropic
+          ? await generateBriefingNarrative(anthropic, agentName, leads, 'today')
+          : `0 contacts worth your attention today.`
 
-          const insight = anthropic
-            ? await generateContactInsight(anthropic, agentName, lead, recentEvents)
-            : {
-                why_now: `${[lead.first_name, lead.last_name].filter(Boolean).join(' ') || lead.email || 'This contact'} was active on your website today.`,
-                action: `Follow up with ${lead.first_name ?? lead.email ?? 'this contact'} today.`,
-              }
+        // HOR-155: pull yesterday's Doorstep inspections so the empty state can
+        // still render the "Open homes yesterday" section. The RPC silently
+        // returns [] if Doorstep wasn't used, so this is safe for agents who
+        // never run inspections.
+        const inspectionsSince = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data: rawInspections } = await (admin.rpc as any)(
+          'get_daily_briefing_inspections',
+          { p_agent_id: settings.agent_id, p_since: inspectionsSince },
+        )
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const inspections: DigestInspection[] = (rawInspections as any[] ?? []).map((row) => ({
+          inspection_id: row.inspection_id,
+          inspection_type: row.inspection_type,
+          address: row.address,
+          scheduled_at: row.scheduled_at,
+          scan_count: row.scan_count,
+          revisit_count: row.revisit_count,
+          scans: (row.scans ?? []) as DigestInspectionScan[],
+        }))
 
-          return { ...lead, insight }
-        }),
-      )
+        ;({ subject, html } = buildDailyBriefingEmail(agentName, [], narrative, appUrl, inspections))
+      } else {
+        // Something's stirring — the texture-line tap on the shoulder. Bucket
+        // the firing contacts into familiar (resolved identity) vs anonymous
+        // (activity, no name yet), then let the email pick the line. No named
+        // entities, counts, narrative, insights or inspections — the Stream is
+        // the record, the email just gets the agent to open it.
+        const familiar = leads.filter(
+          (l) => (l as { identified_at?: string | null }).identified_at != null,
+        ).length
+        const anonymous = leads.length - familiar
 
-      // Generate Horace-voiced narrative intro
-      const narrative = anthropic
-        ? await generateBriefingNarrative(anthropic, agentName, leads, 'today')
-        : `${leads.length} contact${leads.length === 1 ? '' : 's'} worth your attention today.`
-
-      // HOR-155: pull yesterday's Doorstep inspections so the email can
-      // render the "Open homes yesterday" section. Lookback is 24h from
-      // cron fire — `daily_briefing_hour` (default 17:00 local) means
-      // the agent gets a summary of the inspections that ran in the
-      // 24 hours prior. The RPC silently returns [] if Doorstep wasn't
-      // used, so this is safe for agents who never run inspections.
-      const inspectionsSince = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data: rawInspections } = await (admin.rpc as any)(
-        'get_daily_briefing_inspections',
-        { p_agent_id: settings.agent_id, p_since: inspectionsSince },
-      )
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const inspections: DigestInspection[] = (rawInspections as any[] ?? []).map((row) => ({
-        inspection_id: row.inspection_id,
-        inspection_type: row.inspection_type,
-        address: row.address,
-        scheduled_at: row.scheduled_at,
-        scan_count: row.scan_count,
-        revisit_count: row.revisit_count,
-        scans: (row.scans ?? []) as DigestInspectionScan[],
-      }))
-
-      const { subject, html } = buildDailyBriefingEmail(
-        agentName,
-        leadsWithInsights,
-        narrative,
-        appUrl,
-        inspections,
-      )
+        ;({ subject, html } = buildStirringEmail({
+          firstName: agent?.first_name ?? null,
+          familiar,
+          anonymous,
+          appUrl,
+        }))
+      }
 
       // Prefer briefing_emails list, fall back to agent_email
       const recipients: string[] = Array.isArray(settings.briefing_emails) && settings.briefing_emails.length > 0
