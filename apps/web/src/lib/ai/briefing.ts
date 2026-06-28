@@ -22,6 +22,8 @@ export interface LeadWithInsight {
   score: number
   score_change: number
   last_seen_at: string | null
+  /** Resolved-identity timestamp; null = anonymous (activity, no name yet). */
+  identified_at?: string | null
   insight: ContactInsight
 }
 
