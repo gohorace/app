@@ -18,13 +18,26 @@ export interface McpTool {
 const listContacts: McpTool = {
   name: 'list_contacts',
   description:
-    'List contacts owned by the connected agent. Returns id, name, email, score, ' +
-    'last seen and CRM source. Use to find candidates for outreach.',
+    'List contacts owned by the connected agent. Returns id, name, email, ' +
+    'sensitivity (the contact\'s behaviour-signal level), last seen and CRM ' +
+    'source. Use to find candidates for outreach. ' +
+    'DEPRECATED ALIASES (still accepted, slated for removal in v0.3): ' +
+    'params min_score / max_score and sort:"score" map to min_sensitivity / ' +
+    'max_sensitivity and sort:"sensitivity". Each returned contact also ' +
+    'includes a `score` field that mirrors `sensitivity` for back-compat.',
   inputSchema: {
     type: 'object',
     properties: {
-      min_score: { type: 'number', description: 'Minimum engagement score' },
-      max_score: { type: 'number', description: 'Maximum engagement score' },
+      min_sensitivity: { type: 'number', description: 'Minimum behaviour-signal sensitivity' },
+      max_sensitivity: { type: 'number', description: 'Maximum behaviour-signal sensitivity' },
+      min_score: {
+        type: 'number',
+        description: 'DEPRECATED — use min_sensitivity. Kept for back-compat until v0.3.',
+      },
+      max_score: {
+        type: 'number',
+        description: 'DEPRECATED — use max_sensitivity. Kept for back-compat until v0.3.',
+      },
       has_email: { type: 'boolean', description: 'Only contacts with an email address' },
       include_unsubscribed: {
         type: 'boolean',
@@ -36,8 +49,10 @@ const listContacts: McpTool = {
       },
       sort: {
         type: 'string',
-        enum: ['score', 'last_seen', 'created_at'],
-        description: 'Sort order, descending. Defaults to score.',
+        enum: ['sensitivity', 'score', 'last_seen', 'created_at'],
+        description:
+          'Sort order, descending. Defaults to sensitivity. "score" is a ' +
+          'deprecated alias for "sensitivity" (kept for back-compat until v0.3).',
       },
       limit: { type: 'number', description: 'Max rows (default 25, cap 200)' },
       offset: { type: 'number', description: 'Pagination offset' },
@@ -46,17 +61,21 @@ const listContacts: McpTool = {
   },
   async handler(args, ctx) {
     const a = (args ?? {}) as {
+      min_sensitivity?: number
+      max_sensitivity?: number
       min_score?: number
       max_score?: number
       has_email?: boolean
       include_unsubscribed?: boolean
       last_seen_within_days?: number
-      sort?: 'score' | 'last_seen' | 'created_at'
+      sort?: 'sensitivity' | 'score' | 'last_seen' | 'created_at'
       limit?: number
       offset?: number
     }
     const limit = Math.min(Math.max(a.limit ?? 25, 1), 200)
     const offset = Math.max(a.offset ?? 0, 0)
+    const minSensitivity = a.min_sensitivity ?? a.min_score
+    const maxSensitivity = a.max_sensitivity ?? a.max_score
     const sortColumn =
       a.sort === 'last_seen' ? 'last_seen_at' : a.sort === 'created_at' ? 'created_at' : 'score'
 
@@ -68,8 +87,8 @@ const listContacts: McpTool = {
       .order(sortColumn, { ascending: false, nullsFirst: false })
       .range(offset, offset + limit - 1)
 
-    if (typeof a.min_score === 'number') q = q.gte('score', a.min_score)
-    if (typeof a.max_score === 'number') q = q.lte('score', a.max_score)
+    if (typeof minSensitivity === 'number') q = q.gte('score', minSensitivity)
+    if (typeof maxSensitivity === 'number') q = q.lte('score', maxSensitivity)
     if (a.has_email === true) q = q.not('email', 'is', null)
     if (a.has_email === false) q = q.is('email', null)
     if (!a.include_unsubscribed) q = q.is('unsubscribed_at', null)
@@ -80,15 +99,21 @@ const listContacts: McpTool = {
 
     const { data, error } = await q
     if (error) throw new Error(error.message)
-    return { contacts: data ?? [], limit, offset }
+    const contacts = (data ?? []).map((c) => ({ ...c, sensitivity: c.score }))
+    return { contacts, limit, offset }
   },
 }
 
 const getContact: McpTool = {
   name: 'get_contact',
   description:
-    'Get a single contact by id, including the most recent score-history entries. ' +
-    'Use when you need full detail before drafting outreach.',
+    'Get a single contact by id, including the most recent behaviour-signal ' +
+    'history entries (sensitivity deltas with reasons). Use when you need full ' +
+    'detail before drafting outreach. ' +
+    'DEPRECATED ALIAS (slated for removal in v0.3): the response also includes ' +
+    '`score_history` (mirror of `behaviour_signal_history`), and each history ' +
+    'row includes `score_before` / `score_after` (mirrors of `sensitivity_before` ' +
+    '/ `sensitivity_after`).',
   inputSchema: {
     type: 'object',
     properties: { contact_id: { type: 'string', description: 'Contact UUID' } },
@@ -99,7 +124,7 @@ const getContact: McpTool = {
     const { contact_id } = args as { contact_id: string }
     const admin = createAdminClient()
 
-    const [{ data: contact, error: cErr }, { data: scoreHistory }] = await Promise.all([
+    const [{ data: contact, error: cErr }, { data: history }] = await Promise.all([
       admin
         .from('contacts')
         .select('*')
@@ -117,7 +142,24 @@ const getContact: McpTool = {
 
     if (cErr) throw new Error(cErr.message)
     if (!contact) throw new Error('Contact not found')
-    return { contact, score_history: scoreHistory ?? [] }
+    const behaviourSignalHistory = (history ?? []).map((h) => ({
+      delta: h.delta,
+      reason: h.reason,
+      sensitivity_before: h.score_before,
+      sensitivity_after: h.score_after,
+      score_before: h.score_before,
+      score_after: h.score_after,
+      occurred_at: h.occurred_at,
+    }))
+    const contactWithSensitivity =
+      contact && typeof contact === 'object' && 'score' in contact
+        ? { ...contact, sensitivity: (contact as { score: number | null }).score }
+        : contact
+    return {
+      contact: contactWithSensitivity,
+      behaviour_signal_history: behaviourSignalHistory,
+      score_history: behaviourSignalHistory,
+    }
   },
 }
 
@@ -159,7 +201,8 @@ const getWeeklyBrief: McpTool = {
   name: 'get_weekly_brief',
   description:
     'Get the same top-leads briefing data the weekly email uses: top 10 contacts ' +
-    'by score change in the last 7 days. Use to anchor a weekly outreach session.',
+    'by sensitivity (behaviour-signal) change in the last 7 days. Use to anchor ' +
+    'a weekly outreach session.',
   inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   async handler(_args, ctx) {
     const admin = createAdminClient()
@@ -203,7 +246,8 @@ const searchContacts: McpTool = {
       .limit(limit)
 
     if (error) throw new Error(error.message)
-    return { contacts: data ?? [] }
+    const contacts = (data ?? []).map((c) => ({ ...c, sensitivity: c.score }))
+    return { contacts }
   },
 }
 
