@@ -62,6 +62,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: '/settings/scoring', label: 'Sensitivity', icon: Gauge },
       { href: '/settings/tracked-links', label: 'Website URL', icon: Link2 },
       { href: '/settings/snippet', label: 'Install snippet', icon: Code },
+      { href: '/settings/tracking-domain', label: 'Tracking domain', icon: Globe, adminOnly: true },
     ],
   },
   {
